@@ -37,6 +37,7 @@ next-env.d.ts
 /uploads
 /storage
 /data
+/tmp
 /prisma/dev.db
 /prisma/dev.db-journal
 

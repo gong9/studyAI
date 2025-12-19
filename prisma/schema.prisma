@@ -24,15 +24,19 @@ model KnowledgeBase {
   id          String     @id @default(uuid())
   name        String
   description String?
+  type        String     @default("document")  // "document" | "teaching"
   userId      String
   user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   documents   Document[]
   evalRuns    EvalRun[]
   memories    Memory[]
+  chapters    TeachingChapter[]
+  coursewares CoursewareGeneration[]
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
   @@index([userId])
+  @@index([type])
 }
 
 model Document {
@@ -278,5 +282,64 @@ model CodeSymbol {
   @@index([moduleId])
   @@index([name])
   @@index([filePath])
+}
+
+// ==================== 教研库系统 ====================
+
+// 教材章节结构
+model TeachingChapter {
+  id              String        @id @default(uuid())
+  knowledgeBaseId String
+  knowledgeBase   KnowledgeBase @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+  
+  title           String                           // 章节标题: "第三章 一次函数"
+  level           Int                              // 层级: 1=章, 2=节, 3=小节
+  parentId        String?                          // 父章节 ID (自引用)
+  orderIndex      Int           @default(0)        // 排序索引
+  contentPreview  String?                          // 内容摘要（前500字）
+  contentFull     String?                          // 完整章节内容
+  
+  // 教学元数据 (JSON)
+  metadata        String?                          // { grade, subject, difficulty, keywords }
+  
+  // 关联
+  parent          TeachingChapter?  @relation("ChapterHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children        TeachingChapter[] @relation("ChapterHierarchy")
+  coursewares     CoursewareGeneration[]
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([knowledgeBaseId])
+  @@index([parentId])
+  @@index([level])
+}
+
+// 课件生成记录
+model CoursewareGeneration {
+  id              String        @id @default(uuid())
+  knowledgeBaseId String
+  knowledgeBase   KnowledgeBase @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+  chapterId       String
+  chapter         TeachingChapter @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  
+  // 生成状态
+  status          String        @default("pending")  // pending | analyzing | planning | generating | completed | failed
+  errorMessage    String?
+  
+  // 三阶段结果 (JSON)
+  analysisResult  String?                          // Agent1: 教学分析结果
+  structureResult String?                          // Agent2: 课件结构规划
+  dslResult       String?                          // Agent3: 最终课件 DSL
+  
+  // 统计
+  slideCount      Int           @default(0)        // 生成的幻灯片数量
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([knowledgeBaseId])
+  @@index([chapterId])
+  @@index([status])
 }
 

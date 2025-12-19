@@ -7,6 +7,7 @@ import { z } from 'zod';
 const createKBSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().max(500).optional(),
+  type: z.enum(['document', 'teaching']).optional().default('document'),
 });
 
 export async function GET(request: Request) {
@@ -44,12 +45,13 @@ export async function POST(request: Request) {
 
     const userId = (session.user as any).id;
     const body = await request.json();
-    const { name, description } = createKBSchema.parse(body);
+    const { name, description, type } = createKBSchema.parse(body);
 
     const knowledgeBase = await prisma.knowledgeBase.create({
       data: {
         name,
         description,
+        type,
         userId,
       },
     });

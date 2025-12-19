@@ -1,0 +1,653 @@
+'use client';
+
+import React, { useEffect, useState, useCallback } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { 
+  ArrowLeft, Upload, FileText, ChevronRight, ChevronDown, 
+  GraduationCap, Sparkles, Loader2, CheckCircle, 
+  BookOpen, ListTree, Play, Eye, Plus, LayoutGrid, Clock,
+  Target, Book, Settings2, Zap
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+interface ChapterNode {
+  id: string;
+  title: string;
+  level: number;
+  orderIndex: number;
+  contentPreview?: string;
+  metadata?: any;
+  children: ChapterNode[];
+}
+
+interface Manuscript {
+  id: string;
+  status: string;
+  chapterId: string;
+  chapterTitle: string;
+  teachingPlan?: any;
+  hasEnriched: boolean;
+  hasSlidev: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export default function TeachingDetailPage() {
+  const params = useParams();
+  const router = useRouter();
+  const kbId = params.id as string;
+
+  const [kb, setKb] = useState<any>(null);
+  const [chapters, setChapters] = useState<ChapterNode[]>([]);
+  const [documents, setDocuments] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [selectedChapter, setSelectedChapter] = useState<ChapterNode | null>(null);
+  const [expandedChapters, setExpandedChapters] = useState<Set<string>>(new Set());
+  const [manuscripts, setManuscripts] = useState<Manuscript[]>([]);
+  const [progress, setProgress] = useState({ status: '', message: '', percent: 0 });
+  const [activeTab, setActiveTab] = useState<'workbench' | 'records'>('workbench');
+
+  useEffect(() => {
+    fetchKnowledgeBase();
+    fetchChapters();
+    fetchDocuments();
+    fetchManuscripts();
+  }, [kbId]);
+
+  const fetchKnowledgeBase = async () => {
+    try {
+      const res = await fetch(`/api/knowledge-bases/${kbId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setKb(data);
+      }
+    } catch (error) {
+      console.error('获取知识库失败:', error);
+    }
+  };
+
+  const fetchChapters = async () => {
+    try {
+      const res = await fetch(`/api/teaching/chapters/${kbId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setChapters(data.chapters || []);
+        if (data.chapters && data.chapters.length > 0) {
+          fetchDocuments();
+        }
+      }
+    } catch (error) {
+      console.error('获取章节失败:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchDocuments = async () => {
+    try {
+      const res = await fetch(`/api/knowledge-bases/${kbId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setDocuments(data.documents || []);
+      }
+    } catch (error) {
+      console.error('获取文档失败:', error);
+    }
+  };
+
+  const fetchManuscripts = async () => {
+    try {
+      const res = await fetch(`/api/teaching/manuscripts/${kbId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setManuscripts(data.manuscripts || []);
+      }
+    } catch (error) {
+      console.error('获取手稿列表失败:', error);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setUploading(true);
+    try {
+      const uploadedDocs: any[] = [];
+      
+      // 1. 上传所有文件
+      for (const file of Array.from(files)) {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('knowledgeBaseId', kbId);
+        const res = await fetch('/api/documents/upload', {
+          method: 'POST',
+          body: formData,
+        });
+        if (!res.ok) throw new Error('上传失败');
+        const doc = await res.json();
+        uploadedDocs.push(doc);
+      }
+      
+      // 2. 为每个文档建立索引（后台执行，不阻塞用户）
+      for (const doc of uploadedDocs) {
+        // 使用 SSE 处理文档并建立索引
+        processDocumentIndex(doc.id);
+      }
+      
+      fetchDocuments();
+      handleExtractChapters();
+    } catch (error) {
+      console.error('上传失败:', error);
+      alert('上传失败，请重试');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // 处理单个文档的索引构建（后台执行）
+  const processDocumentIndex = async (documentId: string) => {
+    try {
+      console.log(`[Teaching] Processing document index: ${documentId}`);
+      
+      // 调用文档处理 API（会建立向量索引）
+      const response = await fetch(`/api/documents/${documentId}/process`);
+      
+      if (!response.ok) {
+        console.error(`[Teaching] Failed to process document ${documentId}`);
+        return;
+      }
+      
+      // 读取 SSE 流
+      const reader = response.body?.getReader();
+      if (!reader) return;
+      
+      const decoder = new TextDecoder();
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        const text = decoder.decode(value);
+        // 解析 SSE 事件
+        const lines = text.split('\n');
+        for (const line of lines) {
+          if (line.startsWith('data:')) {
+            try {
+              // 去掉 'data:' 前缀和可能的空格
+              const jsonStr = line.replace(/^data:\s*/, '');
+              if (!jsonStr) continue;
+              
+              const data = JSON.parse(jsonStr);
+              console.log(`[Teaching] Index progress: ${data.message}`);
+              
+              if (data.status === 'completed') {
+                console.log(`[Teaching] Document ${documentId} indexed successfully`);
+                fetchDocuments(); // 刷新状态
+              }
+            } catch (e) {
+              // ignore parse errors
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error(`[Teaching] Error processing document ${documentId}:`, error);
+    }
+  };
+
+  const [extractProgress, setExtractProgress] = useState('');
+  
+  const handleExtractChapters = async () => {
+    setExtracting(true);
+    setExtractProgress('正在解析文件...');
+    try {
+      const res = await fetch('/api/teaching/extract-chapters', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ knowledgeBaseId: kbId, useLLM: true }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setChapters(data.chapters || []);
+        fetchDocuments();
+      } else {
+        const error = await res.json();
+        throw new Error(error.error || '提取失败');
+      }
+    } catch (error: any) {
+      console.error('提取章节失败:', error);
+      alert(error.message || '提取章节失败');
+    } finally {
+      setExtracting(false);
+      setExtractProgress('');
+    }
+  };
+
+  const handleGenerate = async () => {
+    if (!selectedChapter) {
+      alert('请先选择章节');
+      return;
+    }
+    setGenerating(true);
+    setProgress({ status: 'starting', message: '正在规划教学方案...', percent: 10 });
+    try {
+      const planRes = await fetch('/api/teaching/manuscript/plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chapterId: selectedChapter.id }),
+      });
+      if (!planRes.ok) throw new Error('规划失败');
+      const planData = await planRes.json();
+      const manuscriptId = planData.manuscriptId;
+      setProgress({ status: 'draft', message: '正在编写教学手稿...', percent: 50 });
+      const draftRes = await fetch('/api/teaching/manuscript/draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ manuscriptId }),
+      });
+      if (!draftRes.ok) throw new Error('编写失败');
+      setProgress({ status: 'completed', message: '生成成功！', percent: 100 });
+      fetchManuscripts();
+      setTimeout(() => {
+        router.push(`/dashboard/teaching/${kbId}/manuscript/${manuscriptId}`);
+      }, 800);
+    } catch (error: any) {
+      console.error('生成失败:', error);
+      setProgress({ status: 'failed', message: error.message || '生成失败', percent: 0 });
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const toggleChapter = (id: string) => {
+    setExpandedChapters(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const renderChapterTree = (nodes: ChapterNode[], depth = 0) => {
+    return nodes.map(node => {
+      const hasChildren = node.children && node.children.length > 0;
+      const isExpanded = expandedChapters.has(node.id);
+      const isSelected = selectedChapter?.id === node.id;
+
+      return (
+        <div key={node.id} className="select-none">
+          <div
+            className={cn(
+              "flex items-center gap-2.5 px-3 py-2.5 rounded-md cursor-pointer text-sm transition-all relative group",
+              isSelected 
+                ? "bg-[#e6f4ff] text-[#1677ff] font-semibold" 
+                : "text-slate-800 hover:bg-slate-100",
+              node.level === 1 && "font-medium"
+            )}
+            onClick={() => {
+              setSelectedChapter(node);
+              if (hasChildren) toggleChapter(node.id);
+            }}
+            style={{ paddingLeft: `${depth * 16 + 12}px` }}
+          >
+            {/* 选中指示条 */}
+            {isSelected && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-[#1677ff] rounded-r" />}
+            
+            {hasChildren ? (
+              isExpanded ? (
+                <ChevronDown className="w-4 h-4 text-slate-400" />
+              ) : (
+                <ChevronRight className="w-4 h-4 text-slate-400" />
+              )
+            ) : (
+              <div className="w-4" />
+            )}
+            <BookOpen className={cn("w-4 h-4 transition-colors", isSelected ? "text-[#1677ff]" : "text-slate-400 group-hover:text-slate-500")} />
+            <span className="flex-1 truncate leading-tight">
+              {node.title}
+            </span>
+          </div>
+          {hasChildren && isExpanded && (
+            <div className="mt-0.5">
+              {renderChapterTree(node.children, depth + 1)}
+            </div>
+          )}
+        </div>
+      );
+    });
+  };
+
+  return (
+    <div className="h-screen flex flex-col bg-[#f5f7f9] overflow-hidden font-sans">
+      {/* Header */}
+      <header className="flex-shrink-0 z-30 w-full bg-white border-b border-slate-200 shadow-sm">
+        <div className="container mx-auto px-6 h-14 flex items-center justify-between">
+          <div className="flex items-center gap-6">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => router.push('/dashboard/teaching')}
+              className="text-slate-500 hover:text-slate-900 h-9 w-9"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </Button>
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-[#1677ff] rounded-lg flex items-center justify-center shadow-md shadow-blue-100">
+                <GraduationCap className="w-5 h-5 text-white" />
+              </div>
+              <span className="text-base font-semibold text-slate-900 tracking-tight">
+                {kb?.name || '教研库详情'}
+              </span>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-slate-500 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
+              <span className="w-2 h-2 inline-block bg-blue-500 rounded-full mr-2 animate-pulse" />
+              AI 助手就绪
+            </span>
+          </div>
+        </div>
+      </header>
+
+      <main className="flex-1 overflow-hidden">
+        <div className="container mx-auto h-full px-6 py-6">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full">
+            {/* 左侧：资源与目录 */}
+            <div className="lg:col-span-4 flex flex-col gap-6 h-full overflow-hidden">
+              <div className="flex-1 bg-white border border-slate-200 rounded-xl shadow-sm flex flex-col overflow-hidden">
+                {/* 顶部：教材文档 */}
+                <div className="p-5 border-b border-slate-100 flex-shrink-0 bg-white">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-bold text-slate-950 flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-[#1677ff]" />
+                      教材文档库
+                    </h3>
+                    <label className="text-xs font-semibold text-[#1677ff] hover:text-blue-700 cursor-pointer flex items-center gap-1 bg-blue-50 px-2 py-1 rounded border border-blue-100 transition-colors">
+                      <Plus className="w-3.5 h-3.5" />
+                      添加教材
+                      <input type="file" className="hidden" accept=".pdf,.docx,.txt" onChange={handleFileUpload} disabled={uploading} />
+                    </label>
+                  </div>
+                  
+                  <div className="space-y-2.5 max-h-[140px] overflow-y-auto custom-scrollbar pr-1">
+                    {documents.length === 0 ? (
+                      <div className="text-center py-6 border border-dashed border-slate-200 rounded-lg bg-slate-50">
+                        <span className="text-xs text-slate-400">暂无教材，请先上传</span>
+                      </div>
+                    ) : (
+                      documents.map((doc: any) => (
+                        <div key={doc.id} className="flex items-center gap-3 text-sm text-slate-900 bg-slate-50/80 px-3 py-2.5 rounded-lg border border-slate-200 hover:border-blue-300 hover:bg-white transition-all">
+                          <FileText className="w-4 h-4 text-slate-500 flex-shrink-0" />
+                          <span className="truncate flex-1 font-semibold">{doc.name}</span>
+                          <div className={cn(
+                            "w-2 h-2 rounded-full",
+                            doc.status === 'completed' ? "bg-green-500 shadow-[0_0_4px_rgba(34,197,94,0.4)]" : "bg-amber-500 animate-pulse"
+                          )} />
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  {uploading && (
+                    <div className="text-xs text-[#1677ff] font-bold mt-3 flex items-center gap-2 bg-blue-50 py-2 px-3 rounded-lg border border-blue-100">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      正在同步云端...
+                    </div>
+                  )}
+                </div>
+
+                {/* 底部：章节目录 */}
+                <div className="flex-1 flex flex-col overflow-hidden">
+                  <div className="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                    <h3 className="text-sm font-bold text-slate-950 flex items-center gap-2">
+                      <ListTree className="w-4 h-4 text-[#1677ff]" />
+                      课程目录索引
+                    </h3>
+                    {documents.length > 0 && (
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={handleExtractChapters} 
+                        disabled={extracting} 
+                        className="h-7 text-xs font-bold text-slate-500 hover:text-[#1677ff] hover:bg-blue-50"
+                      >
+                        {extracting ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : '智能扫描'}
+                      </Button>
+                    )}
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-2 bg-white custom-scrollbar">
+                    {loading ? (
+                      <div className="flex flex-col items-center justify-center py-20 gap-3">
+                        <Loader2 className="w-8 h-8 animate-spin text-[#1677ff]" />
+                        <span className="text-xs text-slate-400 font-medium tracking-wider uppercase">Loading Index</span>
+                      </div>
+                    ) : chapters.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-20 text-slate-400 text-center px-6">
+                        <BookOpen className="w-10 h-10 mb-3 opacity-20" />
+                        <p className="text-xs font-medium leading-relaxed">暂无目录数据<br/>请上传教材后点击“智能扫描”</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-0.5">
+                        {renderChapterTree(chapters)}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 右侧：工作台 */}
+            <div className="lg:col-span-8 flex flex-col h-full overflow-hidden pb-4">
+              <div className="bg-white border border-slate-200 rounded-xl shadow-sm flex-1 flex flex-col overflow-hidden">
+                {/* Tabs */}
+                <div className="flex border-b border-slate-200 px-6 pt-4 bg-white flex-shrink-0">
+                  <button
+                    onClick={() => setActiveTab('workbench')}
+                    className={cn(
+                      "pb-3.5 px-6 text-sm font-bold transition-all relative flex items-center gap-2 group",
+                      activeTab === 'workbench' ? "text-[#1677ff]" : "text-slate-600 hover:text-slate-950"
+                    )}
+                  >
+                    <LayoutGrid className={cn("w-4 h-4", activeTab === 'workbench' ? "text-[#1677ff]" : "text-slate-500 group-hover:text-slate-700")} />
+                    智能备课台
+                    {activeTab === 'workbench' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-[#1677ff]" />}
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('records')}
+                    className={cn(
+                      "pb-3.5 px-6 text-sm font-bold transition-all relative ml-2 flex items-center gap-2 group",
+                      activeTab === 'records' ? "text-[#1677ff]" : "text-slate-600 hover:text-slate-950"
+                    )}
+                  >
+                    <Clock className={cn("w-4 h-4", activeTab === 'records' ? "text-[#1677ff]" : "text-slate-500 group-hover:text-slate-700")} />
+                    历史产出
+                    {manuscripts.length > 0 && (
+                      <span className={cn(
+                        "px-1.5 py-0.5 rounded-md text-[10px] ml-1 font-black",
+                        activeTab === 'records' ? "bg-blue-100 text-[#1677ff]" : "bg-slate-200 text-slate-700"
+                      )}>
+                        {manuscripts.length}
+                      </span>
+                    )}
+                    {activeTab === 'records' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-[#1677ff]" />}
+                  </button>
+                </div>
+
+                {/* Content */}
+                <div className="flex-1 overflow-y-auto bg-[#f8fafc] custom-scrollbar">
+                  {activeTab === 'workbench' ? (
+                    selectedChapter ? (
+                      <div className="max-w-4xl mx-auto py-16 px-10 h-full flex flex-col">
+                        <div className="bg-white rounded-xl border border-slate-200 shadow-[0_10px_40px_rgba(0,0,0,0.04)] flex flex-col overflow-hidden transition-all duration-500 hover:shadow-[0_15px_50px_rgba(0,0,0,0.06)]">
+                          
+                          <div className="p-12 flex flex-col flex-1">
+                            {/* 顶部指示器 */}
+                            <div className="flex items-center gap-3 mb-10">
+                              <div className="px-2.5 py-0.5 bg-blue-50 text-[#1677ff] text-[11px] font-bold rounded border border-blue-100 tracking-wider">
+                                第 {selectedChapter.orderIndex + 1} 章节
+                              </div>
+                              <div className="h-1 w-1 bg-slate-300 rounded-full" />
+                              <div className="text-[11px] font-bold text-slate-400 tracking-widest uppercase">准备就绪 · 待生成</div>
+                            </div>
+
+                            {/* 标题区 - 极简主义排版 */}
+                            <div className="mb-12">
+                              <h2 className="text-3xl font-bold text-slate-900 tracking-tight leading-tight mb-6">
+                                {selectedChapter.title}
+                              </h2>
+                              {selectedChapter.contentPreview ? (
+                                <p className="text-base text-slate-500 leading-relaxed font-medium max-w-2xl">
+                                  {selectedChapter.contentPreview}
+                                </p>
+                              ) : (
+                                <div className="h-px w-20 bg-slate-100" />
+                              )}
+                            </div>
+
+                            {/* 参数信息 - 模块化极简 */}
+                            <div className="grid grid-cols-3 gap-12 py-10 border-t border-slate-100">
+                              <div>
+                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">生成策略</div>
+                                <div className="text-base font-bold text-slate-800">深度启发式教学</div>
+                              </div>
+                              <div>
+                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">智能等级</div>
+                                <div className="text-base font-bold text-slate-800">Agentic RAG v4</div>
+                              </div>
+                              <div>
+                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">预估耗时</div>
+                                <div className="text-base font-bold text-slate-800 tracking-tight">约 45 - 60 秒</div>
+                              </div>
+                            </div>
+
+                            {/* 核心操作区 - 灵魂按钮 */}
+                            <div className="mt-12 flex flex-col items-center pt-10 border-t border-slate-50/50">
+                              <div className="relative group">
+                                {/* 按钮背后的柔光层 */}
+                                <div className="absolute -inset-1 bg-blue-600 rounded blur-md opacity-20 group-hover:opacity-30 transition duration-500" />
+                                
+                                <Button
+                                  className={cn(
+                                    "relative min-w-[320px] h-14 text-base font-bold rounded transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-3 shadow-lg shadow-blue-100",
+                                    generating 
+                                      ? "bg-white text-slate-400 border border-slate-100 shadow-none" 
+                                      : "bg-[#1677ff] hover:bg-[#4096ff] text-white"
+                                  )}
+                                  onClick={handleGenerate}
+                                  disabled={generating}
+                                >
+                                  {generating ? (
+                                    <Loader2 className="w-5 h-5 animate-spin" />
+                                  ) : (
+                                    <Sparkles className="w-5 h-5" />
+                                  )}
+                                  <span className="tracking-wider">
+                                    {generating ? '正在构思教学手稿...' : '开启智慧备课中心'}
+                                  </span>
+                                </Button>
+                              </div>
+
+                              {generating && (
+                                <div className="w-full max-w-sm mt-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                                  <div className="flex justify-between items-center mb-4 px-1">
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-ping" />
+                                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">{progress.message}</span>
+                                    </div>
+                                    <span className="text-xl font-bold text-[#1677ff] tabular-nums tracking-tighter">{progress.percent}%</span>
+                                  </div>
+                                  <div className="h-1 bg-slate-100 rounded-full overflow-hidden">
+                                    <div 
+                                      className="h-full bg-[#1677ff] transition-all duration-1000 ease-out" 
+                                      style={{ width: `${progress.percent}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {!generating && (
+                                <div className="mt-8 flex items-center gap-2 text-slate-400">
+                                  <CheckCircle className="w-3.5 h-3.5" />
+                                  <span className="text-[10px] font-bold uppercase tracking-widest">已通过安全与隐私加密校验</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-slate-300">
+                        <div className="w-16 h-16 rounded bg-white shadow-sm border border-slate-100 flex items-center justify-center mb-6">
+                          <LayoutGrid className="w-8 h-8 opacity-10" />
+                        </div>
+                        <p className="text-sm font-bold tracking-widest text-slate-400 uppercase">请在左侧选择章节开始备课</p>
+                      </div>
+                    )
+                  ) : (
+                    <div className="max-w-4xl mx-auto p-8">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        {manuscripts.map(m => (
+                          <div 
+                            key={m.id} 
+                            className="bg-white p-5 rounded-2xl border border-slate-200 hover:shadow-xl hover:border-blue-200 transition-all cursor-pointer flex flex-col group relative overflow-hidden" 
+                            onClick={() => router.push(`/dashboard/teaching/${kbId}/manuscript/${m.id}`)}
+                          >
+                            <div className="absolute top-0 right-0 p-4 opacity-[0.03] group-hover:opacity-[0.08] transition-opacity">
+                              <FileText className="w-16 h-16" />
+                            </div>
+                            
+                            <div className="flex items-center gap-3 mb-4">
+                              <div className="w-10 h-10 bg-blue-50 text-[#1677ff] rounded-xl flex items-center justify-center border border-blue-100 transition-colors group-hover:bg-[#1677ff] group-hover:text-white">
+                                <FileText className="w-5 h-5" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <h4 className="text-base font-bold text-slate-950 truncate group-hover:text-[#1677ff] transition-colors">{m.chapterTitle}</h4>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  <span className="text-[10px] font-bold text-slate-500 uppercase">{new Date(m.createdAt).toLocaleDateString('zh-CN')}</span>
+                                  <span className={cn(
+                                    "px-2 py-0.5 rounded-full text-[10px] font-bold border",
+                                    m.status === 'completed' 
+                                      ? "bg-green-50 text-green-700 border-green-200" 
+                                      : "bg-slate-50 text-slate-600 border-slate-300"
+                                  )}>
+                                    {m.status === 'completed' ? '已就绪' : '处理中'}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            <div className="mt-auto pt-4 border-t border-slate-50 flex items-center justify-between">
+                              <div className="flex gap-1.5">
+                                {m.hasSlidev && <div className="w-6 h-6 bg-slate-50 rounded flex items-center justify-center"><Eye className="w-3.5 h-3.5 text-slate-400" /></div>}
+                                {m.hasEnriched && <div className="w-6 h-6 bg-slate-50 rounded flex items-center justify-center"><Sparkles className="w-3.5 h-3.5 text-slate-400" /></div>}
+                              </div>
+                              <div className="text-[10px] font-black text-slate-400 group-hover:text-[#1677ff] flex items-center gap-1 uppercase tracking-widest transition-all">
+                                进入工作区 <ChevronRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {manuscripts.length === 0 && (
+                        <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+                          <Clock className="w-12 h-12 mb-4 opacity-10" />
+                          <p className="text-sm font-medium">暂无产出记录</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}

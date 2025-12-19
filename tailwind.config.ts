@@ -45,9 +45,40 @@ const config: Config = {
         md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)',
       },
+      typography: {
+        DEFAULT: {
+          css: {
+            maxWidth: 'none',
+            h1: {
+              fontSize: '1.875rem',
+              fontWeight: '700',
+              marginTop: '1.5rem',
+              marginBottom: '1rem',
+              borderBottom: '2px solid #e0e7ff',
+              paddingBottom: '0.75rem',
+            },
+            h2: {
+              fontSize: '1.5rem',
+              fontWeight: '600',
+              marginTop: '1.25rem',
+              marginBottom: '0.75rem',
+              color: '#4f46e5',
+            },
+            h3: {
+              fontSize: '1.25rem',
+              fontWeight: '600',
+              marginTop: '1rem',
+              marginBottom: '0.5rem',
+              color: '#6366f1',
+            },
+          },
+        },
+      },
     },
   },
-  plugins: [],
+  plugins: [
+    require('@tailwindcss/typography'),
+  ],
 };
 
 export default config;
