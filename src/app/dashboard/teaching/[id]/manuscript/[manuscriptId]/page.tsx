@@ -35,7 +35,7 @@ const STATUS_MAP: Record<string, { label: string; color: string; icon: React.Rea
   reviewing: { label: '审核中', color: 'bg-purple-100 text-purple-700', icon: <Loader2 className="h-3 w-3 animate-spin" /> },
   enriching: { label: '润色中', color: 'bg-indigo-100 text-indigo-700', icon: <Loader2 className="h-3 w-3 animate-spin" /> },
   rendering: { label: '渲染中', color: 'bg-pink-100 text-pink-700', icon: <Loader2 className="h-3 w-3 animate-spin" /> },
-  completed: { label: '已完成', color: 'bg-emerald-100 text-emerald-700', icon: <CheckCircle className="h-3 w-3" /> },
+  completed: { label: '已完成', color: 'bg-zinc-100 text-zinc-700', icon: <CheckCircle className="h-3 w-3" /> },
 };
 
 // 强制刷新 UI
@@ -328,7 +328,7 @@ export default function ManuscriptEditorPage() {
               <Button 
                 size="sm" 
                 onClick={handleRender}
-                className="h-8 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm rounded-lg text-xs font-semibold px-4"
+                className="h-8 bg-zinc-800 hover:bg-zinc-700 text-white shadow-sm rounded-lg text-xs font-semibold px-4"
               >
                 <Eye className="h-3 w-3 mr-1.5" />
                 预览课件

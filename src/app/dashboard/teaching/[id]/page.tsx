@@ -213,9 +213,9 @@ export default function TeachingDetailPage() {
         body: JSON.stringify({ knowledgeBaseId: kbId, useLLM: true }),
       });
       if (res.ok) {
-        const data = await res.json();
-        setChapters(data.chapters || []);
-        fetchDocuments();
+        // 提取成功后，重新从数据库获取章节（带有正确的 ID）
+        await fetchChapters();
+        await fetchDocuments();
       } else {
         const error = await res.json();
         throw new Error(error.error || '提取失败');
@@ -286,8 +286,8 @@ export default function TeachingDetailPage() {
             className={cn(
               "flex items-center gap-2.5 px-3 py-2.5 rounded-md cursor-pointer text-sm transition-all relative group",
               isSelected 
-                ? "bg-[#e6f4ff] text-[#1677ff] font-semibold" 
-                : "text-slate-800 hover:bg-slate-100",
+                ? "bg-zinc-100 text-zinc-900 font-semibold" 
+                : "text-zinc-700 hover:bg-zinc-50",
               node.level === 1 && "font-medium"
             )}
             onClick={() => {
@@ -297,18 +297,18 @@ export default function TeachingDetailPage() {
             style={{ paddingLeft: `${depth * 16 + 12}px` }}
           >
             {/* 选中指示条 */}
-            {isSelected && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-[#1677ff] rounded-r" />}
+            {isSelected && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-zinc-900 rounded-r" />}
             
             {hasChildren ? (
               isExpanded ? (
-                <ChevronDown className="w-4 h-4 text-slate-400" />
+                <ChevronDown className="w-4 h-4 text-zinc-400" />
               ) : (
-                <ChevronRight className="w-4 h-4 text-slate-400" />
+                <ChevronRight className="w-4 h-4 text-zinc-400" />
               )
             ) : (
               <div className="w-4" />
             )}
-            <BookOpen className={cn("w-4 h-4 transition-colors", isSelected ? "text-[#1677ff]" : "text-slate-400 group-hover:text-slate-500")} />
+            <BookOpen className={cn("w-4 h-4 transition-colors", isSelected ? "text-zinc-700" : "text-zinc-400 group-hover:text-zinc-500")} />
             <span className="flex-1 truncate leading-tight">
               {node.title}
             </span>
@@ -324,32 +324,32 @@ export default function TeachingDetailPage() {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-[#f5f7f9] overflow-hidden font-sans">
+    <div className="h-screen flex flex-col bg-zinc-50/50 overflow-hidden font-sans">
       {/* Header */}
-      <header className="flex-shrink-0 z-30 w-full bg-white border-b border-slate-200 shadow-sm">
+      <header className="flex-shrink-0 z-30 w-full bg-white/80 backdrop-blur-xl border-b border-zinc-200">
         <div className="container mx-auto px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-6">
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => router.push('/dashboard/teaching')}
-              className="text-slate-500 hover:text-slate-900 h-9 w-9"
+              onClick={() => router.push('/dashboard')}
+              className="text-zinc-500 hover:text-zinc-900 h-9 w-9"
             >
               <ArrowLeft className="w-5 h-5" />
             </Button>
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-[#1677ff] rounded-lg flex items-center justify-center shadow-md shadow-blue-100">
+              <div className="w-8 h-8 bg-zinc-900 rounded-lg flex items-center justify-center shadow-sm">
                 <GraduationCap className="w-5 h-5 text-white" />
               </div>
-              <span className="text-base font-semibold text-slate-900 tracking-tight">
+              <span className="text-base font-semibold text-zinc-900 tracking-tight">
                 {kb?.name || '教研库详情'}
               </span>
             </div>
           </div>
           
           <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-slate-500 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
-              <span className="w-2 h-2 inline-block bg-blue-500 rounded-full mr-2 animate-pulse" />
+            <span className="text-xs font-medium text-zinc-500 bg-zinc-100 px-3 py-1 rounded-full border border-zinc-200">
+              <span className="w-2 h-2 inline-block bg-zinc-900 rounded-full mr-2 animate-pulse" />
               AI 助手就绪
             </span>
           </div>
@@ -361,15 +361,15 @@ export default function TeachingDetailPage() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full">
             {/* 左侧：资源与目录 */}
             <div className="lg:col-span-4 flex flex-col gap-6 h-full overflow-hidden">
-              <div className="flex-1 bg-white border border-slate-200 rounded-xl shadow-sm flex flex-col overflow-hidden">
+              <div className="flex-1 bg-white border border-zinc-200 rounded-xl shadow-sm flex flex-col overflow-hidden">
                 {/* 顶部：教材文档 */}
-                <div className="p-5 border-b border-slate-100 flex-shrink-0 bg-white">
+                <div className="p-5 border-b border-zinc-100 flex-shrink-0 bg-white">
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-sm font-bold text-slate-950 flex items-center gap-2">
-                      <FileText className="w-4 h-4 text-[#1677ff]" />
+                    <h3 className="text-sm font-bold text-zinc-900 flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-zinc-600" />
                       教材文档库
                     </h3>
-                    <label className="text-xs font-semibold text-[#1677ff] hover:text-blue-700 cursor-pointer flex items-center gap-1 bg-blue-50 px-2 py-1 rounded border border-blue-100 transition-colors">
+                    <label className="text-xs font-semibold text-zinc-700 hover:text-zinc-900 cursor-pointer flex items-center gap-1 bg-zinc-100 px-2 py-1 rounded border border-zinc-200 transition-colors hover:bg-zinc-200">
                       <Plus className="w-3.5 h-3.5" />
                       添加教材
                       <input type="file" className="hidden" accept=".pdf,.docx,.txt" onChange={handleFileUpload} disabled={uploading} />
@@ -378,13 +378,13 @@ export default function TeachingDetailPage() {
                   
                   <div className="space-y-2.5 max-h-[140px] overflow-y-auto custom-scrollbar pr-1">
                     {documents.length === 0 ? (
-                      <div className="text-center py-6 border border-dashed border-slate-200 rounded-lg bg-slate-50">
-                        <span className="text-xs text-slate-400">暂无教材，请先上传</span>
+                      <div className="text-center py-6 border border-dashed border-zinc-200 rounded-lg bg-zinc-50">
+                        <span className="text-xs text-zinc-400">暂无教材，请先上传</span>
                       </div>
                     ) : (
                       documents.map((doc: any) => (
-                        <div key={doc.id} className="flex items-center gap-3 text-sm text-slate-900 bg-slate-50/80 px-3 py-2.5 rounded-lg border border-slate-200 hover:border-blue-300 hover:bg-white transition-all">
-                          <FileText className="w-4 h-4 text-slate-500 flex-shrink-0" />
+                        <div key={doc.id} className="flex items-center gap-3 text-sm text-zinc-900 bg-zinc-50/80 px-3 py-2.5 rounded-lg border border-zinc-200 hover:border-zinc-300 hover:bg-white transition-all">
+                          <FileText className="w-4 h-4 text-zinc-500 flex-shrink-0" />
                           <span className="truncate flex-1 font-semibold">{doc.name}</span>
                           <div className={cn(
                             "w-2 h-2 rounded-full",
@@ -395,7 +395,7 @@ export default function TeachingDetailPage() {
                     )}
                   </div>
                   {uploading && (
-                    <div className="text-xs text-[#1677ff] font-bold mt-3 flex items-center gap-2 bg-blue-50 py-2 px-3 rounded-lg border border-blue-100">
+                    <div className="text-xs text-zinc-700 font-bold mt-3 flex items-center gap-2 bg-zinc-100 py-2 px-3 rounded-lg border border-zinc-200">
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
                       正在同步云端...
                     </div>
@@ -404,9 +404,9 @@ export default function TeachingDetailPage() {
 
                 {/* 底部：章节目录 */}
                 <div className="flex-1 flex flex-col overflow-hidden">
-                  <div className="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                    <h3 className="text-sm font-bold text-slate-950 flex items-center gap-2">
-                      <ListTree className="w-4 h-4 text-[#1677ff]" />
+                  <div className="px-5 py-4 border-b border-zinc-100 flex justify-between items-center bg-zinc-50/50">
+                    <h3 className="text-sm font-bold text-zinc-900 flex items-center gap-2">
+                      <ListTree className="w-4 h-4 text-zinc-600" />
                       课程目录索引
                     </h3>
                     {documents.length > 0 && (
@@ -415,7 +415,7 @@ export default function TeachingDetailPage() {
                         size="sm" 
                         onClick={handleExtractChapters} 
                         disabled={extracting} 
-                        className="h-7 text-xs font-bold text-slate-500 hover:text-[#1677ff] hover:bg-blue-50"
+                        className="h-7 text-xs font-bold text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100"
                       >
                         {extracting ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : '智能扫描'}
                       </Button>
@@ -424,13 +424,13 @@ export default function TeachingDetailPage() {
                   <div className="flex-1 overflow-y-auto p-2 bg-white custom-scrollbar">
                     {loading ? (
                       <div className="flex flex-col items-center justify-center py-20 gap-3">
-                        <Loader2 className="w-8 h-8 animate-spin text-[#1677ff]" />
-                        <span className="text-xs text-slate-400 font-medium tracking-wider uppercase">Loading Index</span>
+                        <Loader2 className="w-8 h-8 animate-spin text-zinc-400" />
+                        <span className="text-xs text-zinc-400 font-medium tracking-wider uppercase">Loading Index</span>
                       </div>
                     ) : chapters.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center py-20 text-slate-400 text-center px-6">
+                      <div className="flex flex-col items-center justify-center py-20 text-zinc-400 text-center px-6">
                         <BookOpen className="w-10 h-10 mb-3 opacity-20" />
-                        <p className="text-xs font-medium leading-relaxed">暂无目录数据<br/>请上传教材后点击“智能扫描”</p>
+                        <p className="text-xs font-medium leading-relaxed">暂无目录数据<br/>请上传教材后点击"智能扫描"</p>
                       </div>
                     ) : (
                       <div className="space-y-0.5">
@@ -444,100 +444,100 @@ export default function TeachingDetailPage() {
 
             {/* 右侧：工作台 */}
             <div className="lg:col-span-8 flex flex-col h-full overflow-hidden pb-4">
-              <div className="bg-white border border-slate-200 rounded-xl shadow-sm flex-1 flex flex-col overflow-hidden">
+              <div className="bg-white border border-zinc-200 rounded-xl shadow-sm flex-1 flex flex-col overflow-hidden">
                 {/* Tabs */}
-                <div className="flex border-b border-slate-200 px-6 pt-4 bg-white flex-shrink-0">
+                <div className="flex border-b border-zinc-200 px-6 pt-4 bg-white flex-shrink-0">
                   <button
                     onClick={() => setActiveTab('workbench')}
                     className={cn(
                       "pb-3.5 px-6 text-sm font-bold transition-all relative flex items-center gap-2 group",
-                      activeTab === 'workbench' ? "text-[#1677ff]" : "text-slate-600 hover:text-slate-950"
+                      activeTab === 'workbench' ? "text-zinc-900" : "text-zinc-500 hover:text-zinc-800"
                     )}
                   >
-                    <LayoutGrid className={cn("w-4 h-4", activeTab === 'workbench' ? "text-[#1677ff]" : "text-slate-500 group-hover:text-slate-700")} />
+                    <LayoutGrid className={cn("w-4 h-4", activeTab === 'workbench' ? "text-zinc-700" : "text-zinc-400 group-hover:text-zinc-600")} />
                     智能备课台
-                    {activeTab === 'workbench' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-[#1677ff]" />}
+                    {activeTab === 'workbench' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-zinc-900" />}
                   </button>
                   <button
                     onClick={() => setActiveTab('records')}
                     className={cn(
                       "pb-3.5 px-6 text-sm font-bold transition-all relative ml-2 flex items-center gap-2 group",
-                      activeTab === 'records' ? "text-[#1677ff]" : "text-slate-600 hover:text-slate-950"
+                      activeTab === 'records' ? "text-zinc-900" : "text-zinc-500 hover:text-zinc-800"
                     )}
                   >
-                    <Clock className={cn("w-4 h-4", activeTab === 'records' ? "text-[#1677ff]" : "text-slate-500 group-hover:text-slate-700")} />
+                    <Clock className={cn("w-4 h-4", activeTab === 'records' ? "text-zinc-700" : "text-zinc-400 group-hover:text-zinc-600")} />
                     历史产出
                     {manuscripts.length > 0 && (
                       <span className={cn(
                         "px-1.5 py-0.5 rounded-md text-[10px] ml-1 font-black",
-                        activeTab === 'records' ? "bg-blue-100 text-[#1677ff]" : "bg-slate-200 text-slate-700"
+                        activeTab === 'records' ? "bg-zinc-200 text-zinc-800" : "bg-zinc-100 text-zinc-600"
                       )}>
                         {manuscripts.length}
                       </span>
                     )}
-                    {activeTab === 'records' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-[#1677ff]" />}
+                    {activeTab === 'records' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-zinc-900" />}
                   </button>
                 </div>
 
                 {/* Content */}
-                <div className="flex-1 overflow-y-auto bg-[#f8fafc] custom-scrollbar">
+                <div className="flex-1 overflow-y-auto bg-zinc-50/50 custom-scrollbar">
                   {activeTab === 'workbench' ? (
                     selectedChapter ? (
                       <div className="max-w-4xl mx-auto py-16 px-10 h-full flex flex-col">
-                        <div className="bg-white rounded-xl border border-slate-200 shadow-[0_10px_40px_rgba(0,0,0,0.04)] flex flex-col overflow-hidden transition-all duration-500 hover:shadow-[0_15px_50px_rgba(0,0,0,0.06)]">
+                        <div className="bg-white rounded-xl border border-zinc-200 shadow-[0_10px_40px_rgba(0,0,0,0.04)] flex flex-col overflow-hidden transition-all duration-500 hover:shadow-[0_15px_50px_rgba(0,0,0,0.06)]">
                           
                           <div className="p-12 flex flex-col flex-1">
                             {/* 顶部指示器 */}
                             <div className="flex items-center gap-3 mb-10">
-                              <div className="px-2.5 py-0.5 bg-blue-50 text-[#1677ff] text-[11px] font-bold rounded border border-blue-100 tracking-wider">
+                              <div className="px-2.5 py-0.5 bg-zinc-100 text-zinc-700 text-[11px] font-bold rounded border border-zinc-200 tracking-wider">
                                 第 {selectedChapter.orderIndex + 1} 章节
                               </div>
-                              <div className="h-1 w-1 bg-slate-300 rounded-full" />
-                              <div className="text-[11px] font-bold text-slate-400 tracking-widest uppercase">准备就绪 · 待生成</div>
+                              <div className="h-1 w-1 bg-zinc-300 rounded-full" />
+                              <div className="text-[11px] font-bold text-zinc-400 tracking-widest uppercase">准备就绪 · 待生成</div>
                             </div>
 
                             {/* 标题区 - 极简主义排版 */}
                             <div className="mb-12">
-                              <h2 className="text-3xl font-bold text-slate-900 tracking-tight leading-tight mb-6">
+                              <h2 className="text-3xl font-bold text-zinc-900 tracking-tight leading-tight mb-6">
                                 {selectedChapter.title}
                               </h2>
                               {selectedChapter.contentPreview ? (
-                                <p className="text-base text-slate-500 leading-relaxed font-medium max-w-2xl">
+                                <p className="text-base text-zinc-500 leading-relaxed font-medium max-w-2xl">
                                   {selectedChapter.contentPreview}
                                 </p>
                               ) : (
-                                <div className="h-px w-20 bg-slate-100" />
+                                <div className="h-px w-20 bg-zinc-100" />
                               )}
                             </div>
 
                             {/* 参数信息 - 模块化极简 */}
-                            <div className="grid grid-cols-3 gap-12 py-10 border-t border-slate-100">
+                            <div className="grid grid-cols-3 gap-12 py-10 border-t border-zinc-100">
                               <div>
-                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">生成策略</div>
-                                <div className="text-base font-bold text-slate-800">深度启发式教学</div>
+                                <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">生成策略</div>
+                                <div className="text-base font-bold text-zinc-800">深度启发式教学</div>
                               </div>
                               <div>
-                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">智能等级</div>
-                                <div className="text-base font-bold text-slate-800">Agentic RAG v4</div>
+                                <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">智能等级</div>
+                                <div className="text-base font-bold text-zinc-800">Agentic RAG v4</div>
                               </div>
                               <div>
-                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">预估耗时</div>
-                                <div className="text-base font-bold text-slate-800 tracking-tight">约 45 - 60 秒</div>
+                                <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">预估耗时</div>
+                                <div className="text-base font-bold text-zinc-800 tracking-tight">约 45 - 60 秒</div>
                               </div>
                             </div>
 
                             {/* 核心操作区 - 灵魂按钮 */}
-                            <div className="mt-12 flex flex-col items-center pt-10 border-t border-slate-50/50">
+                            <div className="mt-12 flex flex-col items-center pt-10 border-t border-zinc-50/50">
                               <div className="relative group">
                                 {/* 按钮背后的柔光层 */}
-                                <div className="absolute -inset-1 bg-blue-600 rounded blur-md opacity-20 group-hover:opacity-30 transition duration-500" />
+                                <div className="absolute -inset-1 bg-zinc-900 rounded blur-md opacity-20 group-hover:opacity-30 transition duration-500" />
                                 
                                 <Button
                                   className={cn(
-                                    "relative min-w-[320px] h-14 text-base font-bold rounded transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-3 shadow-lg shadow-blue-100",
+                                    "relative min-w-[320px] h-14 text-base font-bold rounded transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-3 shadow-lg shadow-zinc-200",
                                     generating 
-                                      ? "bg-white text-slate-400 border border-slate-100 shadow-none" 
-                                      : "bg-[#1677ff] hover:bg-[#4096ff] text-white"
+                                      ? "bg-white text-zinc-400 border border-zinc-100 shadow-none" 
+                                      : "bg-zinc-900 hover:bg-zinc-800 text-white"
                                   )}
                                   onClick={handleGenerate}
                                   disabled={generating}
@@ -557,14 +557,14 @@ export default function TeachingDetailPage() {
                                 <div className="w-full max-w-sm mt-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
                                   <div className="flex justify-between items-center mb-4 px-1">
                                     <div className="flex items-center gap-2">
-                                      <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-ping" />
-                                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">{progress.message}</span>
+                                      <div className="w-1.5 h-1.5 bg-zinc-900 rounded-full animate-ping" />
+                                      <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">{progress.message}</span>
                                     </div>
-                                    <span className="text-xl font-bold text-[#1677ff] tabular-nums tracking-tighter">{progress.percent}%</span>
+                                    <span className="text-xl font-bold text-zinc-900 tabular-nums tracking-tighter">{progress.percent}%</span>
                                   </div>
-                                  <div className="h-1 bg-slate-100 rounded-full overflow-hidden">
+                                  <div className="h-1 bg-zinc-100 rounded-full overflow-hidden">
                                     <div 
-                                      className="h-full bg-[#1677ff] transition-all duration-1000 ease-out" 
+                                      className="h-full bg-zinc-900 transition-all duration-1000 ease-out" 
                                       style={{ width: `${progress.percent}%` }}
                                     />
                                   </div>
@@ -572,7 +572,7 @@ export default function TeachingDetailPage() {
                               )}
                               
                               {!generating && (
-                                <div className="mt-8 flex items-center gap-2 text-slate-400">
+                                <div className="mt-8 flex items-center gap-2 text-zinc-400">
                                   <CheckCircle className="w-3.5 h-3.5" />
                                   <span className="text-[10px] font-bold uppercase tracking-widest">已通过安全与隐私加密校验</span>
                                 </div>
@@ -582,11 +582,11 @@ export default function TeachingDetailPage() {
                         </div>
                       </div>
                     ) : (
-                      <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-slate-300">
-                        <div className="w-16 h-16 rounded bg-white shadow-sm border border-slate-100 flex items-center justify-center mb-6">
+                      <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-zinc-300">
+                        <div className="w-16 h-16 rounded bg-white shadow-sm border border-zinc-100 flex items-center justify-center mb-6">
                           <LayoutGrid className="w-8 h-8 opacity-10" />
                         </div>
-                        <p className="text-sm font-bold tracking-widest text-slate-400 uppercase">请在左侧选择章节开始备课</p>
+                        <p className="text-sm font-bold tracking-widest text-zinc-400 uppercase">请在左侧选择章节开始备课</p>
                       </div>
                     )
                   ) : (
@@ -595,7 +595,7 @@ export default function TeachingDetailPage() {
                         {manuscripts.map(m => (
                           <div 
                             key={m.id} 
-                            className="bg-white p-5 rounded-2xl border border-slate-200 hover:shadow-xl hover:border-blue-200 transition-all cursor-pointer flex flex-col group relative overflow-hidden" 
+                            className="bg-white p-5 rounded-2xl border border-zinc-200 hover:shadow-xl hover:border-zinc-300 transition-all cursor-pointer flex flex-col group relative overflow-hidden" 
                             onClick={() => router.push(`/dashboard/teaching/${kbId}/manuscript/${m.id}`)}
                           >
                             <div className="absolute top-0 right-0 p-4 opacity-[0.03] group-hover:opacity-[0.08] transition-opacity">
@@ -603,18 +603,18 @@ export default function TeachingDetailPage() {
                             </div>
                             
                             <div className="flex items-center gap-3 mb-4">
-                              <div className="w-10 h-10 bg-blue-50 text-[#1677ff] rounded-xl flex items-center justify-center border border-blue-100 transition-colors group-hover:bg-[#1677ff] group-hover:text-white">
+                              <div className="w-10 h-10 bg-zinc-100 text-zinc-700 rounded-xl flex items-center justify-center border border-zinc-200 transition-colors group-hover:bg-zinc-900 group-hover:text-white">
                                 <FileText className="w-5 h-5" />
                               </div>
                               <div className="flex-1 min-w-0">
-                                <h4 className="text-base font-bold text-slate-950 truncate group-hover:text-[#1677ff] transition-colors">{m.chapterTitle}</h4>
+                                <h4 className="text-base font-bold text-zinc-900 truncate group-hover:text-zinc-700 transition-colors">{m.chapterTitle}</h4>
                                 <div className="flex items-center gap-2 mt-0.5">
-                                  <span className="text-[10px] font-bold text-slate-500 uppercase">{new Date(m.createdAt).toLocaleDateString('zh-CN')}</span>
+                                  <span className="text-[10px] font-bold text-zinc-500 uppercase">{new Date(m.createdAt).toLocaleDateString('zh-CN')}</span>
                                   <span className={cn(
                                     "px-2 py-0.5 rounded-full text-[10px] font-bold border",
                                     m.status === 'completed' 
                                       ? "bg-green-50 text-green-700 border-green-200" 
-                                      : "bg-slate-50 text-slate-600 border-slate-300"
+                                      : "bg-zinc-50 text-zinc-600 border-zinc-300"
                                   )}>
                                     {m.status === 'completed' ? '已就绪' : '处理中'}
                                   </span>
@@ -622,12 +622,12 @@ export default function TeachingDetailPage() {
                               </div>
                             </div>
                             
-                            <div className="mt-auto pt-4 border-t border-slate-50 flex items-center justify-between">
+                            <div className="mt-auto pt-4 border-t border-zinc-50 flex items-center justify-between">
                               <div className="flex gap-1.5">
-                                {m.hasSlidev && <div className="w-6 h-6 bg-slate-50 rounded flex items-center justify-center"><Eye className="w-3.5 h-3.5 text-slate-400" /></div>}
-                                {m.hasEnriched && <div className="w-6 h-6 bg-slate-50 rounded flex items-center justify-center"><Sparkles className="w-3.5 h-3.5 text-slate-400" /></div>}
+                                {m.hasSlidev && <div className="w-6 h-6 bg-zinc-50 rounded flex items-center justify-center"><Eye className="w-3.5 h-3.5 text-zinc-400" /></div>}
+                                {m.hasEnriched && <div className="w-6 h-6 bg-zinc-50 rounded flex items-center justify-center"><Sparkles className="w-3.5 h-3.5 text-zinc-400" /></div>}
                               </div>
-                              <div className="text-[10px] font-black text-slate-400 group-hover:text-[#1677ff] flex items-center gap-1 uppercase tracking-widest transition-all">
+                              <div className="text-[10px] font-black text-zinc-400 group-hover:text-zinc-900 flex items-center gap-1 uppercase tracking-widest transition-all">
                                 进入工作区 <ChevronRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
                               </div>
                             </div>
@@ -635,7 +635,7 @@ export default function TeachingDetailPage() {
                         ))}
                       </div>
                       {manuscripts.length === 0 && (
-                        <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+                        <div className="flex flex-col items-center justify-center py-20 text-zinc-400">
                           <Clock className="w-12 h-12 mb-4 opacity-10" />
                           <p className="text-sm font-medium">暂无产出记录</p>
                         </div>

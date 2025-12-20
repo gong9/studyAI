@@ -50,11 +50,11 @@ const ToolbarButton = ({
     title={title}
     className={cn(
       "p-2 rounded-lg transition-all duration-200",
-      "hover:bg-indigo-50 hover:text-indigo-600",
+      "hover:bg-zinc-100 hover:text-zinc-900",
       "disabled:opacity-40 disabled:cursor-not-allowed",
       active 
-        ? "bg-indigo-50 text-indigo-600 shadow-sm" 
-        : "text-slate-600"
+        ? "bg-zinc-100 text-zinc-900 shadow-sm" 
+        : "text-zinc-600"
     )}
   >
     {children}
@@ -474,7 +474,7 @@ export function TiptapEditor({
       {/* AI 悬浮工具条（编辑模式） */}
       {mode === 'edit' && showBubbleMenu && editable && knowledgeBaseId && (
         <div 
-          className="absolute z-50 bg-white border border-slate-200 rounded-xl shadow-xl px-1.5 py-1 flex items-center gap-1 animate-in fade-in zoom-in-95 duration-200"
+          className="absolute z-50 bg-white border border-zinc-200 rounded-xl shadow-xl px-1.5 py-1 flex items-center gap-1 animate-in fade-in zoom-in-95 duration-200"
           style={{
             left: bubblePosition.x,
             top: bubblePosition.y + 50,
@@ -484,25 +484,25 @@ export function TiptapEditor({
           <button
             onClick={() => handleAIAction('polish')}
             disabled={!!aiLoading}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all disabled:opacity-50"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 rounded-lg transition-all disabled:opacity-50"
           >
-            {aiLoading === 'polish' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5 text-indigo-500" />}
+            {aiLoading === 'polish' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5 text-zinc-500" />}
             润色
           </button>
           <button
             onClick={() => handleAIAction('expand')}
             disabled={!!aiLoading}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all disabled:opacity-50"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 rounded-lg transition-all disabled:opacity-50"
           >
-            {aiLoading === 'expand' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5 text-indigo-500" />}
+            {aiLoading === 'expand' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5 text-zinc-500" />}
             扩写
           </button>
           <button
             onClick={() => handleAIAction('summary')}
             disabled={!!aiLoading}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all disabled:opacity-50"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 rounded-lg transition-all disabled:opacity-50"
           >
-            {aiLoading === 'summary' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5 text-indigo-500" />}
+            {aiLoading === 'summary' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5 text-zinc-500" />}
             总结
           </button>
         </div>
@@ -537,8 +537,8 @@ export function TiptapEditor({
         .ProseMirror h1 {
           font-size: 1.875rem !important;
           font-weight: 700 !important;
-          color: #1e293b !important;
-          border-bottom: 2px solid #e0e7ff !important;
+          color: #18181b !important;
+          border-bottom: 2px solid #e4e4e7 !important;
           padding-bottom: 0.75rem !important;
           margin-top: 1.5rem !important;
           margin-bottom: 1rem !important;
@@ -546,14 +546,14 @@ export function TiptapEditor({
         .ProseMirror h2 {
           font-size: 1.5rem !important;
           font-weight: 600 !important;
-          color: #4f46e5 !important;
+          color: #27272a !important;
           margin-top: 1.25rem !important;
           margin-bottom: 0.75rem !important;
         }
         .ProseMirror h3 {
           font-size: 1.25rem !important;
           font-weight: 600 !important;
-          color: #6366f1 !important;
+          color: #3f3f46 !important;
           margin-top: 1rem !important;
           margin-bottom: 0.5rem !important;
         }
@@ -562,7 +562,7 @@ export function TiptapEditor({
           line-height: 1.75 !important;
         }
         .ProseMirror strong {
-          color: #4f46e5 !important;
+          color: #18181b !important;
           font-weight: 700 !important;
         }
         
@@ -570,8 +570,8 @@ export function TiptapEditor({
         .preview-content h1 {
           font-size: 1.875rem;
           font-weight: 700;
-          color: #1e293b;
-          border-bottom: 2px solid #e0e7ff;
+          color: #18181b;
+          border-bottom: 2px solid #e4e4e7;
           padding-bottom: 0.75rem;
           margin-top: 1.5rem;
           margin-bottom: 1rem;
@@ -579,34 +579,34 @@ export function TiptapEditor({
         .preview-content h2 {
           font-size: 1.5rem;
           font-weight: 600;
-          color: #4f46e5;
+          color: #27272a;
           margin-top: 1.25rem;
           margin-bottom: 0.75rem;
         }
         .preview-content h3 {
           font-size: 1.25rem;
           font-weight: 600;
-          color: #6366f1;
+          color: #3f3f46;
           margin-top: 1rem;
           margin-bottom: 0.5rem;
         }
         .preview-content p {
           margin: 0.5rem 0;
           line-height: 1.75;
-          color: #334155;
+          color: #3f3f46;
         }
         .preview-content strong {
-          color: #4f46e5;
+          color: #18181b;
           font-weight: 700;
         }
         .preview-content blockquote {
-          border-left: 4px solid #818cf8;
-          background: #eef2ff;
+          border-left: 4px solid #71717a;
+          background: #f4f4f5;
           padding: 0.75rem 1rem;
           margin: 0.75rem 0;
           border-radius: 0 0.5rem 0.5rem 0;
           font-style: italic;
-          color: #475569;
+          color: #52525b;
         }
         .preview-content li {
           margin: 0.25rem 0;
@@ -622,8 +622,8 @@ export function TiptapEditor({
           display: inline-block;
           padding: 0.125rem 0.375rem;
           margin: 0 0.125rem;
-          background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
-          border: 1px solid #bae6fd;
+          background: linear-gradient(135deg, #fafafa 0%, #f4f4f5 100%);
+          border: 1px solid #d4d4d8;
           border-radius: 0.25rem;
         }
         .math-inline-preview .katex {
@@ -634,8 +634,8 @@ export function TiptapEditor({
           text-align: center;
           padding: 1.25rem 1.5rem;
           margin: 1rem 0;
-          background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
-          border: 1px solid #c7d2fe;
+          background: linear-gradient(135deg, #fafafa 0%, #f4f4f5 100%);
+          border: 1px solid #d4d4d8;
           border-radius: 0.5rem;
         }
         .math-block-preview .katex {

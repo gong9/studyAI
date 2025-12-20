@@ -61,7 +61,7 @@ export default function LoginPage() {
         <CardHeader className="space-y-2 sm:space-y-3 text-center pt-6 sm:pt-8 pb-4 sm:pb-6">
           <CardTitle className="text-xl sm:text-2xl font-semibold tracking-tight text-zinc-900">欢迎回来</CardTitle>
           <CardDescription className="text-zinc-500 text-sm">
-            登录以管理您的 RAG 知识库
+            登录以开启您的 AI 教研之旅
           </CardDescription>
         </CardHeader>
         <CardContent className="px-5 sm:px-8 pb-6 sm:pb-8">
@@ -125,7 +125,7 @@ export default function LoginPage() {
 
       {/* 底部版权信息 */}
       <div className="absolute bottom-4 sm:bottom-6 text-center w-full px-4">
-         <p className="text-[10px] sm:text-xs text-zinc-400 font-medium tracking-wide">RAG KNOWLEDGE BASE © 2025</p>
+         <p className="text-[10px] sm:text-xs text-zinc-400 font-medium tracking-wide">智研课堂 © 2025</p>
       </div>
     </div>
   );

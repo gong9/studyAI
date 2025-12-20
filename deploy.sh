@@ -122,9 +122,13 @@ if ! command -v python3 &> /dev/null || [[ $(python3 -c 'import sys; print(sys.v
     }
 fi
 
+# 配置淘宝镜像源（加速国内服务器下载）
+echo "📦 配置 npm 镜像源..."
+pnpm config set registry https://registry.npmmirror.com
+
 # 安装依赖（包含 devDependencies，因为 prisma 在里面）
 echo "📦 安装 Node.js 依赖..."
-pnpm install
+pnpm install --no-frozen-lockfile
 
 # Prisma
 echo "🔧 初始化数据库..."

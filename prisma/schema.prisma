@@ -32,6 +32,7 @@ model KnowledgeBase {
   memories    Memory[]
   chapters    TeachingChapter[]
   coursewares CoursewareGeneration[]
+  manuscripts TeachingManuscript[]
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
@@ -306,6 +307,7 @@ model TeachingChapter {
   parent          TeachingChapter?  @relation("ChapterHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
   children        TeachingChapter[] @relation("ChapterHierarchy")
   coursewares     CoursewareGeneration[]
+  manuscripts     TeachingManuscript[]
   
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
@@ -313,6 +315,38 @@ model TeachingChapter {
   @@index([knowledgeBaseId])
   @@index([parentId])
   @@index([level])
+}
+
+// 教学稿件（手稿）
+model TeachingManuscript {
+  id              String        @id @default(uuid())
+  knowledgeBaseId String
+  knowledgeBase   KnowledgeBase @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+  chapterId       String
+  chapter         TeachingChapter @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  
+  // 生成状态
+  status          String        @default("pending")  // pending | planning | drafting | user_editing | confirmed | reviewing | enriching | rendering | completed | failed
+  errorMessage    String?
+  
+  // 各阶段内容 (JSON/Markdown)
+  teachingPlan    String?                          // 教学计划 JSON
+  draftContent    String?                          // 初稿 Markdown
+  confirmedContent String?                         // 用户确认后的内容
+  reviewComments  String?                          // 评审意见 JSON
+  enrichedContent String?                          // 润色后的内容（带视觉标记）
+  slidevMd        String?                          // Slidev Markdown 格式
+  
+  // 导出文件路径
+  exportedPdf     String?
+  exportedPptx    String?
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([knowledgeBaseId])
+  @@index([chapterId])
+  @@index([status])
 }
 
 // 课件生成记录

@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { 
   ArrowLeft, Download, Loader2, ChevronLeft, ChevronRight,
-  FileText, Presentation, Image as ImageIcon
+  FileText, Presentation, Image as ImageIcon, PlayCircle
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import katex from 'katex';
@@ -124,7 +124,7 @@ function parseMarkdown(md: string): string {
     // 表头（第一行）
     const headerCells = tableLines[0].split('|').filter(c => c.trim());
     headerCells.forEach(cell => {
-      tableHtml += `<th style="border: 1px solid #d1d5db; padding: 0.5rem 1rem; background-color: #ecfdf5; font-weight: 600; text-align: left; color: #047857;">${cell.trim()}</th>`;
+      tableHtml += `<th style="border: 1px solid #d1d5db; padding: 0.5rem 1rem; background-color: #f4f4f5; font-weight: 600; text-align: left; color: #27272a;">${cell.trim()}</th>`;
     });
     tableHtml += '</tr></thead><tbody>';
     
@@ -145,30 +145,30 @@ function parseMarkdown(md: string): string {
   });
   
   let html = content
-    // 标题 - 清新教学主题
-    .replace(/^### (.+)$/gm, '<h3 class="text-xl font-semibold text-teal-700 mt-4 mb-3">$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2 class="text-2xl font-bold text-emerald-600 mt-6 mb-3 pb-2 border-b-2 border-emerald-200">$1</h2>')
-    .replace(/^# (.+)$/gm, '<h1 class="text-4xl font-bold text-gray-800 mb-6 tracking-tight">$1</h1>')
+    // 标题 - 简洁商务主题
+    .replace(/^### (.+)$/gm, '<h3 class="text-xl font-semibold text-zinc-700 mt-4 mb-3">$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2 class="text-2xl font-bold text-zinc-800 mt-6 mb-3 pb-2 border-b-2 border-zinc-200">$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1 class="text-4xl font-bold text-zinc-900 mb-6 tracking-tight">$1</h1>')
     // 粗体
-    .replace(/\*\*(.+?)\*\*/g, '<strong class="font-bold text-orange-600">$1</strong>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong class="font-bold text-zinc-900">$1</strong>')
     // 斜体
     .replace(/\*(.+?)\*/g, '<em class="text-gray-600 italic">$1</em>')
     // 行内代码
-    .replace(/`([^`]+)`/g, '<code class="px-2 py-1 bg-amber-50 rounded text-sm font-mono text-amber-700 border border-amber-200">$1</code>')
+    .replace(/`([^`]+)`/g, '<code class="px-2 py-1 bg-zinc-100 rounded text-sm font-mono text-zinc-700 border border-zinc-200">$1</code>')
     // 列表项
-    .replace(/^- (.+)$/gm, '<li class="text-gray-700">$1</li>')
-    .replace(/^\d+\. (.+)$/gm, '<li class="text-gray-700">$1</li>')
+    .replace(/^- (.+)$/gm, '<li class="text-zinc-700">$1</li>')
+    .replace(/^\d+\. (.+)$/gm, '<li class="text-zinc-700">$1</li>')
     // 引用块 (visual/diagram 标记)
     .replace(/> (visual|diagram|animation|emphasis): (.+)/g, 
-      '<div class="my-4 p-4 bg-gradient-to-r from-sky-50 to-indigo-50 border-l-4 border-sky-500 rounded-r-lg shadow-sm">' +
-      '<div class="flex items-center gap-3"><span class="text-2xl">📊</span><span class="text-sky-700 text-lg font-medium">$2</span></div></div>')
+      '<div class="my-4 p-4 bg-gradient-to-r from-zinc-50 to-slate-100 border-l-4 border-zinc-500 rounded-r-lg shadow-sm">' +
+      '<div class="flex items-center gap-3"><span class="text-2xl">📊</span><span class="text-zinc-700 text-lg font-medium">$2</span></div></div>')
     // 普通引用
-    .replace(/^> (.+)$/gm, '<blockquote class="border-l-4 border-emerald-400 pl-4 text-gray-600 italic my-3 bg-emerald-50 py-2 rounded-r">$1</blockquote>')
+    .replace(/^> (.+)$/gm, '<blockquote class="border-l-4 border-zinc-400 pl-4 text-zinc-600 italic my-3 bg-zinc-50 py-2 rounded-r">$1</blockquote>')
     // HTML 标签美化
     .replace(/<div class="visual-placeholder[^"]*"[^>]*>/g, 
-      '<div class="my-4 p-6 bg-gradient-to-br from-sky-50 to-blue-50 border-2 border-dashed border-sky-300 rounded-xl text-center">')
+      '<div class="my-4 p-6 bg-gradient-to-br from-zinc-50 to-slate-100 border-2 border-dashed border-zinc-300 rounded-xl text-center">')
     .replace(/<div class="diagram-container[^"]*"[^>]*>/g,
-      '<div class="my-4 p-6 bg-gradient-to-br from-emerald-50 to-teal-50 border-2 border-dashed border-emerald-300 rounded-xl text-center">')
+      '<div class="my-4 p-6 bg-gradient-to-br from-zinc-50 to-slate-100 border-2 border-dashed border-zinc-300 rounded-xl text-center">')
     // 图片 - 自适应高度，最大占 25% 视口高度
     .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<div class="my-2 rounded-lg overflow-hidden shadow-md border border-gray-200 inline-block max-w-[48%] align-top mx-1"><img src="$2" alt="$1" class="w-full max-h-[20vh] object-contain bg-white" /><p class="text-center text-gray-500 text-xs py-1 bg-gray-50 truncate px-2">$1</p></div>')
     // 段落
@@ -177,7 +177,7 @@ function parseMarkdown(md: string): string {
     .replace(/\n/g, '<br/>');
 
   // 包装列表
-  html = html.replace(/(<li[^>]*>.*<\/li>\s*)+/g, '<ul class="my-3 ml-6 space-y-2 list-disc marker:text-emerald-500">$&</ul>');
+  html = html.replace(/(<li[^>]*>.*<\/li>\s*)+/g, '<ul class="my-3 ml-6 space-y-2 list-disc marker:text-zinc-500">$&</ul>');
 
   // 渲染 LaTeX 公式
   html = renderLatex(html);
@@ -402,21 +402,21 @@ export default function SlidevPreviewPage() {
         <div className="text-center">
           {preloadingImages ? (
             <>
-              <ImageIcon className="h-10 w-10 text-emerald-400 mx-auto mb-2" />
-              <Loader2 className="h-6 w-6 animate-spin text-emerald-400 mx-auto" />
+              <ImageIcon className="h-10 w-10 text-zinc-400 mx-auto mb-2" />
+              <Loader2 className="h-6 w-6 animate-spin text-zinc-400 mx-auto" />
               <p className="mt-4 text-zinc-400">
                 正在预加载图片 ({imageLoadProgress.loaded}/{imageLoadProgress.total})
               </p>
               <div className="w-48 h-2 bg-zinc-700 rounded-full mt-3 mx-auto overflow-hidden">
                 <div 
-                  className="h-full bg-emerald-500 transition-all duration-300"
+                  className="h-full bg-zinc-500 transition-all duration-300"
                   style={{ width: `${(imageLoadProgress.loaded / Math.max(imageLoadProgress.total, 1)) * 100}%` }}
                 />
               </div>
             </>
           ) : (
             <>
-              <Loader2 className="h-10 w-10 animate-spin text-emerald-400 mx-auto" />
+              <Loader2 className="h-10 w-10 animate-spin text-zinc-400 mx-auto" />
               <p className="mt-4 text-zinc-400">加载中...</p>
             </>
           )}
@@ -460,12 +460,26 @@ export default function SlidevPreviewPage() {
 
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 px-3 py-1 bg-white/10 rounded-full">
-            <span className="text-emerald-400 font-mono text-sm font-bold">
+            <span className="text-zinc-300 font-mono text-sm font-bold">
               {currentSlide + 1}
             </span>
             <span className="text-zinc-500">/</span>
             <span className="text-zinc-400 font-mono text-sm">{slides.length}</span>
           </div>
+          
+          <div className="h-4 w-px bg-white/20" />
+          
+          {/* AI 演示模式按钮 */}
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => router.push(`/dashboard/teaching/${kbId}/manuscript/${manuscriptId}/presentation`)}
+            disabled={slides.length === 0}
+            className="bg-zinc-700/50 border-zinc-500/50 text-zinc-300 hover:bg-zinc-600/50"
+          >
+            <PlayCircle className="h-4 w-4 mr-2" />
+            AI 演示
+          </Button>
           
           <div className="h-4 w-px bg-white/20" />
           
@@ -516,24 +530,24 @@ export default function SlidevPreviewPage() {
                 className={cn(
                   "cursor-pointer rounded-lg overflow-hidden transition-all duration-200 group border",
                   currentSlide === i 
-                    ? "ring-2 ring-emerald-400 shadow-lg shadow-emerald-500/20 scale-105 border-emerald-300" 
-                    : "opacity-70 hover:opacity-100 hover:scale-102 border-gray-200"
+                    ? "ring-2 ring-zinc-400 shadow-lg shadow-zinc-500/20 scale-105 border-zinc-400" 
+                    : "opacity-70 hover:opacity-100 hover:scale-102 border-zinc-200"
                 )}
               >
                 <div 
                   className="aspect-[16/9] p-2 relative flex items-center justify-center"
                   style={{
-                    background: 'linear-gradient(180deg, #ffffff 0%, #f0fdf4 100%)',
+                    background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
                   }}
                 >
-                  <div className="text-[8px] text-gray-600 line-clamp-2 leading-tight text-center px-1 font-medium">
+                  <div className="text-[8px] text-zinc-600 line-clamp-2 leading-tight text-center px-1 font-medium">
                     {slide.title.replace(/^#+ /, '')}
                   </div>
                   <div className={cn(
                     "absolute bottom-1 right-1 w-5 h-5 flex items-center justify-center rounded-full text-[9px] font-bold",
                     currentSlide === i 
-                      ? "bg-gradient-to-r from-emerald-500 to-teal-500 text-white"
-                      : "bg-gray-200 text-gray-600"
+                      ? "bg-gradient-to-r from-zinc-700 to-zinc-800 text-white"
+                      : "bg-zinc-200 text-zinc-600"
                   )}>
                     {i + 1}
                   </div>
@@ -550,13 +564,13 @@ export default function SlidevPreviewPage() {
               <Presentation className="h-20 w-20 mx-auto mb-4 opacity-20" />
               <p className="text-lg">暂无幻灯片</p>
               {rendering ? (
-                <p className="mt-4 flex items-center justify-center gap-2 text-emerald-400">
+                <p className="mt-4 flex items-center justify-center gap-2 text-zinc-400">
                   <Loader2 className="h-5 w-5 animate-spin" />
                   正在渲染...
                 </p>
               ) : (
                 <Button 
-                  className="mt-6 bg-emerald-600 hover:bg-emerald-500"
+                  className="mt-6 bg-zinc-800 hover:bg-zinc-700"
                   onClick={handleRender}
                 >
                   生成幻灯片
@@ -569,9 +583,9 @@ export default function SlidevPreviewPage() {
               <div className="w-full max-w-[95%] h-full flex flex-col justify-center px-4">
                 <div 
                   ref={slideContainerRef}
-                  className="aspect-[16/9] rounded-2xl shadow-2xl shadow-black/20 overflow-hidden slide-theme border border-gray-200"
+                  className="aspect-[16/9] rounded-2xl shadow-2xl shadow-black/20 overflow-hidden slide-theme border border-zinc-200"
                   style={{
-                    background: 'linear-gradient(180deg, #ffffff 0%, #f0fdf4 100%)',
+                    background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
                   }}
                 >
                   <div 
