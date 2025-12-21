@@ -292,7 +292,7 @@ export default function ManuscriptEditorPage() {
                   size="sm"
                   onClick={handleConfirm}
                   disabled={confirming || hasChanges}
-                  className="h-8 bg-blue-600 hover:bg-blue-700 text-white shadow-sm rounded-lg text-xs font-semibold px-4"
+                  className="h-8 bg-zinc-900 hover:bg-zinc-800 text-white shadow-sm rounded-lg text-xs font-semibold px-4"
                 >
                   {confirming ? <Loader2 className="h-3 w-3 animate-spin mr-1.5" /> : <CheckCircle className="h-3 w-3 mr-1.5" />}
                   确认生成
@@ -316,7 +316,7 @@ export default function ManuscriptEditorPage() {
                   size="sm"
                   onClick={handleEnrich}
                   disabled={enriching}
-                  className="h-8 bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm rounded-lg text-xs font-semibold px-4"
+                  className="h-8 bg-zinc-900 hover:bg-zinc-800 text-white shadow-sm rounded-lg text-xs font-semibold px-4"
                 >
                   {enriching ? <Loader2 className="h-3 w-3 animate-spin mr-1.5" /> : <RefreshCw className="h-3 w-3 mr-1.5" />}
                   润色分页
@@ -409,7 +409,7 @@ export default function ManuscriptEditorPage() {
               <div className="px-6 py-4 border-b border-slate-50 flex items-center justify-between flex-shrink-0">
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-2">
-                    <div className="w-1.5 h-4 bg-blue-600 rounded-full" />
+                    <div className="w-1.5 h-4 bg-zinc-900 rounded-full" />
                     <h2 className="text-sm font-bold text-slate-800">
                       {isEditable ? '手稿正文' : '手稿只读预览'}
                     </h2>
@@ -422,7 +422,7 @@ export default function ManuscriptEditorPage() {
                         className={cn(
                           "flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md transition-all",
                           editorMode === 'preview' 
-                            ? "bg-white text-blue-600 shadow-sm" 
+                            ? "bg-white text-zinc-900 shadow-sm" 
                             : "text-slate-500 hover:text-slate-700"
                         )}
                       >
@@ -434,7 +434,7 @@ export default function ManuscriptEditorPage() {
                         className={cn(
                           "flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md transition-all",
                           editorMode === 'edit' 
-                            ? "bg-white text-blue-600 shadow-sm" 
+                            ? "bg-white text-zinc-900 shadow-sm" 
                             : "text-slate-500 hover:text-slate-700"
                         )}
                       >
@@ -445,7 +445,7 @@ export default function ManuscriptEditorPage() {
                   )}
                 </div>
                 {hasChanges && (
-                  <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100 uppercase tracking-tighter">
+                  <span className="text-[10px] font-bold text-zinc-700 bg-zinc-100 px-2 py-0.5 rounded-full border border-zinc-200 uppercase tracking-tighter">
                     未保存
                   </span>
                 )}

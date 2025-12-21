@@ -8,6 +8,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { extractChapters, extractChaptersByRules, type ChapterNode } from '@/lib/teaching';
+import { analyzeChapter } from '@/lib/teaching/agents/chapter-analyzer';
 import * as fs from 'fs-extra';
 import * as path from 'path';
 import pdfParse from 'pdf-parse';
@@ -135,6 +136,11 @@ export async function POST(request: Request) {
       data: { status: 'completed' },
     });
 
+    // 异步触发章节分析（不阻塞响应）
+    analyzeAllChapters(knowledgeBaseId).catch(err => {
+      console.error('[ExtractChapters] Background analysis failed:', err);
+    });
+
     return NextResponse.json({
       success: true,
       chapters: result.chapters,
@@ -200,5 +206,68 @@ async function saveChaptersToDb(
   for (let i = 0; i < chapters.length; i++) {
     await saveNode(chapters[i], null, i + 1);
   }
+}
+
+/**
+ * 异步分析所有章节（后台任务）
+ */
+async function analyzeAllChapters(knowledgeBaseId: string) {
+  console.log(`[ExtractChapters] Starting background analysis for KB: ${knowledgeBaseId}`);
+  
+  // 获取所有未分析的叶子章节（level 最深的章节）
+  const chapters = await prisma.teachingChapter.findMany({
+    where: {
+      knowledgeBaseId,
+      analyzed: false,
+    },
+    select: {
+      id: true,
+      title: true,
+      level: true,
+    },
+    orderBy: { orderIndex: 'asc' },
+  });
+
+  if (chapters.length === 0) {
+    console.log('[ExtractChapters] No chapters to analyze');
+    return;
+  }
+
+  console.log(`[ExtractChapters] Analyzing ${chapters.length} chapters...`);
+
+  for (const chapter of chapters) {
+    try {
+      console.log(`[ExtractChapters] Analyzing: ${chapter.title}`);
+      
+      const result = await analyzeChapter({
+        knowledgeBaseId,
+        chapterTitle: chapter.title,
+        chapterLevel: chapter.level,
+      });
+
+      if (result.success) {
+        // 更新章节的分析结果
+        await prisma.teachingChapter.update({
+          where: { id: chapter.id },
+          data: {
+            keyPoints: JSON.stringify(result.keyPoints),
+            summary: result.summary,
+            analyzed: true,
+          },
+        });
+        console.log(`[ExtractChapters] ✓ Analyzed: ${chapter.title} (${result.keyPoints.length} key points)`);
+      } else {
+        console.log(`[ExtractChapters] ✗ Failed: ${chapter.title} - ${result.error}`);
+      }
+
+      // 避免 API 限流
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+    } catch (err) {
+      console.error(`[ExtractChapters] Error analyzing ${chapter.title}:`, err);
+    }
+  }
+
+  console.log(`[ExtractChapters] Background analysis completed for KB: ${knowledgeBaseId}`);
 }
 

@@ -136,13 +136,25 @@ export async function GET(
         const totalActions = scriptResult.slides.reduce((sum, s) => sum + s.actions.length, 0);
         console.log(`[Lecture SSE] 演讲稿就绪: ${scriptResult.slides.length} 页, ${totalActions} 条指令`);
 
-        // 发送完成事件
+        // 提取所有 speak 文本，用于前端预加载 TTS
+        const speakTexts: string[] = [];
+        for (const slide of scriptResult.slides) {
+          for (const action of slide.actions) {
+            if (action.action === 'speak' && action.text) {
+              speakTexts.push(action.text);
+            }
+          }
+        }
+        console.log(`[Lecture SSE] 提取 ${speakTexts.length} 条语音文本`);
+
+        // 发送完成事件（包含 speak 文本列表）
         sendEvent('complete', {
           success: true,
           manuscriptId,
           totalSlides: slides.length,
           totalActions,
           startSlide,
+          speakTexts, // 返回所有 speak 文本，用于 TTS 预加载
           message: '演讲稿已生成',
         });
 

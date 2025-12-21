@@ -190,6 +190,10 @@ export default function PresentationPage() {
   const [prepareProgress, setPrepareProgress] = useState(0);
   const [prepareMessage, setPrepareMessage] = useState('');
   
+  // MiniMax TTS 音频播放
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioMapRef = useRef<Map<string, string>>(new Map()); // text -> audioUrl 预加载缓存
+  
   // 高亮状态
   const [highlightedElement, setHighlightedElement] = useState<string | null>(null);
   
@@ -245,23 +249,188 @@ export default function PresentationPage() {
   const onReadyRef = useRef<((slideCount: number) => void) | null>(null);
 
   // ====== TTS 相关函数 ======
-  const speak = useCallback((text: string): Promise<void> => {
+  
+  // 初始化 Audio 元素
+  useEffect(() => {
+    if (typeof window !== 'undefined' && !audioRef.current) {
+      audioRef.current = new Audio();
+    }
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
+  }, []);
+  
+  // 预加载单个音频（带延时避免限流）
+  const preloadAudio = async (text: string, delay: number = 0): Promise<void> => {
+    if (delay > 0) {
+      await new Promise(r => setTimeout(r, delay));
+    }
+    
+    try {
+      const response = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'TTS API 调用失败');
+      }
+      
+      const result = await response.json();
+      if (result.audioUrl) {
+        audioMapRef.current.set(text, result.audioUrl);
+        console.log('[TTS] 预加载成功:', text.substring(0, 30) + '...');
+      }
+    } catch (error) {
+      console.error('[TTS] 预加载失败:', text.substring(0, 30), error);
+    }
+  };
+  
+  // 预加载前 N 条音频（快速启动）
+  const preloadInitialAudio = async (
+    texts: string[], 
+    count: number = 5,
+    onProgress?: (current: number, total: number) => void
+  ): Promise<void> => {
+    const DELAY_MS = 150; // 每次请求间隔 150ms
+    const toLoad = texts.slice(0, count);
+    
+    for (let i = 0; i < toLoad.length; i++) {
+      const text = toLoad[i];
+      if (audioMapRef.current.has(text)) {
+        onProgress?.(i + 1, toLoad.length);
+        continue;
+      }
+      
+      await preloadAudio(text, i === 0 ? 0 : DELAY_MS);
+      onProgress?.(i + 1, toLoad.length);
+    }
+  };
+  
+  // 后台继续加载剩余音频
+  const preloadRemainingAudioRef = useRef<boolean>(false);
+  
+  const preloadRemainingAudio = async (texts: string[], startIndex: number = 5): Promise<void> => {
+    if (preloadRemainingAudioRef.current) return; // 防止重复调用
+    preloadRemainingAudioRef.current = true;
+    
+    const DELAY_MS = 300; // 后台加载间隔长一点，不抢占资源
+    const remaining = texts.slice(startIndex);
+    
+    console.log(`[TTS] 后台加载剩余 ${remaining.length} 条语音...`);
+    
+    for (const text of remaining) {
+      if (!preloadRemainingAudioRef.current) break; // 被中断
+      if (audioMapRef.current.has(text)) continue;
+      
+      await preloadAudio(text, DELAY_MS);
+    }
+    
+    preloadRemainingAudioRef.current = false;
+    console.log('[TTS] 后台加载完成');
+  };
+  
+  // 停止后台预加载
+  const stopPreloading = () => {
+    preloadRemainingAudioRef.current = false;
+  };
+  
+  // 使用预加载的音频播放
+  const speak = useCallback(async (text: string): Promise<void> => {
+    // 优先使用预加载的音频
+    let audioUrl = audioMapRef.current.get(text);
+    
+    // 如果没有预加载，实时获取（作为回退）
+    if (!audioUrl) {
+      console.log('[TTS] 未预加载，实时获取...');
+      try {
+        const response = await fetch('/api/tts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text }),
+        });
+        
+        if (response.ok) {
+          const result = await response.json();
+          audioUrl = result.audioUrl;
+          if (audioUrl) {
+            audioMapRef.current.set(text, audioUrl);
+          }
+        }
+      } catch (error) {
+        console.error('[TTS] 实时获取失败:', error);
+      }
+    }
+    
+    // 如果还是没有音频 URL，回退到浏览器 TTS
+    if (!audioUrl) {
+      console.log('[TTS] 无音频，回退到浏览器 TTS');
+      return speakWithBrowserTTS(text);
+    }
+    
+    console.log('[TTS] 播放预加载音频');
+    setIsSpeaking(true);
+    
+    // 播放音频
+    return new Promise((resolve, reject) => {
+      if (!audioRef.current) {
+        audioRef.current = new Audio();
+      }
+      
+      const audio = audioRef.current;
+      audio.src = audioUrl!;
+      
+      const onEnded = () => {
+        audio.removeEventListener('ended', onEnded);
+        audio.removeEventListener('error', onError);
+        setIsSpeaking(false);
+        onSpeakEndRef.current?.();
+        resolve();
+      };
+      
+      const onError = (e: Event) => {
+        console.error('[TTS] 音频播放错误:', e);
+        audio.removeEventListener('ended', onEnded);
+        audio.removeEventListener('error', onError);
+        setIsSpeaking(false);
+        // 回退到浏览器 TTS
+        speakWithBrowserTTS(text).then(resolve).catch(reject);
+      };
+      
+      audio.addEventListener('ended', onEnded);
+      audio.addEventListener('error', onError);
+      
+      audio.play().catch((e) => {
+        console.error('[TTS] 播放失败:', e);
+        audio.removeEventListener('ended', onEnded);
+        audio.removeEventListener('error', onError);
+        setIsSpeaking(false);
+        speakWithBrowserTTS(text).then(resolve).catch(reject);
+      });
+    });
+  }, []);
+  
+  // 浏览器原生 TTS（作为回退）
+  const speakWithBrowserTTS = useCallback((text: string): Promise<void> => {
     return new Promise((resolve, reject) => {
       if (!('speechSynthesis' in window)) {
         reject(new Error('浏览器不支持语音合成'));
         return;
       }
 
-      // 停止当前播放
       window.speechSynthesis.cancel();
 
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = 'zh-CN';
-      utterance.rate = 1.3;  // 调快语速（0.9太慢）
+      utterance.rate = 1.3;
       utterance.pitch = 1;
       utterance.volume = 1;
 
-      // 尝试选择中文语音
       const voices = window.speechSynthesis.getVoices();
       const chineseVoice = voices.find(v => v.lang.includes('zh'));
       if (chineseVoice) {
@@ -280,7 +449,6 @@ export default function PresentationPage() {
 
       utterance.onerror = (event) => {
         setIsSpeaking(false);
-        // "canceled" 和 "interrupted" 是正常的取消操作，不算错误
         if (event.error === 'canceled' || event.error === 'interrupted') {
           resolve();
         } else {
@@ -294,6 +462,12 @@ export default function PresentationPage() {
   }, []);
 
   const stopSpeaking = useCallback(() => {
+    // 停止 Audio 播放
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+    // 停止浏览器 TTS
     window.speechSynthesis.cancel();
     setIsSpeaking(false);
   }, []);
@@ -642,11 +816,35 @@ export default function PresentationPage() {
             clearInterval(progressIntervalRef.current);
             progressIntervalRef.current = null;
           }
+          eventSource.close();
+          
+          // 预加载前几条 TTS 音频（快速启动）
+          const speakTexts: string[] = data.speakTexts || [];
+          const INITIAL_LOAD_COUNT = 5; // 先加载前 5 条
+          
+          if (speakTexts.length > 0) {
+            const initialCount = Math.min(INITIAL_LOAD_COUNT, speakTexts.length);
+            console.log(`[Presentation] 预加载前 ${initialCount} 条语音...`);
+            setPrepareMessage(`正在预加载语音 (0/${initialCount})...`);
+            
+            await preloadInitialAudio(speakTexts, initialCount, (current, total) => {
+              const baseProgress = 85;
+              const audioProgress = (current / total) * 15;
+              setPrepareProgress(Math.round(baseProgress + audioProgress));
+              setPrepareMessage(`正在预加载语音 (${current}/${total})...`);
+            });
+            
+            console.log('[Presentation] 初始语音预加载完成');
+            
+            // 后台继续加载剩余音频（不阻塞启动）
+            if (speakTexts.length > INITIAL_LOAD_COUNT) {
+              preloadRemainingAudio(speakTexts, INITIAL_LOAD_COUNT);
+            }
+          }
+          
           setPrepareProgress(100);
           setPrepareMessage(`就绪，即将开始...`);
-          eventSource.close();
-          // 让用户看到 100% 完成状态
-          await new Promise(r => setTimeout(r, 800));
+          await new Promise(r => setTimeout(r, 300));
           resolve();
         });
         
@@ -707,6 +905,9 @@ export default function PresentationPage() {
 
   const stopLecture = async () => {
     isLecturingRef.current = false;
+    
+    // 停止后台预加载
+    stopPreloading();
     
     // 通知服务端停止
     try {
@@ -1283,29 +1484,32 @@ export default function PresentationPage() {
       </header>
 
       {/* 主内容区 */}
-      <div className="flex-1 flex">
+      <div className="flex-1 flex overflow-hidden">
         {/* 左侧幻灯片缩略图 - 全屏时隐藏 */}
-        <aside className={cn(
-          "w-48 bg-black/30 border-r border-white/10 overflow-y-auto transition-all duration-300",
-          isFullscreen && "hidden"
-        )}>
+        <aside 
+          className={cn(
+            "w-48 bg-black/30 border-r border-white/10 overflow-y-auto transition-all duration-300 flex-shrink-0",
+            isFullscreen && "hidden"
+          )}
+          style={{
+            scrollbarWidth: 'thin',
+            scrollbarColor: '#71717a #27272a',
+          }}
+        >
           <div className="p-2 space-y-1.5">
             {slides.map((slide, i) => (
               <div
                 key={i}
                 onClick={() => goToSlide(i)}
                 className={cn(
-                  "cursor-pointer rounded-lg overflow-hidden transition-all duration-200 group border",
+                  "cursor-pointer rounded-lg overflow-hidden transition-all duration-200 group border bg-white",
                   currentSlide === i 
                     ? "ring-2 ring-zinc-400 shadow-lg shadow-zinc-500/20 scale-105 border-zinc-400" 
-                    : "opacity-70 hover:opacity-100 hover:scale-102 border-zinc-200"
+                    : "opacity-80 hover:opacity-100 hover:scale-102 border-zinc-300"
                 )}
               >
                 <div 
-                  className="aspect-[16/9] p-2 relative flex items-center justify-center"
-                  style={{
-                    background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
-                  }}
+                  className="aspect-[16/9] p-2 relative flex items-center justify-center bg-white"
                 >
                   <div className="text-[8px] text-zinc-600 line-clamp-2 leading-tight text-center px-1 font-medium">
                     {slide.title.replace(/^#+ /, '')}
@@ -1341,24 +1545,23 @@ export default function PresentationPage() {
                 <div 
                   ref={slideContainerRef}
                   className={cn(
-                    "overflow-hidden slide-theme",
+                    "overflow-hidden slide-theme bg-white",
                     isFullscreen 
                       ? "w-full h-full rounded-none border-0" 
                       : "aspect-[16/9] rounded-2xl shadow-2xl shadow-black/20 border border-zinc-200"
                   )}
-                  style={{
-                    background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
-                  }}
                 >
                   <div 
                     ref={slideContentRef}
                     className={cn(
+                      "h-full bg-gradient-to-b from-white to-slate-50",
                       isFullscreen ? "p-12" : "p-8"
                     )}
                     style={{
                       transform: `scale(${slideScale})`,
                       transformOrigin: 'top left',
                       width: `${100 / slideScale}%`,
+                      minHeight: '100%',
                     }}
                     dangerouslySetInnerHTML={{ __html: parseMarkdown(slides[currentSlide].content, currentSlide) }}
                   />

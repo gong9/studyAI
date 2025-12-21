@@ -4,12 +4,17 @@
  * 阶段2：生成教学手稿初稿
  * 输入：manuscriptId
  * 输出：更新 TeachingManuscript 的 draftContent
+ * 
+ * 优化：
+ * - 传入章节重点（keyPoints）和摘要（summary）
+ * - 使用 RAG 检索教材内容
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { generateManuscript } from '@/lib/teaching/agents/manuscript-generator';
 import type { TeachingPlan } from '@/lib/teaching/agents/teaching-planner';
+import type { KeyPoint } from '@/lib/teaching/agents/chapter-analyzer';
 
 export async function POST(request: NextRequest) {
   try {
@@ -23,7 +28,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 获取手稿记录
+    // 获取手稿记录（包含章节信息）
     const manuscript = await prisma.teachingManuscript.findUnique({
       where: { id: manuscriptId },
       include: {
@@ -58,9 +63,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 生成手稿
+    // 解析章节重点（如果已分析）
+    let keyPoints: KeyPoint[] = [];
+    if (manuscript.chapter.keyPoints) {
+      try {
+        keyPoints = JSON.parse(manuscript.chapter.keyPoints);
+      } catch (e) {
+        console.warn('[API] Failed to parse keyPoints:', e);
+      }
+    }
+
+    const chapterSummary = manuscript.chapter.summary || undefined;
+
+    console.log('[API] Chapter analyzed:', manuscript.chapter.analyzed);
+    console.log('[API] Key points count:', keyPoints.length);
+    console.log('[API] Summary length:', chapterSummary?.length || 0);
+
+    // 生成手稿（带 RAG 检索）
     const result = await generateManuscript({
       plan,
+      knowledgeBaseId: manuscript.knowledgeBaseId,
+      chapterKeyPoints: keyPoints,
+      chapterSummary,
       chapterContent: manuscript.chapter.contentFull || manuscript.chapter.contentPreview || '',
     });
 
@@ -96,4 +120,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

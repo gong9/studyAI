@@ -303,6 +303,11 @@ model TeachingChapter {
   // 教学元数据 (JSON)
   metadata        String?                          // { grade, subject, difficulty, keywords }
   
+  // 章节理解（LLM 分析结果）
+  keyPoints       String?                          // JSON: 知识点列表（概念、公式、例题、易错点）
+  summary         String?                          // 章节摘要（300-500字）
+  analyzed        Boolean       @default(false)    // 是否已分析
+  
   // 关联
   parent          TeachingChapter?  @relation("ChapterHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
   children        TeachingChapter[] @relation("ChapterHierarchy")

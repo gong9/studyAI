@@ -1,20 +1,13 @@
-2025-12-20 12:20:37,503 - __main__ - INFO - Starting LightRAG service on 0.0.0.0:8005
-2025-12-20 12:20:37,503 - __main__ - INFO - Storage directory: /Users/gongzhen/code/2025/hzm/rag/lightrag-data
-2025-12-20 12:20:37,503 - __main__ - INFO - LLM Model: qwen-turbo
-INFO:     Started server process [15388]
+2025-12-21 15:02:50,315 - __main__ - INFO - Starting LightRAG service on 0.0.0.0:8005
+2025-12-21 15:02:50,315 - __main__ - INFO - Storage directory: /Users/gongzhen/code/2025/hzm/rag/lightrag-data
+2025-12-21 15:02:50,315 - __main__ - INFO - LLM Model: qwen-turbo
+INFO:     Started server process [31549]
 INFO:     Waiting for application startup.
-2025-12-20 12:20:37,533 - main - INFO - LightRAG service starting...
+2025-12-21 15:02:50,348 - main - INFO - LightRAG service starting...
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://0.0.0.0:8005 (Press CTRL+C to quit)
 INFO:     Shutting down
-INFO:     Finished server process [15388]
-ERROR:    Traceback (most recent call last):
-  File "/Users/gongzhen/code/2025/hzm/rag/lightrag-service/venv/lib/python3.11/site-packages/starlette/routing.py", line 701, in lifespan
-    await receive()
-  File "/Users/gongzhen/code/2025/hzm/rag/lightrag-service/venv/lib/python3.11/site-packages/uvicorn/lifespan/on.py", line 137, in receive
-    return await self.receive_queue.get()
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/Users/gongzhen/.local/share/uv/python/cpython-3.11.14-macos-aarch64-none/lib/python3.11/asyncio/queues.py", line 158, in get
-    await getter
-asyncio.exceptions.CancelledError
-
+INFO:     Waiting for application shutdown.
+2025-12-21 15:40:40,190 - main - INFO - LightRAG service shutting down...
+INFO:     Application shutdown complete.
+INFO:     Finished server process [31549]

@@ -519,26 +519,29 @@ export default function SlidevPreviewPage() {
       </header>
 
       {/* 主内容区 */}
-      <div className="flex-1 flex">
+      <div className="flex-1 flex overflow-hidden">
         {/* 左侧幻灯片缩略图 */}
-        <aside className="w-48 bg-black/30 border-r border-white/10 overflow-y-auto">
+        <aside 
+          className="w-48 bg-black/30 border-r border-white/10 overflow-y-auto flex-shrink-0"
+          style={{
+            scrollbarWidth: 'thin',
+            scrollbarColor: '#71717a #27272a',
+          }}
+        >
           <div className="p-2 space-y-1.5">
             {slides.map((slide, i) => (
               <div
                 key={i}
                 onClick={() => goToSlide(i)}
                 className={cn(
-                  "cursor-pointer rounded-lg overflow-hidden transition-all duration-200 group border",
+                  "cursor-pointer rounded-lg overflow-hidden transition-all duration-200 group border bg-white",
                   currentSlide === i 
                     ? "ring-2 ring-zinc-400 shadow-lg shadow-zinc-500/20 scale-105 border-zinc-400" 
-                    : "opacity-70 hover:opacity-100 hover:scale-102 border-zinc-200"
+                    : "opacity-80 hover:opacity-100 hover:scale-102 border-zinc-300"
                 )}
               >
                 <div 
-                  className="aspect-[16/9] p-2 relative flex items-center justify-center"
-                  style={{
-                    background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
-                  }}
+                  className="aspect-[16/9] p-2 relative flex items-center justify-center bg-white"
                 >
                   <div className="text-[8px] text-zinc-600 line-clamp-2 leading-tight text-center px-1 font-medium">
                     {slide.title.replace(/^#+ /, '')}
@@ -583,18 +586,16 @@ export default function SlidevPreviewPage() {
               <div className="w-full max-w-[95%] h-full flex flex-col justify-center px-4">
                 <div 
                   ref={slideContainerRef}
-                  className="aspect-[16/9] rounded-2xl shadow-2xl shadow-black/20 overflow-hidden slide-theme border border-zinc-200"
-                  style={{
-                    background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
-                  }}
+                  className="aspect-[16/9] rounded-2xl shadow-2xl shadow-black/20 overflow-hidden slide-theme border border-zinc-200 bg-white"
                 >
                   <div 
                     ref={slideContentRef}
-                    className="p-8"
+                    className="p-8 h-full bg-gradient-to-b from-white to-slate-50"
                     style={{
                       transform: `scale(${slideScale})`,
                       transformOrigin: 'top left',
                       width: `${100 / slideScale}%`,
+                      minHeight: '100%',
                     }}
                     dangerouslySetInnerHTML={{ __html: parseMarkdown(slides[currentSlide].content) }}
                   />
