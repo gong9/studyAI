@@ -13,7 +13,7 @@ import { generateTeachingPlan } from '@/lib/teaching/agents/teaching-planner';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { chapterId } = body;
+    const { chapterId, sceneType } = body;
 
     if (!chapterId) {
       return NextResponse.json(
@@ -53,6 +53,7 @@ export async function POST(request: NextRequest) {
     const result = await generateTeachingPlan({
       chapterTitle: chapter.title,
       chapterContent: chapter.contentFull || chapter.contentPreview || '',
+      sceneType: sceneType || 'general',
       metadata,
     });
 

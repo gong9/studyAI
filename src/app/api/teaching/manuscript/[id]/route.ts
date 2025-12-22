@@ -64,6 +64,8 @@ export async function GET(
       slidevMd: manuscript.slidevMd,
       exportedPdf: manuscript.exportedPdf,
       exportedPptx: manuscript.exportedPptx,
+      bananaImages: (manuscript as any).bananaImages,     // 精美PPT图片
+      lectureScript: (manuscript as any).lectureScript,   // 讲解指令脚本
       createdAt: manuscript.createdAt,
       updatedAt: manuscript.updatedAt,
     });

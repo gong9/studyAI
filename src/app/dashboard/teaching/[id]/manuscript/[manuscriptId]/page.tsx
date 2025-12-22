@@ -324,6 +324,7 @@ export default function ManuscriptEditorPage() {
               </div>
             )}
 
+
             {['enriching', 'completed'].includes(manuscript?.status) && manuscript?.enrichedContent && (
               <Button 
                 size="sm" 

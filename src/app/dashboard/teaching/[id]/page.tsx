@@ -51,6 +51,17 @@ export default function TeachingDetailPage() {
   const [manuscripts, setManuscripts] = useState<Manuscript[]>([]);
   const [progress, setProgress] = useState({ status: '', message: '', percent: 0 });
   const [activeTab, setActiveTab] = useState<'workbench' | 'records'>('workbench');
+  const [sceneType, setSceneType] = useState<string>('general');
+
+  // 场景选项
+  const SCENE_OPTIONS = [
+    { value: 'general', label: '通用演示' },
+    { value: 'k12_teaching', label: 'K12 教学' },
+    { value: 'tech_training', label: '技术培训' },
+    { value: 'product_launch', label: '产品发布' },
+    { value: 'business_report', label: '商业汇报' },
+    { value: 'company_training', label: '公司制度培训' },
+  ];
 
   useEffect(() => {
     fetchKnowledgeBase();
@@ -240,7 +251,7 @@ export default function TeachingDetailPage() {
       const planRes = await fetch('/api/teaching/manuscript/plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chapterId: selectedChapter.id }),
+        body: JSON.stringify({ chapterId: selectedChapter.id, sceneType }),
       });
       if (!planRes.ok) throw new Error('规划失败');
       const planData = await planRes.json();
@@ -513,8 +524,16 @@ export default function TeachingDetailPage() {
                             {/* 参数信息 - 模块化极简 */}
                             <div className="grid grid-cols-3 gap-12 py-10 border-t border-zinc-100">
                               <div>
-                                <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">生成策略</div>
-                                <div className="text-base font-bold text-zinc-800">深度启发式教学</div>
+                                <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">演示场景</div>
+                                <select
+                                  value={sceneType}
+                                  onChange={(e) => setSceneType(e.target.value)}
+                                  className="w-full text-base font-bold text-zinc-800 bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 cursor-pointer hover:border-zinc-400 hover:bg-zinc-100 transition-all focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
+                                >
+                                  {SCENE_OPTIONS.map(opt => (
+                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                  ))}
+                                </select>
                               </div>
                               <div>
                                 <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">智能等级</div>

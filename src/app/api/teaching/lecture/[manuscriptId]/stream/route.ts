@@ -116,13 +116,38 @@ export async function GET(
 
         console.log(`[Lecture SSE] 初始化讲解: ${manuscriptId}, ${slides.length} 页`);
 
-        // 进度回调
-        const onProgress: ProgressCallback = (progress) => {
-          sendEvent('progress', progress);
-        };
+        let scriptResult: { slides: { index: number; actions: any[] }[] };
+        let fromCache = false;
+        
+        // 尝试从数据库读取已保存的讲解稿
+        const existingScript = await prisma.teachingManuscript.findUnique({
+          where: { id: manuscriptId },
+          select: { lectureScript: true },
+        });
+        
+        if (existingScript?.lectureScript) {
+          console.log(`[Lecture SSE] 从数据库加载已有讲解稿`);
+          sendEvent('progress', { stage: 'loading', message: '正在加载已保存的讲解稿...', percent: 50 });
+          scriptResult = JSON.parse(existingScript.lectureScript);
+          fromCache = true;
+        } else {
+          // 进度回调
+          const onProgress: ProgressCallback = (progress) => {
+            sendEvent('progress', progress);
+          };
 
-        // 生成完整演讲稿（带进度回调）
-        const scriptResult = await generateFullLectureScript(slides, onProgress);
+          // 生成完整演讲稿（带进度回调）
+          scriptResult = await generateFullLectureScript(slides, onProgress);
+          
+          // 保存到数据库
+          await prisma.teachingManuscript.update({
+            where: { id: manuscriptId },
+            data: {
+              lectureScript: JSON.stringify(scriptResult),
+            },
+          });
+          console.log(`[Lecture SSE] 讲解稿已保存到数据库`);
+        }
         
         // 初始化讲解状态
         lectureStates.set(manuscriptId, {
@@ -154,8 +179,9 @@ export async function GET(
           totalSlides: slides.length,
           totalActions,
           startSlide,
+          fromCache, // 是否来自缓存
           speakTexts, // 返回所有 speak 文本，用于 TTS 预加载
-          message: '演讲稿已生成',
+          message: fromCache ? '已加载保存的讲解稿' : '演讲稿已生成',
         });
 
       } catch (error: any) {

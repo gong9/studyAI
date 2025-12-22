@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { 
   ArrowLeft, Loader2, ChevronLeft, ChevronRight,
   Presentation, Play, Pause, Square, Volume2, Maximize2, Minimize2,
-  Mic, MicOff, MessageCircle
+  Mic, MicOff, MessageCircle, Sparkles, Image, Download, Radio
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import katex from 'katex';
@@ -200,6 +200,17 @@ export default function PresentationPage() {
   // 全屏状态
   const [isFullscreen, setIsFullscreen] = useState(false);
   
+  // ====== Banana 精美模式状态 ======
+  const [bananaImages, setBananaImages] = useState<string[]>([]);
+  const [useBananaMode, setUseBananaMode] = useState(false);
+  const [isGeneratingBanana, setIsGeneratingBanana] = useState(false);
+  const [bananaProgress, setBananaProgress] = useState({ current: 0, total: 0, message: '' });
+  
+  // ====== 课程发布状态 ======
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [publishedCourseId, setPublishedCourseId] = useState<string | null>(null);
+  const [hasLectureScript, setHasLectureScript] = useState(false);
+  
   // ====== 语音互动状态 ======
   // 互动模式: idle | listening | processing | explaining | confirming
   const [interactionMode, setInteractionMode] = useState<'idle' | 'listening' | 'processing' | 'explaining' | 'confirming'>('idle');
@@ -297,7 +308,7 @@ export default function PresentationPage() {
     count: number = 5,
     onProgress?: (current: number, total: number) => void
   ): Promise<void> => {
-    const DELAY_MS = 150; // 每次请求间隔 150ms
+    const DELAY_MS = 1000; // 每次请求间隔 1 秒，避免限速
     const toLoad = texts.slice(0, count);
     
     for (let i = 0; i < toLoad.length; i++) {
@@ -319,7 +330,7 @@ export default function PresentationPage() {
     if (preloadRemainingAudioRef.current) return; // 防止重复调用
     preloadRemainingAudioRef.current = true;
     
-    const DELAY_MS = 300; // 后台加载间隔长一点，不抢占资源
+    const DELAY_MS = 1000; // 后台加载间隔 1 秒，避免限速
     const remaining = texts.slice(startIndex);
     
     console.log(`[TTS] 后台加载剩余 ${remaining.length} 条语音...`);
@@ -652,6 +663,39 @@ export default function PresentationPage() {
         } else {
           setError('没有可预览的内容');
         }
+        
+        // 加载 Banana 图片（如果有）
+        if (data.bananaImages) {
+          try {
+            const images = JSON.parse(data.bananaImages);
+            if (Array.isArray(images) && images.length > 0) {
+              setBananaImages(images);
+              setUseBananaMode(true); // 如果有图片，默认使用精美模式
+              console.log(`[Presentation] Loaded ${images.length} banana images`);
+            }
+          } catch (e) {
+            console.error('[Presentation] Failed to parse banana images:', e);
+          }
+        }
+        
+        // 检查是否有讲解稿
+        if (data.lectureScript) {
+          setHasLectureScript(true);
+        }
+        
+        // 检查是否已发布课程
+        try {
+          const publishRes = await fetch(`/api/teaching/manuscript/${manuscriptId}/publish`);
+          if (publishRes.ok) {
+            const publishData = await publishRes.json();
+            if (publishData.hasPublished && publishData.course) {
+              setPublishedCourseId(publishData.course.id);
+              console.log(`[Presentation] Course already published: ${publishData.course.id}`);
+            }
+          }
+        } catch (e) {
+          console.error('[Presentation] Failed to check course status:', e);
+        }
       } else {
         const err = await res.json();
         setError(err.error || '获取数据失败');
@@ -680,6 +724,107 @@ export default function PresentationPage() {
       });
 
     setSlides(parsed);
+  };
+
+  // ====== Banana 精美 PPT 生成 ======
+  const generateBananaPPT = async () => {
+    setIsGeneratingBanana(true);
+    setBananaProgress({ current: 0, total: slides.length, message: '正在初始化...' });
+    
+    try {
+      const res = await fetch(`/api/teaching/manuscript/${manuscriptId}/banana`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ templateId: 'default' }),
+      });
+      
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || '生成失败');
+      }
+      
+      const result = await res.json();
+      console.log('[Presentation] Banana generation complete:', result);
+      
+      // 重新获取图片
+      const bananaRes = await fetch(`/api/teaching/manuscript/${manuscriptId}/banana`);
+      if (bananaRes.ok) {
+        const bananaData = await bananaRes.json();
+        if (bananaData.images && bananaData.images.length > 0) {
+          setBananaImages(bananaData.images);
+          setUseBananaMode(true);
+        }
+      }
+      
+      setBananaProgress({ current: slides.length, total: slides.length, message: '生成完成！' });
+    } catch (error: any) {
+      console.error('[Presentation] Banana generation error:', error);
+      setBananaProgress({ current: 0, total: 0, message: `错误: ${error.message}` });
+    } finally {
+      setIsGeneratingBanana(false);
+    }
+  };
+
+  // 导出精美 PPTX
+  const exportBananaPPTX = async () => {
+    if (bananaImages.length === 0) return;
+    
+    try {
+      const res = await fetch(`/api/teaching/manuscript/${manuscriptId}/export?format=pptx&style=banana`);
+      if (!res.ok) {
+        throw new Error('导出失败');
+      }
+      
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'presentation-banana.pptx';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error: any) {
+      console.error('[Presentation] Export error:', error);
+    }
+  };
+
+  // 发布为课程
+  const publishCourse = async () => {
+    if (bananaImages.length === 0 || !hasLectureScript) {
+      alert('请先生成精美PPT和讲解稿');
+      return;
+    }
+    
+    setIsPublishing(true);
+    try {
+      const res = await fetch(`/api/teaching/manuscript/${manuscriptId}/publish`, {
+        method: 'POST',
+      });
+      
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || '发布失败');
+      }
+      
+      const data = await res.json();
+      setPublishedCourseId(data.courseId);
+      
+      // 跳转到课程播放页
+      router.push(`/dashboard/teaching/${kbId}/course/${data.courseId}`);
+    } catch (error: any) {
+      console.error('[Presentation] Publish error:', error);
+      alert('发布失败: ' + error.message);
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
+  // 查看课程
+  const viewCourse = () => {
+    if (publishedCourseId) {
+      router.push(`/dashboard/teaching/${kbId}/course/${publishedCourseId}`);
+    }
   };
 
   // ====== 客户端驱动的讲解控制 ======
@@ -1306,6 +1451,26 @@ export default function PresentationPage() {
         }
       `}</style>
 
+      {/* Banana 生成遮罩 */}
+      {isGeneratingBanana && (
+        <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center">
+          <div className="text-center">
+            <Sparkles className="h-16 w-16 mx-auto mb-6 text-amber-400 animate-pulse" />
+            <h3 className="text-2xl font-light text-white mb-4">正在生成精美 PPT</h3>
+            <p className="text-zinc-400 mb-6">{bananaProgress.message}</p>
+            <div className="w-48 h-1 bg-zinc-800 mx-auto rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-amber-400 transition-all duration-500"
+                style={{ width: bananaProgress.total > 0 ? `${(bananaProgress.current / bananaProgress.total) * 100}%` : '10%' }}
+              />
+            </div>
+            <p className="text-zinc-500 text-sm mt-4">
+              使用 AI 图像生成技术，每页约需 10-15 秒
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* 全局 Loading 遮罩 - 简约风格 */}
       {isPreparingLecture && (
         <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center">
@@ -1470,6 +1635,94 @@ export default function PresentationPage() {
           
           <div className="h-4 w-px bg-white/20" />
           
+          {/* Banana 精美模式控制 */}
+          {bananaImages.length > 0 ? (
+            <>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => setUseBananaMode(!useBananaMode)}
+                className={cn(
+                  "border-zinc-500/50",
+                  useBananaMode 
+                    ? "bg-amber-500/30 border-amber-400/50 text-amber-300 hover:bg-amber-500/40" 
+                    : "bg-zinc-700/50 text-zinc-300 hover:bg-zinc-600/50"
+                )}
+              >
+                <Image className="h-4 w-4 mr-2" />
+                {useBananaMode ? '精美模式' : '经典模式'}
+              </Button>
+              {useBananaMode && (
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={exportBananaPPTX}
+                  className="bg-zinc-700/50 border-zinc-500/50 text-zinc-300 hover:bg-zinc-600/50"
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  导出精美PPT
+                </Button>
+              )}
+              
+              {/* 课程发布按钮 */}
+              {hasLectureScript && (
+                publishedCourseId ? (
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={viewCourse}
+                    className="bg-green-500/20 border-green-400/50 text-green-300 hover:bg-green-500/30"
+                  >
+                    <Radio className="h-4 w-4 mr-2" />
+                    查看课程
+                  </Button>
+                ) : (
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={publishCourse}
+                    disabled={isPublishing}
+                    className="bg-purple-500/20 border-purple-400/50 text-purple-300 hover:bg-purple-500/30"
+                  >
+                    {isPublishing ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        发布中...
+                      </>
+                    ) : (
+                      <>
+                        <Radio className="h-4 w-4 mr-2" />
+                        发布课程
+                      </>
+                    )}
+                  </Button>
+                )
+              )}
+            </>
+          ) : (
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={generateBananaPPT}
+              disabled={isGeneratingBanana || slides.length === 0}
+              className="bg-amber-500/20 border-amber-400/50 text-amber-300 hover:bg-amber-500/30"
+            >
+              {isGeneratingBanana ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  生成中...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  生成精美PPT
+                </>
+              )}
+            </Button>
+          )}
+          
+          <div className="h-4 w-px bg-white/20" />
+          
           {/* 全屏按钮 */}
           <Button 
             variant="outline" 
@@ -1551,20 +1804,30 @@ export default function PresentationPage() {
                       : "aspect-[16/9] rounded-2xl shadow-2xl shadow-black/20 border border-zinc-200"
                   )}
                 >
-                  <div 
-                    ref={slideContentRef}
-                    className={cn(
-                      "h-full bg-gradient-to-b from-white to-slate-50",
-                      isFullscreen ? "p-12" : "p-8"
-                    )}
-                    style={{
-                      transform: `scale(${slideScale})`,
-                      transformOrigin: 'top left',
-                      width: `${100 / slideScale}%`,
-                      minHeight: '100%',
-                    }}
-                    dangerouslySetInnerHTML={{ __html: parseMarkdown(slides[currentSlide].content, currentSlide) }}
-                  />
+                  {/* Banana 模式：显示精美图片 */}
+                  {useBananaMode && bananaImages[currentSlide] ? (
+                    <img 
+                      src={`data:image/png;base64,${bananaImages[currentSlide]}`}
+                      alt={slides[currentSlide]?.title || `Slide ${currentSlide + 1}`}
+                      className="w-full h-full object-contain bg-black"
+                    />
+                  ) : (
+                    /* 经典模式：HTML 渲染 */
+                    <div 
+                      ref={slideContentRef}
+                      className={cn(
+                        "h-full bg-gradient-to-b from-white to-slate-50",
+                        isFullscreen ? "p-12" : "p-8"
+                      )}
+                      style={{
+                        transform: `scale(${slideScale})`,
+                        transformOrigin: 'top left',
+                        width: `${100 / slideScale}%`,
+                        minHeight: '100%',
+                      }}
+                      dangerouslySetInnerHTML={{ __html: parseMarkdown(slides[currentSlide].content, currentSlide) }}
+                    />
+                  )}
                 </div>
 
                 {/* 幻灯片页码 - 非全屏时显示 */}

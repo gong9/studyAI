@@ -100,8 +100,33 @@ export async function GET(
   console.log(`[Lecture] 生成完整演讲稿中...`);
 
   try {
-    // 一次性生成完整演讲稿
-    const scriptResult = await generateFullLectureScript(slides);
+    let scriptResult: { slides: { index: number; actions: LectureAction[] }[] };
+    let fromCache = false;
+    
+    // 尝试从数据库读取已保存的讲解稿
+    const existingScript = await prisma.teachingManuscript.findUnique({
+      where: { id: manuscriptId },
+      select: { lectureScript: true },
+    });
+    
+    if (existingScript?.lectureScript) {
+      console.log(`[Lecture] 从数据库加载已有讲解稿: ${manuscriptId}`);
+      scriptResult = JSON.parse(existingScript.lectureScript);
+      fromCache = true;
+    } else {
+      // 一次性生成完整演讲稿
+      console.log(`[Lecture] 生成新讲解稿中...`);
+      scriptResult = await generateFullLectureScript(slides);
+      
+      // 保存到数据库
+      await prisma.teachingManuscript.update({
+        where: { id: manuscriptId },
+        data: {
+          lectureScript: JSON.stringify(scriptResult),
+        },
+      });
+      console.log(`[Lecture] 讲解稿已保存到数据库`);
+    }
     
     // 初始化讲解状态
     lectureStates.set(manuscriptId, {
@@ -121,7 +146,8 @@ export async function GET(
       totalSlides: slides.length,
       totalActions,
       startSlide,
-      message: '演讲稿已生成，请调用 POST 获取下一条指令',
+      fromCache, // 是否来自缓存
+      message: fromCache ? '已加载保存的讲解稿' : '演讲稿已生成，请调用 POST 获取下一条指令',
     });
     
   } catch (error: any) {
