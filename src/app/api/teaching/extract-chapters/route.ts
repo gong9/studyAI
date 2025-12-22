@@ -104,10 +104,15 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
+    // 根据知识库类型确定提取方式
+    // k12 -> 教材章节, tech -> 技术文档结构, policy -> 制度条款
+    const kbType = kb.type || 'tech';
+    console.log(`[ExtractChapters] KB type: ${kbType}`);
+
     // 提取章节结构
     let result;
     if (useLLM) {
-      result = await extractChapters(fullContent);
+      result = await extractChapters(fullContent, kbType);
     } else {
       const chapters = extractChaptersByRules(fullContent);
       result = {
@@ -124,11 +129,15 @@ export async function POST(request: Request) {
     // 保存章节到数据库
     await saveChaptersToDb(knowledgeBaseId, result.chapters, result.metadata);
 
-    // 更新知识库类型为 teaching
-    await prisma.knowledgeBase.update({
-      where: { id: knowledgeBaseId },
-      data: { type: 'teaching' },
-    });
+    // 注意：不再强制覆盖类型，保留用户创建时选择的类型（k12/tech/policy）
+    // 只有当类型是 document 时才更新为对应的场景类型
+    const currentType = kb.type;
+    if (currentType === 'document') {
+      await prisma.knowledgeBase.update({
+        where: { id: knowledgeBaseId },
+        data: { type: 'k12' }, // 默认设为 k12
+      });
+    }
 
     // 更新文档状态为已处理
     await prisma.document.updateMany({

@@ -7,7 +7,7 @@ import { z } from 'zod';
 const createKBSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().max(500).optional(),
-  type: z.enum(['document', 'teaching']).optional().default('document'),
+  type: z.enum(['document', 'teaching', 'k12', 'tech', 'policy']).optional().default('k12'),
 });
 
 export async function GET(request: Request) {

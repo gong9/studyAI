@@ -24,7 +24,7 @@ model KnowledgeBase {
   id          String     @id @default(uuid())
   name        String
   description String?
-  type        String     @default("document")  // "document" | "teaching"
+  type        String     @default("k12")  // "k12" | "tech" | "policy" (兼容旧值 "teaching" -> k12)
   userId      String
   user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   documents   Document[]

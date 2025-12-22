@@ -8,11 +8,66 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from '@/components/ui/input';
 import { 
   LogOut, Plus, Trash2, FileText, ChevronRight, ChevronLeft, 
-  Clock, GraduationCap, Sparkles 
+  Clock, GraduationCap, Sparkles, Cpu, FileCheck, ArrowRight
 } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 
-interface TeachingKB {
+type ScenarioType = 'k12' | 'tech' | 'policy';
+
+interface ScenarioConfig {
+  id: ScenarioType;
+  name: string;
+  desc: string;
+  icon: React.ComponentType<{ className?: string }>;
+  accentColor: string; // 点缀色
+  accentBg: string;    // 点缀背景
+  accentBorder: string; // 点缀边框
+  examples: string[];
+  placeholder: string; // 项目名称示例
+}
+
+const scenarios: ScenarioConfig[] = [
+  {
+    id: 'k12',
+    name: 'K12 教学',
+    desc: '智能生成教学讲稿与同步课件',
+    icon: GraduationCap,
+    accentColor: 'text-slate-600',
+    accentBg: 'bg-slate-50',
+    accentBorder: 'group-hover:border-slate-400',
+    examples: ['语文课文', '数学公式', '英语语法'],
+    placeholder: '例如：七年级语文上册',
+  },
+  {
+    id: 'tech',
+    name: '技术培训',
+    desc: '技术手册快速转化为 AI 课程',
+    icon: Cpu,
+    accentColor: 'text-zinc-600',
+    accentBg: 'bg-zinc-100/50',
+    accentBorder: 'group-hover:border-zinc-500',
+    examples: ['技术入门', '产品功能', '接口讲解'],
+    placeholder: '例如：Python 入门教程',
+  },
+  {
+    id: 'policy',
+    name: '制度培训',
+    desc: '规章制度一键生成合规培训',
+    icon: FileCheck,
+    accentColor: 'text-stone-600',
+    accentBg: 'bg-stone-50',
+    accentBorder: 'group-hover:border-stone-400',
+    examples: ['入职培训', '安全规范', '流程宣贯'],
+    placeholder: '例如：新员工入职手册',
+  },
+];
+
+const getScenarioConfig = (type: string): ScenarioConfig => {
+  const normalizedType = type === 'teaching' ? 'k12' : type;
+  return scenarios.find(s => s.id === normalizedType) || scenarios[0];
+};
+
+interface KnowledgeBase {
   id: string;
   name: string;
   description: string;
@@ -29,28 +84,31 @@ const PAGE_SIZE = 6;
 export default function DashboardPage() {
   const { data: session } = useSession();
   const router = useRouter();
-  const [knowledgeBases, setKnowledgeBases] = useState<TeachingKB[]>([]);
+  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [newKB, setNewKB] = useState({ name: '', description: '' });
+  const [selectedScenario, setSelectedScenario] = useState<ScenarioType>('k12');
+  const [activeFilter, setActiveFilter] = useState<ScenarioType | 'all'>('all');
+  const [newKB, setNewKB] = useState({ name: '', description: '', type: 'k12' as ScenarioType });
   const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
-    fetchTeachingKBs();
+    fetchKnowledgeBases();
   }, []);
 
-  const fetchTeachingKBs = async () => {
+  const fetchKnowledgeBases = async () => {
     try {
       const response = await fetch('/api/knowledge-bases');
       if (response.ok) {
         const data = await response.json();
-        // 只显示教研库类型
-        const teachingKBs = data.filter((kb: any) => kb.type === 'teaching');
-        setKnowledgeBases(teachingKBs);
+        const scenarioKBs = data.filter((kb: any) => 
+          ['k12', 'tech', 'policy', 'teaching'].includes(kb.type)
+        );
+        setKnowledgeBases(scenarioKBs);
       }
     } catch (error) {
-      console.error('获取教研库失败:', error);
+      console.error('获取失败:', error);
     } finally {
       setLoading(false);
     }
@@ -59,22 +117,24 @@ export default function DashboardPage() {
   const handleCreate = async (e: any) => {
     e.preventDefault();
     setCreating(true);
-
     try {
       const response = await fetch('/api/knowledge-bases', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...newKB, type: 'teaching' }),
+        body: JSON.stringify(newKB),
       });
-
       if (response.ok) {
         const kb = await response.json();
-        setNewKB({ name: '', description: '' });
         setShowCreateForm(false);
+        setNewKB({ name: '', description: '', type: 'k12' });
         router.push(`/dashboard/teaching/${kb.id}`);
+      } else {
+        const error = await response.json();
+        alert(`创建失败: ${error.message || '请稍后重试'}`);
       }
     } catch (error) {
-      console.error('创建教研库失败:', error);
+      console.error('创建失败:', error);
+      alert('创建失败，请检查网络连接');
     } finally {
       setCreating(false);
     }
@@ -82,260 +142,261 @@ export default function DashboardPage() {
 
   const handleDelete = async (id: string, e: any) => {
     e.stopPropagation();
-    if (!confirm('确定要删除这个教研库吗？')) {
-      return;
-    }
-
+    if (!confirm('确定要删除这个项目吗？')) return;
     try {
-      const response = await fetch(`/api/knowledge-bases/${id}`, {
-        method: 'DELETE',
-      });
-
-      if (response.ok) {
-        fetchTeachingKBs();
-      }
-    } catch (error) {
-      console.error('删除教研库失败:', error);
-    }
+      const response = await fetch(`/api/knowledge-bases/${id}`, { method: 'DELETE' });
+      if (response.ok) fetchKnowledgeBases();
+    } catch (error) {}
   };
 
-  const totalKBs = knowledgeBases.length;
-  const totalPages = Math.ceil(totalKBs / PAGE_SIZE);
-  const currentKBs = knowledgeBases.slice(
-    (currentPage - 1) * PAGE_SIZE,
-    currentPage * PAGE_SIZE
+  const getScenarioCount = (scenarioId: ScenarioType) => {
+    return knowledgeBases.filter(kb => (kb.type === 'teaching' ? 'k12' : kb.type) === scenarioId).length;
+  };
+
+  const filteredKBs = activeFilter === 'all' 
+    ? knowledgeBases 
+    : knowledgeBases.filter(kb => (kb.type === 'teaching' ? 'k12' : kb.type) === activeFilter);
+
+  const sortedKBs = [...filteredKBs].sort((a, b) => 
+    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
 
-  return (
-    <div className="min-h-screen bg-zinc-50/30 relative overflow-hidden">
-      {/* 动态背景 */}
-      <div className="absolute inset-0 -z-10 overflow-hidden">
-        <div className="absolute inset-0 bg-grid-pattern opacity-[0.4]" />
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-gradient-to-tr from-zinc-200/40 to-zinc-100/40 blur-[100px] rounded-full animate-pulse duration-[5000ms]" />
-      </div>
+  const currentKBs = sortedKBs.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
-      {/* Navbar */}
-      <header className="sticky top-0 z-30 w-full border-b border-zinc-200 bg-white/80 backdrop-blur-xl">
-        <div className="container mx-auto px-4 sm:px-6 h-14 sm:h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2 sm:gap-2.5">
-            <div className="relative w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center">
-              <div className="absolute inset-0 bg-zinc-900 rounded-lg"></div>
-              <GraduationCap className="relative w-4 h-4 sm:w-5 sm:h-5 text-white" />
+  useEffect(() => { setCurrentPage(1); }, [activeFilter]);
+
+  return (
+    <div className="h-screen bg-[#fafafa] text-zinc-900 flex flex-col overflow-hidden font-sans">
+      {/* 顶部导航 - 精简高度 */}
+      <nav className="flex-none bg-white border-b border-zinc-100 z-50">
+        <div className="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
+          <div className="flex items-center gap-2.5 group cursor-pointer">
+            <div className="relative w-8 h-8 flex items-center justify-center">
+              <div className="absolute inset-0 bg-zinc-900 rounded-lg transform rotate-3 transition-transform group-hover:rotate-6"></div>
+              <Sparkles className="relative w-4 h-4 text-white" />
             </div>
-            <span className="font-bold text-base sm:text-lg tracking-tight text-zinc-900">
-              智研课堂
-            </span>
+            <span className="font-bold text-lg tracking-tight">智研平台</span>
           </div>
           
-          <div className="flex items-center gap-2 sm:gap-4">
-            <div className="flex items-center gap-2 sm:gap-2.5 px-2 sm:px-3 py-1.5 bg-white border border-zinc-200 rounded-full shadow-sm">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2.5 px-3 py-1 bg-zinc-50 rounded-full border border-zinc-100">
               <div className="w-5 h-5 rounded-full bg-zinc-900 flex items-center justify-center text-[10px] font-bold text-white">
                 {session?.user?.name?.[0]?.toUpperCase()}
               </div>
-              <span className="hidden sm:inline text-sm font-medium text-zinc-600">
-                {session?.user?.name}
-              </span>
+              <span className="text-sm font-semibold text-zinc-700">{session?.user?.name}</span>
             </div>
-            <Button variant="ghost" size="icon" onClick={() => signOut()} className="text-zinc-400 hover:text-zinc-900">
+            <button onClick={() => signOut()} className="text-zinc-400 hover:text-zinc-900 p-1 rounded-lg transition-colors">
               <LogOut className="w-4 h-4" />
-            </Button>
+            </button>
           </div>
         </div>
-      </header>
+      </nav>
 
-      {/* Main Content */}
-      <main className="container mx-auto px-4 sm:px-6 py-6 sm:py-10 space-y-6 sm:space-y-10">
+      <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-6 flex flex-col min-h-0 space-y-6">
         
-        {/* Header */}
-        <div className="flex flex-col gap-4 sm:gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900 flex items-center gap-3">
-              <GraduationCap className="w-8 h-8 text-zinc-700" />
-              教研库
-            </h1>
-            <p className="text-zinc-500 mt-1 sm:mt-2 text-sm sm:text-base">
-              上传教材，AI 自动生成结构化课件
-            </p>
-          </div>
-          
-          {/* Stats and Actions */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
-            <div className="flex gap-2 sm:gap-3">
-              <Card className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 border border-zinc-200 shadow-sm bg-white">
-                <GraduationCap className="w-4 h-4 text-zinc-500" />
-                <div className="flex gap-1.5 sm:gap-2 text-sm">
-                  <span className="text-zinc-500">教研库</span>
-                  <span className="font-semibold text-zinc-900">{totalKBs}</span>
-                </div>
-              </Card>
-            </div>
-            
-            <Button 
-              onClick={() => setShowCreateForm(true)} 
-              className="bg-zinc-900 hover:bg-zinc-800 text-white shadow-lg transition-all hover:-translate-y-0.5"
-            >
-              <Plus className="w-4 h-4 mr-1.5 sm:mr-2" />
-              新建教研库
-            </Button>
-          </div>
+        {/* 标题区 */}
+        <div className="flex-none flex flex-col">
+          <h1 className="text-2xl font-bold tracking-tight text-zinc-900">工作台</h1>
+          <p className="text-zinc-400 text-sm font-medium">选择一个应用场景，开始您的 AI 数字化创作</p>
         </div>
 
-        {/* Knowledge Bases Grid */}
-        <div className="space-y-4 sm:space-y-6">
-          {loading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-              {[1, 2, 3].map((i) => (
-                <Card key={i} className="h-44 sm:h-48 animate-pulse bg-white border border-zinc-100" />
-              ))}
-            </div>
-          ) : knowledgeBases.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 sm:py-24 bg-white rounded-xl border border-dashed border-zinc-200">
-              <div className="w-14 h-14 sm:w-16 sm:h-16 bg-zinc-50 rounded-full flex items-center justify-center mb-3 sm:mb-4">
-                <Sparkles className="w-7 h-7 sm:w-8 sm:h-8 text-zinc-300" />
-              </div>
-              <h3 className="text-base sm:text-lg font-medium text-zinc-900">开始您的教研之旅</h3>
-              <p className="text-zinc-500 mt-1 mb-4 sm:mb-6 text-sm text-center max-w-md">
-                上传教材 PDF，AI 将自动分析章节结构，生成可编辑的课件
-              </p>
-              <Button onClick={() => setShowCreateForm(true)} className="bg-zinc-900 hover:bg-zinc-800 text-white">
-                创建第一个教研库
-              </Button>
-            </div>
-          ) : (
-            <>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-                {currentKBs.map((kb, index) => (
-                  <Card 
-                    key={kb.id} 
-                    className="group relative overflow-hidden transition-all duration-300 hover:shadow-xl hover:shadow-zinc-200/50 sm:hover:-translate-y-1 border-zinc-200 bg-white cursor-pointer"
-                    style={{ animationDelay: `${index * 50}ms` }}
-                    onClick={() => router.push(`/dashboard/teaching/${kb.id}`)}
-                  >
-                    <CardHeader className="pb-3 sm:pb-4 pt-4 sm:pt-6 px-4 sm:px-6">
-                      <div className="flex justify-between items-start mb-3 sm:mb-4">
-                        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg border border-zinc-100 bg-zinc-50 flex items-center justify-center text-zinc-600 group-hover:bg-zinc-900 group-hover:text-white group-hover:border-zinc-900 transition-all duration-300 shadow-sm">
-                          <GraduationCap className="w-4 h-4 sm:w-5 sm:h-5" />
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-zinc-400 hover:text-red-600 hover:bg-red-50 sm:opacity-0 sm:group-hover:opacity-100 transition-all duration-300"
-                          onClick={(e) => handleDelete(kb.id, e)}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                      <CardTitle className="text-base sm:text-lg font-semibold text-zinc-900 group-hover:text-zinc-700 transition-colors line-clamp-1">
-                        {kb.name}
-                      </CardTitle>
-                      <CardDescription className="line-clamp-2 mt-1 sm:mt-1.5 text-sm text-zinc-500 h-10">
-                        {kb.description || '暂无描述...'}
-                      </CardDescription>
-                    </CardHeader>
+        {/* 场景入口卡片 */}
+        <div className="flex-none grid grid-cols-1 md:grid-cols-3 gap-6">
+          {scenarios.map((scenario) => {
+            const count = getScenarioCount(scenario.id);
+            return (
+              <div 
+                key={scenario.id}
+                onClick={() => {
+                  setSelectedScenario(scenario.id);
+                  setNewKB({ ...newKB, type: scenario.id });
+                  setShowCreateForm(true);
+                }}
+                className={`group relative bg-white border border-zinc-200 rounded-xl px-7 py-6 transition-all duration-300 cursor-pointer hover:shadow-lg ${scenario.accentBorder}`}
+              >
+                {/* 顶部彩色指示条 */}
+                <div className={`absolute top-0 left-0 right-0 h-1 rounded-t-xl opacity-0 group-hover:opacity-100 transition-opacity ${scenario.accentColor.replace('text', 'bg')}`} />
+                
+                {/* 顶部：图标 + 项目数 */}
+                <div className="flex items-start justify-between mb-6">
+                  <div className="relative group/icon w-14 h-14 flex items-center justify-center">
+                    {/* 背景：极其微弱的磨砂感 */}
+                    <div className="absolute inset-0 bg-white border border-zinc-200 rounded-xl shadow-sm transform rotate-3 group-hover/icon:rotate-6 transition-transform duration-500" />
                     
-                    <CardContent className="pb-3 sm:pb-4 px-4 sm:px-6">
-                      <div className="flex items-center gap-3 sm:gap-4 text-xs text-zinc-500 font-medium">
-                        <div className="flex items-center gap-1.5">
-                          <FileText className="w-3.5 h-3.5" />
-                          {kb._count.documents} 教材
-                        </div>
-                        <div className="w-1 h-1 bg-zinc-300 rounded-full" />
-                        <div className="flex items-center gap-1.5">
-                          <Clock className="w-3.5 h-3.5" />
-                          {formatDate(kb.createdAt)}
-                        </div>
-                      </div>
-                    </CardContent>
-
-                    <CardFooter className="pt-0 pb-4 sm:pb-5 px-4 sm:px-6">
-                      <div className="w-full flex items-center text-sm font-medium text-zinc-400 group-hover:text-zinc-900 transition-colors gap-1 group-hover:gap-2 duration-300">
-                        <span>生成课件</span>
-                        <ChevronRight className="w-4 h-4" />
-                      </div>
-                    </CardFooter>
-                  </Card>
-                ))}
-              </div>
-
-              {/* Pagination */}
-              {totalPages > 1 && (
-                <div className="flex items-center justify-between pt-4 sm:pt-6">
-                  <span className="text-sm text-zinc-500">共 {totalKBs} 个教研库</span>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                      disabled={currentPage === 1}
-                      className="h-8 w-8 p-0"
-                    >
-                      <ChevronLeft className="w-4 h-4" />
-                    </Button>
-                    <span className="text-sm text-zinc-600 min-w-[80px] text-center">
-                      {currentPage} / {totalPages}
-                    </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                      disabled={currentPage === totalPages}
-                      className="h-8 w-8 p-0"
-                    >
-                      <ChevronRight className="w-4 h-4" />
-                    </Button>
+                    {/* 极其细微的彩色点缀：仅在左上角一个圆点 */}
+                    <div className={`absolute -top-1 -left-1 w-3 h-3 rounded-full border-2 border-white shadow-sm ${scenario.accentColor.replace('text', 'bg')} z-20`} />
+                    
+                    {/* 主色图标 */}
+                    <div className="relative z-10 transform -rotate-3 group-hover/icon:-rotate-6 transition-transform duration-500">
+                      <scenario.icon className={`w-7 h-7 text-zinc-900`} />
+                    </div>
+                  </div>
+                  
+                  <div className={`flex items-center gap-1.5 px-3 py-1.5 bg-zinc-50 rounded-lg border border-zinc-100 group-hover:border-zinc-300 transition-all`}>
+                    <div className={`w-1.5 h-1.5 rounded-full ${scenario.accentColor.replace('text', 'bg')}`} />
+                    <span className="text-xs font-bold text-zinc-600">{count} 项目</span>
                   </div>
                 </div>
-              )}
-            </>
-          )}
+                
+                {/* 中部：标题 + 描述 */}
+                <div className="mb-5">
+                  <h3 className="text-xl font-bold text-zinc-900 mb-2">{scenario.name}</h3>
+                  <p className="text-sm font-medium text-zinc-500 leading-relaxed">{scenario.desc}</p>
+                </div>
+
+                {/* 底部：标签 + 箭头 */}
+                <div className="flex items-center justify-between pt-5 border-t border-zinc-100">
+                  <div className="flex gap-2">
+                    {scenario.examples.map((ex, i) => (
+                      <span key={i} className={`text-xs font-medium px-2.5 py-1 rounded-lg border border-zinc-100 bg-zinc-50 text-zinc-500`}>
+                        {ex}
+                      </span>
+                    ))}
+                  </div>
+                  <ArrowRight className={`w-5 h-5 text-zinc-300 group-hover:translate-x-1 transition-all ${scenario.accentColor}`} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* 最近项目区域 - 可滚动列表区 */}
+        <div className="flex-1 flex flex-col min-h-0 space-y-4">
+          <div className="flex-none flex items-center justify-between border-b border-zinc-100 pb-2">
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-zinc-900" />
+              <h2 className="text-base font-bold text-zinc-900">最近项目</h2>
+            </div>
+            
+            {/* 过滤器 */}
+            <div className="flex gap-1">
+              <button 
+                onClick={() => setActiveFilter('all')}
+                className={`text-[11px] font-bold px-4 py-1 rounded-lg transition-all ${activeFilter === 'all' ? 'bg-zinc-900 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-600'}`}
+              >
+                全部
+              </button>
+              {scenarios.map(s => (
+                <button 
+                  key={s.id}
+                  onClick={() => setActiveFilter(s.id)}
+                  className={`text-[11px] font-bold px-4 py-1 rounded-lg transition-all ${activeFilter === s.id ? 'bg-zinc-900 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-600'}`}
+                >
+                  {s.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 滚动网格列表 */}
+          <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+            {loading ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                {[1, 2, 3, 4, 5, 6].map(i => <div key={i} className="h-32 bg-zinc-100 animate-pulse rounded-xl" />)}
+              </div>
+            ) : sortedKBs.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center bg-zinc-50/50 rounded-xl border border-dashed border-zinc-200 py-10">
+                <p className="text-sm font-bold text-zinc-300">暂无项目，点击上方卡片创建</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 pb-6">
+                {currentKBs.map((kb) => {
+                  const config = getScenarioConfig(kb.type);
+                  return (
+                    <div 
+                      key={kb.id}
+                      onClick={() => router.push(`/dashboard/teaching/${kb.id}`)}
+                      className="group bg-white border border-zinc-200 rounded-xl p-5 hover:border-zinc-900 transition-all duration-300 cursor-pointer flex flex-col h-full hover:shadow-md"
+                    >
+                      <div className="flex justify-between items-start mb-4">
+                        <div className={`flex items-center gap-1.5 px-2 py-1 bg-zinc-50 border border-zinc-100 rounded-md group-hover:border-zinc-300 transition-all`}>
+                          <div className={`w-1.5 h-1.5 rounded-full ${config.accentColor.replace('text', 'bg')}`} />
+                          <span className="text-[10px] font-bold text-zinc-600">{config.name}</span>
+                        </div>
+                        <button
+                          onClick={(e) => handleDelete(kb.id, e)}
+                          className="w-7 h-7 rounded-lg flex items-center justify-center text-zinc-300 hover:bg-red-50 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <h4 className="text-base font-bold text-zinc-900 mb-1 truncate group-hover:text-zinc-700">{kb.name}</h4>
+                      <p className="text-xs font-medium text-zinc-400 line-clamp-1 mb-4">{kb.description || '暂无描述内容'}</p>
+                      
+                      <div className="mt-auto flex items-center justify-between pt-4 border-t border-zinc-50">
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-zinc-400">
+                          <FileText className="w-3.5 h-3.5" />
+                          <span>{kb._count.documents} 文档</span>
+                        </div>
+                        <span className="text-[10px] font-bold text-zinc-300 uppercase tracking-tighter">{formatDate(kb.createdAt)}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </main>
 
-      {/* Create Form Modal */}
+      {/* 创建项目弹窗 */}
       {showCreateForm && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/20 backdrop-blur-sm p-0 sm:p-4">
-          <Card className="w-full sm:max-w-md shadow-xl border-0 bg-white rounded-t-2xl sm:rounded-xl">
-            <CardHeader className="px-4 sm:px-6 pt-4 sm:pt-6">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <GraduationCap className="w-5 h-5 text-zinc-700" />
-                新建教研库
-              </CardTitle>
-              <CardDescription>上传教材后可自动提取章节结构</CardDescription>
-            </CardHeader>
-            <CardContent className="px-4 sm:px-6 pb-6">
-              <form onSubmit={handleCreate} className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-gray-700">名称</label>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-900/30 backdrop-blur-sm p-4">
+          <Card className="w-full max-w-sm shadow-2xl border-0 bg-white rounded-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-8">
+              <div className="flex flex-col items-center text-center mb-8">
+                <div className="w-14 h-14 bg-zinc-900 rounded-2xl flex items-center justify-center shadow-xl mb-4">
+                  {React.createElement(scenarios.find(s => s.id === selectedScenario)?.icon || Plus, { className: "w-7 h-7 text-white" })}
+                </div>
+                <h3 className="text-xl font-bold tracking-tight">新建{scenarios.find(s => s.id === selectedScenario)?.name}项目</h3>
+              </div>
+              <form onSubmit={handleCreate} className="space-y-5">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1">项目名称</label>
                   <Input
                     value={newKB.name}
                     onChange={(e) => setNewKB({ ...newKB, name: e.target.value })}
-                    placeholder="例如：七年级数学上册"
+                    placeholder={scenarios.find(s => s.id === selectedScenario)?.placeholder || '输入项目名称'}
                     required
-                    className="bg-white h-11"
+                    className="h-11 bg-zinc-50 border-transparent rounded-xl font-bold focus:bg-white focus:ring-2 focus:ring-zinc-900/5 transition-all text-sm px-4"
                   />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-gray-700">描述</label>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1">简短描述</label>
                   <Input
                     value={newKB.description}
                     onChange={(e) => setNewKB({ ...newKB, description: e.target.value })}
-                    placeholder="简要描述教材内容..."
-                    className="bg-white h-11"
+                    placeholder="描述一下这个项目..."
+                    className="h-11 bg-zinc-50 border-transparent rounded-xl font-bold focus:bg-white focus:ring-2 focus:ring-zinc-900/5 transition-all text-sm px-4"
                   />
                 </div>
                 <div className="flex gap-3 pt-4">
-                  <Button type="button" variant="outline" className="flex-1 h-11" onClick={() => setShowCreateForm(false)}>
-                    取消
-                  </Button>
-                  <Button type="submit" className="flex-1 h-11 bg-zinc-900 hover:bg-zinc-800 text-white" disabled={creating}>
-                    {creating ? '创建中...' : '下一步：上传教材'}
+                  <Button type="button" variant="ghost" className="flex-1 h-12 font-bold rounded-xl" onClick={() => setShowCreateForm(false)}>取消</Button>
+                  <Button type="submit" className="flex-[2] h-12 bg-zinc-900 hover:bg-zinc-800 text-white font-bold rounded-xl shadow-lg transition-all" disabled={creating}>
+                    {creating ? '稍等...' : '开始创作'}
                   </Button>
                 </div>
               </form>
-            </CardContent>
+            </div>
           </Card>
         </div>
       )}
+
+      <style jsx global>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #e4e4e7;
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #d4d4d8;
+        }
+      `}</style>
     </div>
   );
 }

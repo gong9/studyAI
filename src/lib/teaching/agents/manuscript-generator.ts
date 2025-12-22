@@ -37,9 +37,23 @@ export interface ManuscriptResult {
   error?: string;
 }
 
-// ==================== Prompt ====================
+// ==================== 场景化 Prompt 模板 ====================
 
-const MANUSCRIPT_PROMPT = `你是一位经验丰富、备课认真的优秀教师。请根据以下教学规划和教材内容，撰写一份详尽、完整的教学手稿。
+/** 场景 Prompt 配置 */
+interface ScenePromptConfig {
+  name: string;
+  audienceLabel: string;
+  speakingStyle: string;
+  prompt: string;
+}
+
+/** 场景 Prompt 模板表 */
+const SCENE_PROMPTS: Record<string, ScenePromptConfig> = {
+  k12_teaching: {
+    name: 'K12 教学',
+    audienceLabel: '学生',
+    speakingStyle: '亲切、循循善诱',
+    prompt: `你是一位经验丰富、备课认真的优秀教师。请根据以下教学规划和教材内容，撰写一份详尽、完整的教学讲稿。
 
 ## 教学规划
 章节：{chapter}
@@ -67,6 +81,11 @@ const MANUSCRIPT_PROMPT = `你是一位经验丰富、备课认真的优秀教�
 
 ## 输出要求
 
+### 语言风格
+1. 使用亲切的教学语言，如"同学们，我们来看..."、"请大家注意..."
+2. 循循善诱，由浅入深
+3. 多用启发式提问，引导学生思考
+
 ### 内容深度（必须遵守）
 1. **每个知识点必须详细讲解**，不能只写标题
 2. **概念要解释清楚**：什么是、为什么、怎么用
@@ -76,67 +95,203 @@ const MANUSCRIPT_PROMPT = `你是一位经验丰富、备课认真的优秀教�
 ### 格式要求
 1. **格式**：使用 Markdown 格式
 2. **结构**：按照节次安排组织内容
-3. **语言**：面向学生，使用"我们来看..."、"请同学们注意..."等教学语言
-4. **图表标记**：需要配图的地方用 \`> visual: 描述\` 标记
-5. **分页**：每个节次用 \`---\` 分隔（幻灯片分页标记）
-6. **公式**：用 LaTeX 语法，如 \`$y = kx + b$\`
+3. **图表标记**：需要配图的地方用 \`> visual: 描述\` 标记
+4. **分页**：每个节次用 \`---\` 分隔（幻灯片分页标记）
+5. **公式**：用 LaTeX 语法，如 \`$y = kx + b$\`
 
-### 示例输出
-
-\`\`\`markdown
-# 一次函数
-
-## 本节目标
-- 理解一次函数的定义和表达式
-- 掌握斜率和截距的含义
-
----
-
-## 一、引入：生活中的线性关系
-
-同学们，我们先来看一个生活中的例子。
-
-出租车是怎么计费的呢？起步价 10 元，然后每公里加收 2 元。
-
-如果我们用 x 表示行驶的公里数，用 y 表示总费用，能写出它们之间的关系吗？
-
-让我们一起来推导：
-- 行驶 1 公里：y = 10 + 2 × 1 = 12 元
-- 行驶 2 公里：y = 10 + 2 × 2 = 14 元
-- 行驶 x 公里：y = 10 + 2 × x = 2x + 10
-
-> visual: 出租车计价示意图，横轴为公里数(0-10km)，纵轴为费用(10-30元)
-
-同学们发现没有？当 x 变化时，y 也跟着变化，而且变化是很有规律的——这就是我们今天要学习的**一次函数**！
-
----
-
-## 二、概念讲解：一次函数的定义
-
-刚才我们得到的 y = 2x + 10，它有什么特点呢？
-
-请同学们观察：
-- 未知数 x 的次数是 **1 次**（不是 x²、x³）
-- 表达式形式是 **y = 某个数 × x + 另一个数**
-
-**定义**：形如 $y = kx + b$（其中 $k \\neq 0$，k、b 是常数）的函数，叫做**一次函数**。
-
-> visual: 一次函数的一般形式 y = kx + b，用不同颜色标注 k 和 b
-
-其中：
-- **k** 叫做**斜率**——决定直线的倾斜程度
-- **b** 叫做**截距**——决定直线与 y 轴的交点位置
-
----
-\`\`\`
-
-## 重要提示
+### 重要提示
 1. 必须详细讲解每个节次，不能敷衍
-2. 引用教材内容中的例子和说明
-3. 确保覆盖所有"章节重点"中的知识点
-4. 每页内容要充实（每个节次至少 150-300 字）
+2. 确保覆盖所有"章节重点"中的知识点
+3. 每页内容要充实（每个节次至少 150-300 字）
 
-请直接输出 Markdown 内容，不要有额外解释。`;
+请直接输出 Markdown 内容，不要有额外解释。`,
+  },
+
+  tech_training: {
+    name: '技术培训',
+    audienceLabel: '开发者/技术人员',
+    speakingStyle: '专业、务实',
+    prompt: `你是一位资深的技术专家，正在准备一场技术分享/培训。请根据以下规划和技术文档，撰写一份专业、实用的培训讲稿。
+
+## 培训规划
+主题：{chapter}
+受众：{grade}
+领域：{subject}
+时长：{duration}
+
+培训目标：
+{goals}
+
+核心技术点：
+{concepts}
+
+内容安排：
+{sections}
+
+## 技术要点（必须覆盖）
+{keyPoints}
+
+## 内容摘要
+{summary}
+
+## 技术文档内容（RAG 检索结果）
+{ragContent}
+
+## 输出要求
+
+### 语言风格
+1. 使用专业但易懂的技术语言
+2. 直接切入重点，避免冗余
+3. 可以说"我们来看一下..."、"这里有个关键点..."、"实际项目中..."
+
+### 内容深度（必须遵守）
+1. **技术原理要讲透**：不仅说是什么，还要说为什么这样设计
+2. **代码示例要完整**：给出可运行的代码片段
+3. **实战经验要分享**：常见坑点、最佳实践、性能优化
+4. **结合文档内容**：引用技术文档中的说明和示例
+
+### 格式要求
+1. **格式**：使用 Markdown 格式
+2. **结构**：按照内容安排组织
+3. **代码块**：使用 \`\`\`language 格式
+4. **图表标记**：需要架构图/流程图的地方用 \`> visual: 描述\` 标记
+5. **分页**：每个部分用 \`---\` 分隔（幻灯片分页标记）
+
+### 重要提示
+1. 必须详细讲解每个技术点
+2. 代码示例要有注释说明
+3. 每页内容要充实（每个部分至少 150-300 字）
+
+请直接输出 Markdown 内容，不要有额外解释。`,
+  },
+
+  company_training: {
+    name: '制度培训',
+    audienceLabel: '员工',
+    speakingStyle: '严谨、规范、权威',
+    prompt: `你是一位专业的企业合规培训师，正在编写一份正式的制度解读培训材料。请根据以下规划和制度文档，撰写一份严谨、规范的培训讲稿。
+
+## 培训规划
+主题：{chapter}
+受众：{grade}
+类型：{subject}
+时长：{duration}
+
+培训目标：
+{goals}
+
+核心条款：
+{concepts}
+
+内容安排：
+{sections}
+
+## 制度要点（必须覆盖）
+{keyPoints}
+
+## 内容摘要
+{summary}
+
+## 制度文档内容（RAG 检索结果）
+{ragContent}
+
+## 输出要求
+
+### 语言风格（严格遵守）
+1. **使用正式、严谨的书面语**，不使用口语化表达
+2. 避免使用"大家好"、"划重点"、"这里很重要"等口语
+3. 使用规范表述，如：
+   - "本制度规定..." 而非 "这个制度说的是..."
+   - "根据第X条规定..." 而非 "按照这一条..."
+   - "适用范围包括..." 而非 "这条管的是..."
+   - "违反本规定者，将依据..." 而非 "不遵守的话会..."
+4. 开场可用"本次培训将系统解读..."，而非"今天我们来学习..."
+5. 保持客观陈述，避免过多语气词
+
+### 内容深度（必须遵守）
+1. **条款解读**：原文引用 + 条款释义 + 适用场景说明
+2. **流程规范**：明确操作步骤、审批权限、时限要求
+3. **典型案例**：合规案例与违规案例对照分析
+4. **责任后果**：明确违规的处理措施及依据
+
+### 格式要求
+1. **格式**：使用 Markdown 格式
+2. **结构**：按照内容安排组织，层次清晰
+3. **条款引用**：使用引用格式 \`> 第X条：原文内容\`
+4. **重点标注**：关键条款用 **加粗** 强调
+5. **图表标记**：需要流程图的地方用 \`> visual: 描述\` 标记
+6. **分页**：每个部分用 \`---\` 分隔（幻灯片分页标记）
+
+### 重要提示
+1. 必须系统解读每个核心条款
+2. 引用制度原文时需准确
+3. 每页内容要充实（每个部分至少 150-300 字）
+4. 整体风格应体现制度的权威性和严肃性
+
+请直接输出 Markdown 内容，不要有额外解释。`,
+  },
+
+  general: {
+    name: '通用演示',
+    audienceLabel: '受众',
+    speakingStyle: '清晰、专业',
+    prompt: `你是一位专业的演示文稿撰写专家。请根据以下规划和内容资料，撰写一份清晰、有条理的演示讲稿。
+
+## 演示规划
+主题：{chapter}
+受众：{grade}
+领域：{subject}
+时长：{duration}
+
+演示目标：
+{goals}
+
+核心要点：
+{concepts}
+
+内容安排：
+{sections}
+
+## 内容要点（必须覆盖）
+{keyPoints}
+
+## 内容摘要
+{summary}
+
+## 相关资料（RAG 检索结果）
+{ragContent}
+
+## 输出要求
+
+### 语言风格
+1. 使用清晰、专业的语言
+2. 逻辑清晰，层次分明
+3. 适当使用过渡语，如"接下来我们看..."、"这里有个重点..."
+
+### 内容深度（必须遵守）
+1. **每个要点必须详细展开**，不能只写标题
+2. **概念要解释清楚**：是什么、为什么重要
+3. **有数据/案例支撑**：增加说服力
+
+### 格式要求
+1. **格式**：使用 Markdown 格式
+2. **结构**：按照内容安排组织
+3. **图表标记**：需要配图的地方用 \`> visual: 描述\` 标记
+4. **分页**：每个部分用 \`---\` 分隔（幻灯片分页标记）
+
+### 重要提示
+1. 必须详细讲解每个部分
+2. 每页内容要充实（每个部分至少 150-300 字）
+
+请直接输出 Markdown 内容，不要有额外解释。`,
+  },
+};
+
+/** 获取场景 Prompt */
+function getScenePrompt(sceneType: string): string {
+  const config = SCENE_PROMPTS[sceneType] || SCENE_PROMPTS.general;
+  return config.prompt;
+}
 
 // ==================== 核心函数 ====================
 
@@ -169,8 +324,12 @@ export async function generateManuscript(input: ManuscriptInput): Promise<Manusc
       ragContent = truncateContent(chapterContent, 6000);
     }
 
-    // 3. 构建 prompt
-    const prompt = MANUSCRIPT_PROMPT
+    // 3. 根据场景类型获取对应的 Prompt 模板
+    const sceneType = plan.sceneType || 'general';
+    const promptTemplate = getScenePrompt(sceneType);
+
+    // 4. 构建 prompt
+    const prompt = promptTemplate
       .replace('{chapter}', plan.chapter)
       .replace('{grade}', plan.constraints.grade)
       .replace('{subject}', plan.constraints.subject)
@@ -178,11 +337,12 @@ export async function generateManuscript(input: ManuscriptInput): Promise<Manusc
       .replace('{goals}', plan.teaching_goals.map((g, i) => `${i + 1}. ${g}`).join('\n'))
       .replace('{concepts}', plan.key_concepts.join('、'))
       .replace('{sections}', formatSections(plan.sections))
-      .replace('{keyPoints}', keyPointsStr || '（暂无，请根据教材内容自行提取）')
+      .replace('{keyPoints}', keyPointsStr || '（暂无，请根据内容自行提取）')
       .replace('{summary}', chapterSummary || '（暂无）')
-      .replace('{ragContent}', ragContent || '（暂无检索结果，请根据教学规划生成）');
+      .replace('{ragContent}', ragContent || '（暂无检索结果，请根据规划生成）');
 
     console.log('[ManuscriptGenerator] Generating manuscript for:', plan.chapter);
+    console.log('[ManuscriptGenerator] Scene type:', sceneType);
     console.log('[ManuscriptGenerator] RAG content length:', ragContent.length);
     console.log('[ManuscriptGenerator] Key points count:', chapterKeyPoints?.length || 0);
 
@@ -203,7 +363,7 @@ export async function generateManuscript(input: ManuscriptInput): Promise<Manusc
     return {
       success: false,
       markdown: null,
-      error: error.message || '教学手稿生成失败',
+      error: error.message || '讲稿生成失败',
     };
   }
 }

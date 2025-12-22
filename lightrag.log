@@ -1,8 +1,8 @@
-2025-12-22 11:24:39,104 - __main__ - INFO - Starting LightRAG service on 0.0.0.0:8005
-2025-12-22 11:24:39,104 - __main__ - INFO - Storage directory: /Users/gongzhen/code/2025/hzm/rag/lightrag-data
-2025-12-22 11:24:39,104 - __main__ - INFO - LLM Model: qwen-turbo
-INFO:     Started server process [81383]
+2025-12-22 16:49:21,472 - __main__ - INFO - Starting LightRAG service on 0.0.0.0:8005
+2025-12-22 16:49:21,472 - __main__ - INFO - Storage directory: /Users/gongzhen/code/2025/hzm/rag/lightrag-data
+2025-12-22 16:49:21,472 - __main__ - INFO - LLM Model: qwen-turbo
+INFO:     Started server process [76400]
 INFO:     Waiting for application startup.
-2025-12-22 11:24:39,127 - main - INFO - LightRAG service starting...
+2025-12-22 16:49:21,493 - main - INFO - LightRAG service starting...
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://0.0.0.0:8005 (Press CTRL+C to quit)

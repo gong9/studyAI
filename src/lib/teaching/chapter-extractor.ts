@@ -36,9 +36,19 @@ export interface ExtractionResult {
   error?: string;
 }
 
-// ==================== 提取 Prompt ====================
+// ==================== 场景化提取 Prompt ====================
 
-const EXTRACT_TOC_PROMPT = `你是一个教材分析专家。请分析以下教材内容，提取其章节结构。
+/** 场景 Prompt 配置 */
+interface SceneTocPromptConfig {
+  name: string;
+  prompt: string;
+}
+
+/** 不同场景的目录提取 Prompt */
+const SCENE_TOC_PROMPTS: Record<string, SceneTocPromptConfig> = {
+  k12: {
+    name: 'K12 教材',
+    prompt: `你是一个教材分析专家。请分析以下教材内容，提取其章节结构。
 
 ## 任务
 1. 识别教材的目录/章节结构
@@ -74,7 +84,107 @@ const EXTRACT_TOC_PROMPT = `你是一个教材分析专家。请分析以下教�
 ## 教材内容
 {content}
 
-请直接输出 JSON，不要包含其他文字。`;
+请直接输出 JSON，不要包含其他文字。`,
+  },
+
+  tech: {
+    name: '技术文档',
+    prompt: `你是一个技术文档分析专家。请分析以下技术文档内容，提取其结构。
+
+## 任务
+1. 识别文档的目录/章节结构
+2. 提取每个章节的标题和层级
+3. 判断技术领域
+
+## 输出格式 (JSON)
+{
+  "metadata": {
+    "grade": "开发者",
+    "subject": "技术文档"
+  },
+  "chapters": [
+    {
+      "title": "Introduction",
+      "level": 1,
+      "children": [
+        {
+          "title": "Getting Started",
+          "level": 2,
+          "children": []
+        }
+      ]
+    }
+  ]
+}
+
+## 层级说明
+- level 1: 主要章节/模块 (如 "Introduction"、"API Reference"、"1. Overview")
+- level 2: 子章节 (如 "1.1 Installation"、"Getting Started")
+- level 3: 细节部分 (如具体 API、配置项)
+
+## 技术文档内容
+{content}
+
+## 重要提示
+- 请根据文档的实际内容提取章节，不要使用示例中的标题
+- 技术文档常见结构：Introduction、Installation、Quick Start、API Reference、Configuration、Examples、FAQ 等
+- 如果是英文文档，保留英文标题
+
+请直接输出 JSON，不要包含其他文字。`,
+  },
+
+  policy: {
+    name: '制度文档',
+    prompt: `你是一个企业制度文档分析专家。请分析以下制度文档内容，提取其结构。
+
+## 任务
+1. 识别制度文档的结构
+2. 提取各条款/章节的标题和层级
+3. 判断制度类型
+
+## 输出格式 (JSON)
+{
+  "metadata": {
+    "grade": "全体员工",
+    "subject": "企业制度"
+  },
+  "chapters": [
+    {
+      "title": "第一章 总则",
+      "level": 1,
+      "children": [
+        {
+          "title": "第一条 目的和依据",
+          "level": 2,
+          "children": []
+        }
+      ]
+    }
+  ]
+}
+
+## 层级说明
+- level 1: 章 (如 "第一章"、"一、")
+- level 2: 条 (如 "第一条"、"1.")
+- level 3: 款/项 (如 "(一)"、"1)")
+
+## 制度文档内容
+{content}
+
+## 重要提示
+- 请根据文档的实际内容提取章节，不要使用示例中的标题
+- 制度文档常见结构：总则、适用范围、职责分工、具体规定、附则 等
+- 如果文档没有明显章节划分，按条款顺序提取
+
+请直接输出 JSON，不要包含其他文字。`,
+  },
+};
+
+/** 获取场景对应的目录提取 Prompt */
+function getSceneTocPrompt(type: string): string {
+  const config = SCENE_TOC_PROMPTS[type] || SCENE_TOC_PROMPTS.tech; // 默认使用 tech
+  return config.prompt;
+}
 
 const EXTRACT_CHAPTER_CONTENT_PROMPT = `你是一个教材分析专家。请从以下教材内容中提取指定章节的完整内容。
 
@@ -101,15 +211,26 @@ const EXTRACT_CHAPTER_CONTENT_PROMPT = `你是一个教材分析专家。请从�
 // ==================== 核心函数 ====================
 
 /**
- * 从教材内容中提取章节结构
+ * 从文档内容中提取章节结构
+ * @param content 文档内容
+ * @param type 文档类型: 'k12' | 'tech' | 'policy'
+ * @param onProgress 进度回调
  */
 export async function extractChapters(
   content: string,
+  type: string = 'tech',
   onProgress?: (message: string) => void
 ): Promise<ExtractionResult> {
   try {
     configureLLM();
-    onProgress?.('正在分析教材结构...');
+    
+    const typeLabels: Record<string, string> = {
+      k12: '教材',
+      tech: '技术文档',
+      policy: '制度文档',
+    };
+    const label = typeLabels[type] || '文档';
+    onProgress?.(`正在分析${label}结构...`);
 
     // 如果内容过长，先截取前部分用于目录分析
     const tocContent = content.length > 50000 
@@ -122,7 +243,11 @@ export async function extractChapters(
       baseURL: process.env.OPENAI_API_BASE || 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     });
 
-    const prompt = EXTRACT_TOC_PROMPT.replace('{content}', tocContent);
+    // 根据类型获取对应的 Prompt
+    const promptTemplate = getSceneTocPrompt(type);
+    const prompt = promptTemplate.replace('{content}', tocContent);
+    
+    console.log('[ChapterExtractor] Using prompt for type:', type);
     
     const response = await llm.complete({ prompt });
     const text = response.text.trim();

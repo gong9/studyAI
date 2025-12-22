@@ -8,9 +8,85 @@ import {
   ArrowLeft, Upload, FileText, ChevronRight, ChevronDown, 
   GraduationCap, Sparkles, Loader2, CheckCircle, 
   BookOpen, ListTree, Play, Eye, Plus, LayoutGrid, Clock,
-  Target, Book, Settings2, Zap
+  Target, Book, Settings2, Zap, Cpu, FileCheck
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+
+// 根据项目类型配置不同的文案和图标
+type ProjectType = 'k12' | 'tech' | 'policy' | 'teaching';
+
+interface TypeConfig {
+  icon: React.ComponentType<{ className?: string }>;
+  docLibTitle: string;
+  addDocText: string;
+  emptyDocText: string;
+  indexTitle: string;
+  emptyIndexText: string;
+  workbenchTitle: string;
+  generateBtnText: string;
+  generatingText: string;
+  selectHint: string;
+  headerSubtitle: string;
+}
+
+const TYPE_CONFIGS: Record<ProjectType, TypeConfig> = {
+  k12: {
+    icon: GraduationCap,
+    docLibTitle: '教材文档库',
+    addDocText: '添加教材',
+    emptyDocText: '暂无教材，请先上传',
+    indexTitle: '课程章节索引',
+    emptyIndexText: '请上传教材后点击"智能扫描"',
+    workbenchTitle: '智能备课台',
+    generateBtnText: '开启智慧备课',
+    generatingText: '正在构思教学手稿...',
+    selectHint: '请在左侧选择章节开始备课',
+    headerSubtitle: '教学项目',
+  },
+  teaching: { // 兼容旧数据
+    icon: GraduationCap,
+    docLibTitle: '教材文档库',
+    addDocText: '添加教材',
+    emptyDocText: '暂无教材，请先上传',
+    indexTitle: '课程章节索引',
+    emptyIndexText: '请上传教材后点击"智能扫描"',
+    workbenchTitle: '智能备课台',
+    generateBtnText: '开启智慧备课',
+    generatingText: '正在构思教学手稿...',
+    selectHint: '请在左侧选择章节开始备课',
+    headerSubtitle: '教学项目',
+  },
+  tech: {
+    icon: Cpu,
+    docLibTitle: '技术文档库',
+    addDocText: '添加文档',
+    emptyDocText: '暂无文档，请先上传',
+    indexTitle: '内容章节索引',
+    emptyIndexText: '请上传文档后点击"智能扫描"',
+    workbenchTitle: '培训工作台',
+    generateBtnText: '生成培训内容',
+    generatingText: '正在生成培训讲稿...',
+    selectHint: '请在左侧选择章节开始创作',
+    headerSubtitle: '技术培训',
+  },
+  policy: {
+    icon: FileCheck,
+    docLibTitle: '制度文档',
+    addDocText: '添加制度',
+    emptyDocText: '暂无制度文档，请先上传',
+    indexTitle: '制度条款索引',
+    emptyIndexText: '请上传制度文档后点击"智能扫描"',
+    workbenchTitle: '培训工作台',
+    generateBtnText: '生成培训内容',
+    generatingText: '正在生成培训讲稿...',
+    selectHint: '请在左侧选择条款开始创作',
+    headerSubtitle: '制度培训',
+  },
+};
+
+const getTypeConfig = (type: string): TypeConfig => {
+  return TYPE_CONFIGS[type as ProjectType] || TYPE_CONFIGS.k12;
+};
 
 interface ChapterNode {
   id: string;
@@ -51,17 +127,27 @@ export default function TeachingDetailPage() {
   const [manuscripts, setManuscripts] = useState<Manuscript[]>([]);
   const [progress, setProgress] = useState({ status: '', message: '', percent: 0 });
   const [activeTab, setActiveTab] = useState<'workbench' | 'records'>('workbench');
-  const [sceneType, setSceneType] = useState<string>('general');
 
-  // 场景选项
-  const SCENE_OPTIONS = [
-    { value: 'general', label: '通用演示' },
-    { value: 'k12_teaching', label: 'K12 教学' },
-    { value: 'tech_training', label: '技术培训' },
-    { value: 'product_launch', label: '产品发布' },
-    { value: 'business_report', label: '商业汇报' },
-    { value: 'company_training', label: '公司制度培训' },
-  ];
+  // 获取当前项目类型的配置
+  const typeConfig = getTypeConfig(kb?.type || 'k12');
+  const TypeIcon = typeConfig.icon;
+
+  // 根据项目类型自动确定场景类型
+  const getSceneTypeFromKbType = (kbType: string): string => {
+    switch (kbType) {
+      case 'k12':
+      case 'teaching':
+        return 'k12_teaching';
+      case 'tech':
+        return 'tech_training';
+      case 'policy':
+        return 'company_training';
+      default:
+        return 'general';
+    }
+  };
+
+  const sceneType = getSceneTypeFromKbType(kb?.type || 'k12');
 
   useEffect(() => {
     fetchKnowledgeBase();
@@ -147,17 +233,44 @@ export default function TeachingDetailPage() {
       
       // 2. 为每个文档建立索引（后台执行，不阻塞用户）
       for (const doc of uploadedDocs) {
-        // 使用 SSE 处理文档并建立索引
         processDocumentIndex(doc.id);
       }
       
       fetchDocuments();
-      handleExtractChapters();
+      
+      // 3. 根据项目类型决定后续操作
+      const currentType = kb?.type || 'k12';
+      if (currentType === 'policy') {
+        // 制度培训：直接为每个文档创建一个"章节"条目
+        await createChaptersFromDocuments(uploadedDocs);
+      } else {
+        // K12/技术培训：需要智能扫描提取章节
+        handleExtractChapters();
+      }
     } catch (error) {
       console.error('上传失败:', error);
       alert('上传失败，请重试');
     } finally {
       setUploading(false);
+    }
+  };
+
+  // 制度培训专用：直接将文档作为章节
+  const createChaptersFromDocuments = async (docs: any[]) => {
+    try {
+      const res = await fetch('/api/teaching/chapters/create-from-docs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          knowledgeBaseId: kbId, 
+          documents: docs.map(d => ({ id: d.id, name: d.name }))
+        }),
+      });
+      if (res.ok) {
+        await fetchChapters();
+      }
+    } catch (error) {
+      console.error('创建章节失败:', error);
     }
   };
 
@@ -350,11 +463,16 @@ export default function TeachingDetailPage() {
             </Button>
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 bg-zinc-900 rounded-lg flex items-center justify-center shadow-sm">
-                <GraduationCap className="w-5 h-5 text-white" />
+                <TypeIcon className="w-5 h-5 text-white" />
               </div>
-              <span className="text-base font-semibold text-zinc-900 tracking-tight">
-                {kb?.name || '教研库详情'}
-              </span>
+              <div className="flex flex-col">
+                <span className="text-base font-semibold text-zinc-900 tracking-tight">
+                  {kb?.name || '项目详情'}
+                </span>
+                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
+                  {typeConfig.headerSubtitle}
+                </span>
+              </div>
             </div>
           </div>
           
@@ -373,16 +491,16 @@ export default function TeachingDetailPage() {
             {/* 左侧：资源与目录 */}
             <div className="lg:col-span-4 flex flex-col gap-6 h-full overflow-hidden">
               <div className="flex-1 bg-white border border-zinc-200 rounded-xl shadow-sm flex flex-col overflow-hidden">
-                {/* 顶部：教材文档 */}
+                {/* 顶部：文档库 */}
                 <div className="p-5 border-b border-zinc-100 flex-shrink-0 bg-white">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-sm font-bold text-zinc-900 flex items-center gap-2">
                       <FileText className="w-4 h-4 text-zinc-600" />
-                      教材文档库
+                      {typeConfig.docLibTitle}
                     </h3>
                     <label className="text-xs font-semibold text-zinc-700 hover:text-zinc-900 cursor-pointer flex items-center gap-1 bg-zinc-100 px-2 py-1 rounded border border-zinc-200 transition-colors hover:bg-zinc-200">
                       <Plus className="w-3.5 h-3.5" />
-                      添加教材
+                      {typeConfig.addDocText}
                       <input type="file" className="hidden" accept=".pdf,.docx,.txt" onChange={handleFileUpload} disabled={uploading} />
                     </label>
                   </div>
@@ -390,7 +508,7 @@ export default function TeachingDetailPage() {
                   <div className="space-y-2.5 max-h-[140px] overflow-y-auto custom-scrollbar pr-1">
                     {documents.length === 0 ? (
                       <div className="text-center py-6 border border-dashed border-zinc-200 rounded-lg bg-zinc-50">
-                        <span className="text-xs text-zinc-400">暂无教材，请先上传</span>
+                        <span className="text-xs text-zinc-400">{typeConfig.emptyDocText}</span>
                       </div>
                     ) : (
                       documents.map((doc: any) => (
@@ -413,14 +531,15 @@ export default function TeachingDetailPage() {
                   )}
                 </div>
 
-                {/* 底部：章节目录 */}
+                {/* 底部：目录索引 */}
                 <div className="flex-1 flex flex-col overflow-hidden">
                   <div className="px-5 py-4 border-b border-zinc-100 flex justify-between items-center bg-zinc-50/50">
                     <h3 className="text-sm font-bold text-zinc-900 flex items-center gap-2">
                       <ListTree className="w-4 h-4 text-zinc-600" />
-                      课程目录索引
+                      {typeConfig.indexTitle}
                     </h3>
-                    {documents.length > 0 && (
+                    {/* 只有 K12 和技术培训需要智能扫描按钮 */}
+                    {documents.length > 0 && kb?.type !== 'policy' && (
                       <Button 
                         variant="ghost" 
                         size="sm" 
@@ -441,7 +560,12 @@ export default function TeachingDetailPage() {
                     ) : chapters.length === 0 ? (
                       <div className="flex flex-col items-center justify-center py-20 text-zinc-400 text-center px-6">
                         <BookOpen className="w-10 h-10 mb-3 opacity-20" />
-                        <p className="text-xs font-medium leading-relaxed">暂无目录数据<br/>请上传教材后点击"智能扫描"</p>
+                        <p className="text-xs font-medium leading-relaxed">
+                          暂无目录数据<br/>
+                          {kb?.type === 'policy' 
+                            ? '请上传制度文档，系统将自动创建条目' 
+                            : typeConfig.emptyIndexText}
+                        </p>
                       </div>
                     ) : (
                       <div className="space-y-0.5">
@@ -466,7 +590,7 @@ export default function TeachingDetailPage() {
                     )}
                   >
                     <LayoutGrid className={cn("w-4 h-4", activeTab === 'workbench' ? "text-zinc-700" : "text-zinc-400 group-hover:text-zinc-600")} />
-                    智能备课台
+                    {typeConfig.workbenchTitle}
                     {activeTab === 'workbench' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-zinc-900" />}
                   </button>
                   <button
@@ -524,16 +648,8 @@ export default function TeachingDetailPage() {
                             {/* 参数信息 - 模块化极简 */}
                             <div className="grid grid-cols-3 gap-12 py-10 border-t border-zinc-100">
                               <div>
-                                <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">演示场景</div>
-                                <select
-                                  value={sceneType}
-                                  onChange={(e) => setSceneType(e.target.value)}
-                                  className="w-full text-base font-bold text-zinc-800 bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 cursor-pointer hover:border-zinc-400 hover:bg-zinc-100 transition-all focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
-                                >
-                                  {SCENE_OPTIONS.map(opt => (
-                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                  ))}
-                                </select>
+                                <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">项目类型</div>
+                                <div className="text-base font-bold text-zinc-800">{typeConfig.headerSubtitle}</div>
                               </div>
                               <div>
                                 <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">智能等级</div>
@@ -567,7 +683,7 @@ export default function TeachingDetailPage() {
                                     <Sparkles className="w-5 h-5" />
                                   )}
                                   <span className="tracking-wider">
-                                    {generating ? '正在构思教学手稿...' : '开启智慧备课中心'}
+                                    {generating ? typeConfig.generatingText : typeConfig.generateBtnText}
                                   </span>
                                 </Button>
                               </div>
@@ -605,7 +721,7 @@ export default function TeachingDetailPage() {
                         <div className="w-16 h-16 rounded bg-white shadow-sm border border-zinc-100 flex items-center justify-center mb-6">
                           <LayoutGrid className="w-8 h-8 opacity-10" />
                         </div>
-                        <p className="text-sm font-bold tracking-widest text-zinc-400 uppercase">请在左侧选择章节开始备课</p>
+                        <p className="text-sm font-bold tracking-widest text-zinc-400 uppercase">{typeConfig.selectHint}</p>
                       </div>
                     )
                   ) : (
