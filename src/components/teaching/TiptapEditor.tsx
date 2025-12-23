@@ -556,7 +556,7 @@ export function TiptapEditor({
       <div className="flex-1 overflow-y-auto">
         {mode === 'preview' ? (
           /* 预览模式 */
-          <div className="p-6">
+          <div className="py-6 px-10">
             <div 
               className="preview-content prose prose-lg max-w-none prose-pre:bg-zinc-900 prose-pre:text-white prose-code:text-white"
               dangerouslySetInnerHTML={{ __html: previewHtml }}
@@ -573,7 +573,7 @@ export function TiptapEditor({
         /* 编辑器容器样式 */
         .tiptap {
           min-height: 100%;
-          padding: 1.5rem;
+          padding: 1.5rem 2.5rem;
           outline: none;
         }
         

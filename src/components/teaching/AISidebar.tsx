@@ -153,7 +153,7 @@ export function AISidebar({
     <div 
       className={cn(
         "h-full flex flex-col bg-white border-l border-slate-100 transition-all duration-500 ease-[cubic-bezier(0.2,0.8,0.2,1)] overflow-hidden",
-        isOpen ? "w-[380px]" : "w-0",
+        isOpen ? "w-[420px]" : "w-0",
         className
       )}
     >
@@ -167,8 +167,8 @@ export function AISidebar({
               <div>
                 <h3 className="text-[15px] font-bold text-slate-800 tracking-tight">智能备课助手</h3>
                 <div className="flex items-center gap-1.5 mt-0.5">
-                  <div className="w-1 h-1 rounded-full bg-emerald-500" />
-                  <p className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">AI RAG Engine</p>
+                  <div className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
+                  <p className="text-[11px] text-slate-500 font-medium">基于知识库实时检索</p>
                 </div>
               </div>
             </div>
@@ -288,9 +288,9 @@ export function AISidebar({
           <div ref={messagesEndRef} />
         </div>
 
-        {/* 输入区 - 苹果风纯净感 */}
-        <div className="flex-shrink-0 p-6 bg-white">
-          <div className="relative flex items-end gap-2 bg-slate-50 border border-slate-100 rounded-2xl p-2 transition-all focus-within:bg-white focus-within:border-blue-200 focus-within:shadow-md">
+        {/* 输入区 */}
+        <div className="flex-shrink-0 p-4 bg-slate-50 border-t border-slate-100">
+          <div className="relative flex items-end gap-2 bg-white border border-slate-200 rounded-xl p-2 shadow-sm">
             <textarea
               ref={inputRef}
               value={input}
@@ -302,21 +302,18 @@ export function AISidebar({
                 }
               }}
               placeholder="询问助手..."
-              className="flex-1 px-3 py-2 text-sm bg-transparent border-none focus:ring-0 resize-none min-h-[40px] max-h-[120px] text-slate-700 placeholder:text-slate-300 font-medium"
+              className="flex-1 px-3 py-2 text-sm bg-transparent border-none outline-none focus:ring-0 focus:outline-none resize-none min-h-[40px] max-h-[120px] text-slate-700 placeholder:text-slate-400"
               rows={1}
               disabled={loading}
             />
             <button
               onClick={() => handleSend('ask')}
               disabled={!input.trim() || loading}
-              className="p-2.5 bg-blue-600 text-white rounded-xl shadow-lg shadow-blue-100 hover:bg-blue-700 active:scale-95 disabled:opacity-20 disabled:grayscale transition-all"
+              className="p-2.5 bg-slate-900 text-white rounded-lg hover:bg-slate-800 active:scale-95 disabled:opacity-30 transition-all"
             >
               <Send className="w-4 h-4" />
             </button>
           </div>
-          <p className="text-center text-[10px] text-slate-200 mt-4 font-bold uppercase tracking-[0.2em]">
-            Precision & Creativity
-          </p>
       </div>
     </div>
   );

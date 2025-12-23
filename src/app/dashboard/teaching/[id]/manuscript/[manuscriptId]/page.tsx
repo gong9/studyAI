@@ -56,7 +56,7 @@ export default function ManuscriptEditorPage() {
   const [enriching, setEnriching] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [error, setError] = useState('');
-  const [aiSidebarOpen, setAiSidebarOpen] = useState(false);
+  const [aiSidebarOpen, setAiSidebarOpen] = useState(true);  // 默认打开 AI 助手
   const [selectedText, setSelectedText] = useState('');
 
   useEffect(() => {
@@ -319,7 +319,7 @@ export default function ManuscriptEditorPage() {
                   className="h-8 bg-zinc-900 hover:bg-zinc-800 text-white shadow-sm rounded-lg text-xs font-semibold px-4"
                 >
                   {enriching ? <Loader2 className="h-3 w-3 animate-spin mr-1.5" /> : <RefreshCw className="h-3 w-3 mr-1.5" />}
-                  润色分页
+                  制作课件
                 </Button>
               </div>
             )}
@@ -356,74 +356,68 @@ export default function ManuscriptEditorPage() {
         </div>
       </header>
 
-      {/* 主内容区 - 采用 flex 布局，带有背景色差提升层次感 */}
+      {/* 主内容区 - 腾讯文档风格布局 */}
       <div className="flex-1 overflow-hidden flex relative">
+        {/* 主编辑区 - 居中显示 */}
         <main className={cn(
-          "flex-1 overflow-hidden flex flex-col transition-all duration-500 ease-[cubic-bezier(0.2,0.8,0.2,1)] px-8 py-6",
-          aiSidebarOpen ? "mr-[380px]" : "max-w-[1400px] mx-auto w-full"
+          "flex-1 overflow-y-auto transition-all duration-300 ease-out",
+          aiSidebarOpen ? "mr-[420px]" : ""
         )}>
-          {/* 状态卡片堆叠 - 苹果风浮动岛 */}
-          <div className="flex-shrink-0 space-y-4 mb-6">
+          <div className="max-w-[900px] mx-auto py-6 px-4">
+            {/* 状态信息条 - 更紧凑 */}
             {manuscript?.teachingPlan && (
-              <div className="bg-white rounded-2xl border border-slate-200/60 shadow-sm p-5 flex items-center justify-between">
-                <div className="flex items-center gap-6">
-                  <div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">学情目标</p>
-                    <p className="text-sm font-semibold text-slate-700">{manuscript.teachingPlan.constraints?.grade} {manuscript.teachingPlan.constraints?.subject}</p>
-                  </div>
-                  <div className="w-px h-8 bg-slate-100" />
-                  <div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">预计时长</p>
-                    <p className="text-sm font-semibold text-slate-700">{manuscript.teachingPlan.constraints?.duration || '45min'}</p>
-                  </div>
-                  <div className="w-px h-8 bg-slate-100" />
-                  <div className="max-w-md">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">教学重点</p>
-                    <p className="text-sm font-medium text-slate-600 truncate">{manuscript.teachingPlan.teaching_goals?.join('、')}</p>
-                  </div>
-                </div>
+              <div className="mb-4 flex items-center gap-4 text-sm text-slate-500">
+                <span className="flex items-center gap-1.5">
+                  <span className="text-slate-400">学段</span>
+                  <span className="font-medium text-slate-700">{manuscript.teachingPlan.constraints?.grade} {manuscript.teachingPlan.constraints?.subject}</span>
+                </span>
+                <span className="w-1 h-1 rounded-full bg-slate-300" />
+                <span className="flex items-center gap-1.5">
+                  <span className="text-slate-400">时长</span>
+                  <span className="font-medium text-slate-700">{manuscript.teachingPlan.constraints?.duration || '45min'}</span>
+                </span>
+                <span className="w-1 h-1 rounded-full bg-slate-300" />
+                <span className="flex items-center gap-1.5 flex-1 min-w-0">
+                  <span className="text-slate-400 flex-shrink-0">重点</span>
+                  <span className="font-medium text-slate-700 truncate">{manuscript.teachingPlan.teaching_goals?.join('、')}</span>
+                </span>
               </div>
             )}
 
+            {/* 审核建议 - 更紧凑 */}
             {manuscript?.reviewComments && manuscript.reviewComments.length > 0 && (
-              <div className="bg-amber-50/50 rounded-2xl border border-amber-200/40 p-4 flex items-start gap-3">
+              <div className="mb-4 bg-amber-50 rounded-lg border border-amber-100 px-4 py-3 flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
-                <div className="flex-1">
-                  <p className="text-xs font-bold text-amber-700 mb-1">审核优化建议</p>
-                  <ul className="grid grid-cols-2 gap-x-6 gap-y-1">
-                    {manuscript.reviewComments.map((comment: string, i: number) => (
-                      <li key={i} className="text-[12px] text-amber-600/80 flex items-center gap-1.5">
-                        <span className="w-1 h-1 rounded-full bg-amber-300" />
-                        {comment}
-                      </li>
-                    ))}
-                  </ul>
+                <div className="flex-1 text-sm">
+                  <span className="font-medium text-amber-700">优化建议：</span>
+                  <span className="text-amber-600">
+                    {manuscript.reviewComments.slice(0, 3).join('；')}
+                    {manuscript.reviewComments.length > 3 && '...'}
+                  </span>
                 </div>
               </div>
             )}
-          </div>
 
-          {/* 编辑区容器 - 白色主面板 */}
-          <div className="flex-1 min-h-0 flex flex-col">
-            {/* 编辑器 */}
-            <div className="flex-1 bg-white rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-200/60 flex flex-col min-h-0 overflow-hidden">
-              <div className="px-6 py-4 border-b border-slate-50 flex items-center justify-between flex-shrink-0">
+            {/* 编辑器容器 - 文档风格 */}
+            <div className="bg-white rounded-lg shadow-sm border border-slate-200 min-h-[calc(100vh-180px)]">
+              {/* 编辑器头部 */}
+              <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-2">
-                    <div className="w-1.5 h-4 bg-zinc-900 rounded-full" />
-                    <h2 className="text-sm font-bold text-slate-800">
-                      {isEditable ? '手稿正文' : '手稿只读预览'}
+                    <div className="w-1 h-4 bg-slate-900 rounded-full" />
+                    <h2 className="text-sm font-semibold text-slate-800">
+                      {isEditable ? '手稿正文' : '只读模式'}
                     </h2>
                   </div>
-                  {/* 预览/编辑切换按钮 */}
+                  {/* 预览/编辑切换 */}
                   {isEditable && (
-                    <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
+                    <div className="flex items-center bg-slate-100 rounded-md p-0.5 ml-2">
                       <button
                         onClick={() => setEditorMode('preview')}
                         className={cn(
-                          "flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md transition-all",
+                          "flex items-center gap-1 px-2 py-1 text-xs font-medium rounded transition-all",
                           editorMode === 'preview' 
-                            ? "bg-white text-zinc-900 shadow-sm" 
+                            ? "bg-white text-slate-900 shadow-sm" 
                             : "text-slate-500 hover:text-slate-700"
                         )}
                       >
@@ -433,9 +427,9 @@ export default function ManuscriptEditorPage() {
                       <button
                         onClick={() => setEditorMode('edit')}
                         className={cn(
-                          "flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md transition-all",
+                          "flex items-center gap-1 px-2 py-1 text-xs font-medium rounded transition-all",
                           editorMode === 'edit' 
-                            ? "bg-white text-zinc-900 shadow-sm" 
+                            ? "bg-white text-slate-900 shadow-sm" 
                             : "text-slate-500 hover:text-slate-700"
                         )}
                       >
@@ -446,12 +440,14 @@ export default function ManuscriptEditorPage() {
                   )}
                 </div>
                 {hasChanges && (
-                  <span className="text-[10px] font-bold text-zinc-700 bg-zinc-100 px-2 py-0.5 rounded-full border border-zinc-200 uppercase tracking-tighter">
+                  <span className="text-[10px] font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
                     未保存
                   </span>
                 )}
               </div>
-              <div className="flex-1 min-h-0">
+              
+              {/* 编辑器内容区 */}
+              <div className="min-h-[500px]">
                 <TiptapEditor
                   content={content}
                   onChange={handleContentChange}
@@ -461,16 +457,16 @@ export default function ManuscriptEditorPage() {
                   knowledgeBaseId={kbId}
                   mode={editorMode}
                   onModeChange={setEditorMode}
-                  className="h-full"
+                  className="min-h-[500px]"
                 />
               </div>
             </div>
           </div>
         </main>
 
-        {/* AI 侧边栏 - 独立悬浮层感 */}
+        {/* AI 侧边栏 - 固定在右侧 */}
         <div className={cn(
-          "absolute right-0 top-0 bottom-0 z-40 transition-transform duration-500 ease-[cubic-bezier(0.2,0.8,0.2,1)] shadow-2xl",
+          "fixed right-0 top-14 bottom-0 w-[420px] z-40 transition-transform duration-300 ease-out bg-white border-l border-slate-200 shadow-lg",
           aiSidebarOpen ? "translate-x-0" : "translate-x-full"
         )}>
           <AISidebar
