@@ -108,6 +108,38 @@ function parseMarkdown(md: string): string {
   
   content = filteredLines.join('\n');
   
+  // 使用占位符保护代码块内容，避免被后续处理影响
+  const codeBlocks: string[] = [];
+  const CODE_PLACEHOLDER = '___CODE_BLOCK_PLACEHOLDER___';
+  
+  // 处理多行代码块 ```lang ... ```（必须在表格处理之前）
+  const codeBlockRegex = /```\s*(\w*)\s*\n([\s\S]*?)```/g;
+  content = content.replace(codeBlockRegex, (_, lang, code) => {
+    const langLabel = lang?.trim() || 'code';
+    const escapedCode = code
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .trimEnd();
+    
+    const codeBlockHtml = `<div class="my-4 rounded-lg overflow-hidden border border-zinc-300 shadow-sm"><div class="bg-zinc-800 px-4 py-2 flex items-center justify-between"><span class="text-xs text-zinc-400 font-mono uppercase">${langLabel}</span></div><pre class="bg-zinc-900 p-4 overflow-x-auto text-sm leading-relaxed" style="color:#ffffff"><code class="text-white font-mono whitespace-pre" style="color:#ffffff">${escapedCode}</code></pre></div>`;
+    
+    codeBlocks.push(codeBlockHtml);
+    return `${CODE_PLACEHOLDER}${codeBlocks.length - 1}${CODE_PLACEHOLDER}`;
+  });
+  
+  // 处理行内 ``` 的情况（没有换行的短代码块）
+  content = content.replace(/```([^`]+)```/g, (_, code) => {
+    const escapedCode = code.trim()
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    const codeHtml = `<code class="px-2 py-1 bg-zinc-800 rounded text-sm font-mono text-zinc-100" style="color:#ffffff">${escapedCode}</code>`;
+    codeBlocks.push(codeHtml);
+    return `${CODE_PLACEHOLDER}${codeBlocks.length - 1}${CODE_PLACEHOLDER}`;
+  });
+
   // 处理 Markdown 表格
   const tableRegex = /(\|[^\n]+\|\n)+/g;
   content = content.replace(tableRegex, (tableBlock) => {
@@ -145,7 +177,9 @@ function parseMarkdown(md: string): string {
   });
   
   let html = content
-    // 标题 - 简洁商务主题
+    // 标题 - 从多到少处理，避免 #### 被 ### 先匹配
+    .replace(/^##### (.+)$/gm, '<h5 class="text-base font-semibold text-zinc-600 mt-3 mb-2">$1</h5>')
+    .replace(/^#### (.+)$/gm, '<h4 class="text-lg font-semibold text-zinc-700 mt-4 mb-2">$1</h4>')
     .replace(/^### (.+)$/gm, '<h3 class="text-xl font-semibold text-zinc-700 mt-4 mb-3">$1</h3>')
     .replace(/^## (.+)$/gm, '<h2 class="text-2xl font-bold text-zinc-800 mt-6 mb-3 pb-2 border-b-2 border-zinc-200">$1</h2>')
     .replace(/^# (.+)$/gm, '<h1 class="text-4xl font-bold text-zinc-900 mb-6 tracking-tight">$1</h1>')
@@ -181,6 +215,11 @@ function parseMarkdown(md: string): string {
 
   // 渲染 LaTeX 公式
   html = renderLatex(html);
+
+  // 将占位符替换回实际的代码块 HTML
+  html = html.replace(new RegExp(`${CODE_PLACEHOLDER}(\\d+)${CODE_PLACEHOLDER}`, 'g'), (_, index) => {
+    return codeBlocks[parseInt(index, 10)] || '';
+  });
 
   return `<div class="slide-content text-lg"><p class="text-gray-700 leading-relaxed my-3">${html}</p></div>`;
 }

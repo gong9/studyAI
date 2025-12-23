@@ -51,10 +51,12 @@ export async function GET(
         id: manuscript.chapter.id,
         title: manuscript.chapter.title,
         level: manuscript.chapter.level,
+        metadata: manuscript.chapter.metadata ? JSON.parse(manuscript.chapter.metadata) : null,
       },
       knowledgeBase: {
         id: manuscript.knowledgeBase.id,
         name: manuscript.knowledgeBase.name,
+        type: manuscript.knowledgeBase.type,
       },
       teachingPlan,
       draftContent: manuscript.draftContent,

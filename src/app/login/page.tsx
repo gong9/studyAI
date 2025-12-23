@@ -10,10 +10,16 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { LayoutDashboard } from 'lucide-react';
 
+// ========== 临时预填账号配置 ==========
+// TODO: 上线前删除此配置
+const DEFAULT_USERNAME = '18201188804';
+const DEFAULT_PASSWORD = 'gongzhen123';
+// =====================================
+
 export default function LoginPage() {
   const router = useRouter();
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const [username, setUsername] = useState(DEFAULT_USERNAME);
+  const [password, setPassword] = useState(DEFAULT_PASSWORD);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 

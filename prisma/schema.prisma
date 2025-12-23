@@ -352,6 +352,9 @@ model TeachingManuscript {
   // 讲解稿（JSON 格式，存储 LectureAction 指令序列）
   lectureScript   String?
   
+  // 预加载音频缓存（JSON 格式：{ "text_hash": "base64_audio", ... }）
+  cachedAudio     String?
+  
   // 关联课程
   course          Course?
   
@@ -382,10 +385,29 @@ model Course {
   status          String        @default("draft")    // draft | published
   viewCount       Int           @default(0)          // 观看次数
   
+  // 分享
+  shares          CourseShare[]
+  
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   
   @@index([status])
+}
+
+// 课程分享链接
+model CourseShare {
+  id         String    @id @default(uuid())
+  courseId   String
+  course     Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  
+  password   String                              // bcrypt 加密存储
+  expiresAt  DateTime?                           // 可选过期时间
+  viewCount  Int       @default(0)               // 访问次数
+  isActive   Boolean   @default(true)            // 是否有效
+  
+  createdAt  DateTime  @default(now())
+  
+  @@index([courseId])
 }
 
 // 课件生成记录

@@ -9,8 +9,11 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { existsSync, readFileSync } from 'fs';
+import { join } from 'path';
 
 const MINIMAX_API_BASE = 'https://api.minimaxi.com';
+const CLONED_VOICE_CONFIG_PATH = join(process.cwd(), 'cloned-voice-config.json');
 
 // 课程帧类型
 interface CourseFrame {
@@ -32,9 +35,27 @@ function getApiKey(): string {
   return apiKey;
 }
 
+// 获取当前使用的音色 ID（优先使用复刻音色）
+function getActiveVoiceId(): string {
+  try {
+    if (existsSync(CLONED_VOICE_CONFIG_PATH)) {
+      const content = readFileSync(CLONED_VOICE_CONFIG_PATH, 'utf-8');
+      const config = JSON.parse(content);
+      if (config.voiceId) {
+        console.log('[Publish] 使用复刻音色:', config.voiceId);
+        return config.voiceId;
+      }
+    }
+  } catch (error) {
+    console.error('[Publish] 读取复刻音色配置失败:', error);
+  }
+  return 'male-qn-qingse'; // 默认音色
+}
+
 // 调用 TTS 并返回音频 base64
 async function generateTTSAudio(text: string): Promise<{ base64: string; duration: number }> {
   const apiKey = getApiKey();
+  const voiceId = getActiveVoiceId(); // 使用复刻音色或默认音色
   
   const response = await fetch(`${MINIMAX_API_BASE}/v1/t2a_v2`, {
     method: 'POST',
@@ -48,7 +69,7 @@ async function generateTTSAudio(text: string): Promise<{ base64: string; duratio
       stream: false,
       language_boost: 'auto',
       voice_setting: {
-        voice_id: 'male-qn-qingse',
+        voice_id: voiceId,
         speed: 1,
         vol: 1,
         pitch: 0,
@@ -94,10 +115,14 @@ export async function POST(
 ) {
   try {
     const { id: manuscriptId } = await params;
+    
+    // 解析请求参数
+    const body = await request.json().catch(() => ({}));
+    const forceRegenerate = body.force === true; // 是否强制重新发布
 
-    console.log('[Publish] 开始发布课程:', manuscriptId);
+    console.log('[Publish] 开始发布课程:', manuscriptId, forceRegenerate ? '(强制重新生成)' : '');
 
-    // 1. 获取手稿数据
+    // 1. 获取手稿数据（包括缓存的音频）
     const manuscript = await prisma.teachingManuscript.findUnique({
       where: { id: manuscriptId },
       include: {
@@ -115,12 +140,20 @@ export async function POST(
     });
     
     if (existingCourse) {
-      return NextResponse.json({
-        success: true,
-        courseId: existingCourse.id,
-        message: '课程已存在',
-        isExisting: true,
-      });
+      if (forceRegenerate) {
+        // 强制重新发布：删除旧课程
+        console.log('[Publish] 删除旧课程:', existingCourse.id);
+        await prisma.course.delete({
+          where: { id: existingCourse.id },
+        });
+      } else {
+        return NextResponse.json({
+          success: true,
+          courseId: existingCourse.id,
+          message: '课程已存在',
+          isExisting: true,
+        });
+      }
     }
 
     // 检查必要数据
@@ -163,25 +196,54 @@ export async function POST(
 
     console.log(`[Publish] 需要生成 ${speakTexts.length} 条语音`);
 
-    // 批量生成 TTS（顺序执行，避免并发过多）
+    // 读取已缓存的音频（来自演示时的预加载）
+    let audioCache: Record<string, string> = {};
+    if (manuscript.cachedAudio) {
+      try {
+        audioCache = JSON.parse(manuscript.cachedAudio);
+        console.log(`[Publish] 发现 ${Object.keys(audioCache).length} 条已缓存的音频`);
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    // 批量生成 TTS
+    // 注意：暂时不使用缓存，因为缓存中没有保存时长信息，会导致视频节奏不对
+    // TODO: 改进缓存结构，同时保存 { base64, duration }
     const audioResults: Map<string, { base64: string; duration: number }> = new Map();
+    let cacheHitCount = 0;
+    let generateCount = 0;
     
     for (let i = 0; i < speakTexts.length; i++) {
       const item = speakTexts[i];
       const key = `${item.slideIdx}-${item.actionIdx}`;
       
-      console.log(`[Publish] 生成语音 ${i + 1}/${speakTexts.length}: ${item.text.substring(0, 30)}...`);
+      // 暂时禁用缓存，直接生成音频以获取准确时长
+      // TODO: 未来可以改进缓存结构来复用
+      /*
+      if (audioCache[item.text]) {
+        console.log(`[Publish] ✓ 使用缓存 ${i + 1}/${speakTexts.length}: ${item.text.substring(0, 30)}...`);
+        // 缓存里只有 base64，没有时长信息
+        audioResults.set(key, { base64: audioCache[item.text], duration: ??? });
+        cacheHitCount++;
+        continue;
+      }
+      */
+      
+      // 调用 TTS 生成（包含准确的时长信息）
+      console.log(`[Publish] → 生成语音 ${i + 1}/${speakTexts.length}: ${item.text.substring(0, 30)}...`);
       
       try {
         const result = await generateTTSAudio(item.text);
         audioResults.set(key, result);
+        generateCount++;
       } catch (error: any) {
         console.error(`[Publish] 语音生成失败:`, error.message);
         // 继续处理其他语音，失败的跳过
       }
     }
 
-    console.log(`[Publish] 语音生成完成: ${audioResults.size}/${speakTexts.length}`);
+    console.log(`[Publish] 语音生成完成: ${generateCount} 条, 总计 ${audioResults.size}/${speakTexts.length}`);
 
     // 4. 构建帧序列
     let currentSlideIndex = 0;

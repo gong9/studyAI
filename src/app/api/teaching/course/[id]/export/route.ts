@@ -14,8 +14,15 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 
-// 设置 ffmpeg 路径 - 在 Next.js 中直接使用 node_modules 下的路径
-const ffmpegPath = path.join(process.cwd(), 'node_modules', 'ffmpeg-static', 'ffmpeg');
+// 设置 ffmpeg 路径 - 优先使用系统安装的，否则使用 node_modules 下的
+import { existsSync } from 'fs';
+
+const systemFfmpegPath = '/usr/local/bin/ffmpeg';
+const nodeModulesFfmpegPath = path.join(process.cwd(), 'node_modules', 'ffmpeg-static', 'ffmpeg');
+
+// 优先使用系统 ffmpeg（线上环境），否则使用 node_modules 里的（本地开发）
+const ffmpegPath = existsSync(systemFfmpegPath) ? systemFfmpegPath : nodeModulesFfmpegPath;
+console.log('[Export] 使用 ffmpeg:', ffmpegPath);
 ffmpeg.setFfmpegPath(ffmpegPath);
 
 // 导出选项类型
@@ -52,6 +59,7 @@ const RESOLUTION_CONFIG = {
 interface CourseFrame {
   slideIndex: number;
   action: 'speak' | 'highlight' | 'next_slide' | 'end';
+  text?: string;           // 字幕文本
   audioIndex?: number;
   audioDuration?: number;
   timestamp: number;
@@ -79,15 +87,26 @@ async function writeBase64ToFile(base64: string, filePath: string): Promise<void
   await fs.writeFile(filePath, buffer);
 }
 
-// 计算每页 PPT 的显示时长
-function calculateSlideDurations(frames: CourseFrame[], slideCount: number): number[] {
+// 计算每页 PPT 的显示时长（使用实际音频时长）
+function calculateSlideDurations(
+  frames: CourseFrame[], 
+  slideCount: number,
+  actualAudioDurations: Map<number, number> // 实际音频时长
+): number[] {
   const durations: number[] = new Array(slideCount).fill(0);
   
   for (let i = 0; i < frames.length; i++) {
     const frame = frames[i];
     
-    if (frame.action === 'speak' && frame.audioDuration) {
-      durations[frame.slideIndex] += frame.audioDuration;
+    if (frame.action === 'speak' && frame.audioIndex !== undefined) {
+      // 使用实际音频时长，而不是保存的 audioDuration
+      const actualDuration = actualAudioDurations.get(frame.audioIndex);
+      if (actualDuration) {
+        durations[frame.slideIndex] += actualDuration;
+      } else if (frame.audioDuration) {
+        // 降级：如果没有实际时长，使用保存的值
+        durations[frame.slideIndex] += frame.audioDuration;
+      }
     } else if (frame.action === 'next_slide') {
       // 翻页动画时间
       durations[frame.slideIndex] += 500;
@@ -98,12 +117,20 @@ function calculateSlideDurations(frames: CourseFrame[], slideCount: number): num
   return durations.map(d => Math.max(d, 1000));
 }
 
-// 合并所有音频
+// 合并所有音频，并返回每个音频的时长（从 frames 中获取）
 async function mergeAudios(
   audioData: { [key: number]: string },
   frames: CourseFrame[],
   tempDir: string
-): Promise<string> {
+): Promise<{ mergedPath: string; audioDurations: Map<number, number> }> {
+  // 从 frames 中提取音频时长（发布时保存的准确值）
+  const audioDurations: Map<number, number> = new Map();
+  for (const frame of frames) {
+    if (frame.action === 'speak' && frame.audioIndex !== undefined && frame.audioDuration) {
+      audioDurations.set(frame.audioIndex, frame.audioDuration);
+    }
+  }
+
   // 按顺序收集所有音频索引
   const audioIndexes: number[] = [];
   for (const frame of frames) {
@@ -118,11 +145,13 @@ async function mergeAudios(
 
   // 写入所有音频文件
   const audioFiles: string[] = [];
+  
   for (const idx of audioIndexes) {
     if (audioData[idx]) {
       const audioPath = path.join(tempDir, `audio_${idx}.mp3`);
       await writeBase64ToFile(audioData[idx], audioPath);
       audioFiles.push(audioPath);
+      console.log(`[Export] 音频 ${idx} 时长: ${audioDurations.get(idx) || 0}ms`);
     }
   }
 
@@ -145,7 +174,52 @@ async function mergeAudios(
       .run();
   });
 
-  return mergedAudioPath;
+  return { mergedPath: mergedAudioPath, audioDurations };
+}
+
+// 生成 SRT 字幕文件
+async function generateSubtitles(
+  frames: CourseFrame[],
+  audioDurations: Map<number, number>,
+  tempDir: string
+): Promise<string> {
+  const srtPath = path.join(tempDir, 'subtitles.srt');
+  const subtitles: string[] = [];
+  
+  let currentTime = 0; // 当前时间（毫秒）
+  let subtitleIndex = 1;
+  
+  for (const frame of frames) {
+    if (frame.action === 'speak' && frame.text && frame.audioIndex !== undefined) {
+      const duration = audioDurations.get(frame.audioIndex) || frame.audioDuration || 3000;
+      const startTime = currentTime;
+      const endTime = currentTime + duration;
+      
+      // 格式化时间为 SRT 格式: 00:00:00,000
+      const formatTime = (ms: number) => {
+        const hours = Math.floor(ms / 3600000);
+        const minutes = Math.floor((ms % 3600000) / 60000);
+        const seconds = Math.floor((ms % 60000) / 1000);
+        const milliseconds = ms % 1000;
+        return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')},${milliseconds.toString().padStart(3, '0')}`;
+      };
+      
+      subtitles.push(`${subtitleIndex}`);
+      subtitles.push(`${formatTime(startTime)} --> ${formatTime(endTime)}`);
+      subtitles.push(frame.text);
+      subtitles.push('');
+      
+      subtitleIndex++;
+      currentTime = endTime;
+    } else if (frame.action === 'next_slide') {
+      currentTime += 500; // 翻页时间
+    }
+  }
+  
+  await fs.writeFile(srtPath, subtitles.join('\n'), 'utf-8');
+  console.log(`[Export] 生成字幕文件: ${subtitleIndex - 1} 条字幕`);
+  
+  return srtPath;
 }
 
 // 生成视频
@@ -153,6 +227,7 @@ async function generateVideo(
   slides: string[],
   slideDurations: number[],
   mergedAudioPath: string,
+  subtitlePath: string,
   tempDir: string,
   options: ExportOptions
 ): Promise<string> {
@@ -220,21 +295,46 @@ async function generateVideo(
       .run();
   });
 
-  // 合并视频和音频
-  console.log('[Export] 合并视频和音频...');
+  // 合并视频、音频和字幕
+  console.log('[Export] 合并视频、音频和字幕...');
   const finalVideoPath = path.join(tempDir, 'final.mp4');
+  
+  // 字幕样式：底部居中，白色文字，黑色描边
+  // 使用 subtitles 滤镜烧录字幕
+  // 注意：路径中的特殊字符需要转义
+  const escapedSubtitlePath = subtitlePath.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'");
+  const subtitleFilter = `subtitles='${escapedSubtitlePath}':force_style='FontSize=22,PrimaryColour=&HFFFFFF,OutlineColour=&H000000,BorderStyle=1,Outline=2,Shadow=1,MarginV=25,Alignment=2'`;
+  
   await new Promise<void>((resolve, reject) => {
     ffmpeg()
       .input(videoOnlyPath)
       .input(mergedAudioPath)
       .outputOptions([
-        '-c:v', 'copy',
+        '-c:v', 'libx264',
+        '-preset', preset.preset,
+        '-crf', preset.crf,
+        '-vf', subtitleFilter,
         '-c:a', 'aac',
         '-shortest',
       ])
       .output(finalVideoPath)
       .on('end', () => resolve())
-      .on('error', (err) => reject(err))
+      .on('error', (err) => {
+        console.error('[Export] 字幕合成失败，尝试不带字幕导出:', err.message);
+        // 如果字幕合成失败，尝试不带字幕的版本
+        ffmpeg()
+          .input(videoOnlyPath)
+          .input(mergedAudioPath)
+          .outputOptions([
+            '-c:v', 'copy',
+            '-c:a', 'aac',
+            '-shortest',
+          ])
+          .output(finalVideoPath)
+          .on('end', () => resolve())
+          .on('error', (err2) => reject(err2))
+          .run();
+      })
       .run();
   });
 
@@ -280,19 +380,23 @@ export async function POST(
     tempDir = await createTempDir();
     console.log('[Export] 临时目录:', tempDir);
 
-    // 计算每页时长
-    const slideDurations = calculateSlideDurations(frames, slides.length);
+    // 合并音频（同时获取每段音频的实际时长）
+    console.log('[Export] 合并音频...');
+    const { mergedPath: mergedAudioPath, audioDurations } = await mergeAudios(audioData, frames, tempDir);
+    console.log('[Export] 音频合并完成');
+
+    // 计算每页时长（使用实际音频时长）
+    const slideDurations = calculateSlideDurations(frames, slides.length, audioDurations);
     const totalDuration = slideDurations.reduce((a, b) => a + b, 0) / 1000;
     console.log('[Export] 总时长:', `${totalDuration.toFixed(1)}s`);
 
-    // 合并音频
-    console.log('[Export] 合并音频...');
-    const mergedAudioPath = await mergeAudios(audioData, frames, tempDir);
-    console.log('[Export] 音频合并完成');
+    // 生成字幕文件
+    console.log('[Export] 生成字幕...');
+    const subtitlePath = await generateSubtitles(frames, audioDurations, tempDir);
 
-    // 生成视频
+    // 生成视频（包含字幕）
     console.log('[Export] 生成视频...');
-    const videoPath = await generateVideo(slides, slideDurations, mergedAudioPath, tempDir, options);
+    const videoPath = await generateVideo(slides, slideDurations, mergedAudioPath, subtitlePath, tempDir, options);
     console.log('[Export] 视频生成完成');
 
     // 读取视频文件

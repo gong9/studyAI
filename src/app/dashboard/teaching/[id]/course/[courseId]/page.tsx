@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { 
   ArrowLeft, Loader2, Play, Pause, SkipBack, SkipForward,
-  Volume2, VolumeX, Maximize2, Minimize2, Download
+  Volume2, VolumeX, Maximize2, Minimize2, Download, Share2, Copy, Check, X
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -59,6 +59,14 @@ export default function CoursePlayerPage() {
   const [showExportOptions, setShowExportOptions] = useState(false);
   const [exportQuality, setExportQuality] = useState<'fast' | 'balanced' | 'high'>('fast');
   const [exportResolution, setExportResolution] = useState<'720p' | '1080p'>('1080p');
+  
+  // 分享状态
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [sharePassword, setSharePassword] = useState('');
+  const [shareExpiresInDays, setShareExpiresInDays] = useState(7);
+  const [isCreatingShare, setIsCreatingShare] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [shareCopied, setShareCopied] = useState(false);
 
   // Refs
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -298,6 +306,59 @@ export default function CoursePlayerPage() {
     }
   };
 
+  // 创建分享
+  const createShare = async () => {
+    if (!sharePassword || sharePassword.length < 4) {
+      alert('密码至少4位');
+      return;
+    }
+    
+    setIsCreatingShare(true);
+    try {
+      const res = await fetch(`/api/teaching/course/${courseId}/share`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          password: sharePassword,
+          expiresInDays: shareExpiresInDays,
+        }),
+      });
+      
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || '创建失败');
+      }
+      
+      const data = await res.json();
+      setShareUrl(data.shareUrl);
+    } catch (error: any) {
+      console.error('创建分享失败:', error);
+      alert('创建分享失败: ' + error.message);
+    } finally {
+      setIsCreatingShare(false);
+    }
+  };
+
+  // 复制分享链接
+  const copyShareUrl = async () => {
+    if (!shareUrl) return;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2000);
+    } catch (err) {
+      console.error('复制失败:', err);
+    }
+  };
+
+  // 关闭分享弹窗
+  const closeShareModal = () => {
+    setShowShareModal(false);
+    setSharePassword('');
+    setShareUrl(null);
+    setShareCopied(false);
+  };
+
   // 计算进度
   const progress = course ? (currentTime / course.duration) * 100 : 0;
 
@@ -451,7 +512,151 @@ export default function CoursePlayerPage() {
             </div>
           )}
         </div>
+        
+        {/* 分享按钮 */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setShowShareModal(true)}
+          className="bg-green-500/20 border-green-400/50 text-green-300 hover:bg-green-500/30"
+        >
+          <Share2 className="h-4 w-4 mr-2" />
+          分享课程
+        </Button>
       </header>
+      
+      {/* 分享弹窗 */}
+      {showShareModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-semibold text-white">分享课程</h2>
+              <button
+                onClick={closeShareModal}
+                className="text-zinc-400 hover:text-white"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            
+            {!shareUrl ? (
+              <>
+                {/* 设置密码 */}
+                <div className="mb-4">
+                  <label className="text-sm text-zinc-400 mb-2 block">设置访问密码</label>
+                  <input
+                    type="text"
+                    value={sharePassword}
+                    onChange={(e) => setSharePassword(e.target.value)}
+                    placeholder="至少4位密码"
+                    className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-green-500"
+                  />
+                </div>
+                
+                {/* 有效期 */}
+                <div className="mb-6">
+                  <label className="text-sm text-zinc-400 mb-2 block">有效期</label>
+                  <div className="flex gap-2">
+                    {[
+                      { value: 7, label: '7天' },
+                      { value: 30, label: '30天' },
+                      { value: 0, label: '永久' },
+                    ].map((opt) => (
+                      <button
+                        key={opt.value}
+                        onClick={() => setShareExpiresInDays(opt.value)}
+                        className={cn(
+                          "flex-1 py-2 px-3 rounded-lg text-sm transition-colors",
+                          shareExpiresInDays === opt.value
+                            ? "bg-green-500/20 border border-green-400/50 text-green-300"
+                            : "bg-zinc-800 border border-zinc-700 text-zinc-400 hover:bg-zinc-700"
+                        )}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                
+                {/* 创建按钮 */}
+                <Button
+                  onClick={createShare}
+                  disabled={isCreatingShare || sharePassword.length < 4}
+                  className="w-full bg-green-600 hover:bg-green-700 text-white"
+                >
+                  {isCreatingShare ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      创建中...
+                    </>
+                  ) : (
+                    <>
+                      <Share2 className="h-4 w-4 mr-2" />
+                      生成分享链接
+                    </>
+                  )}
+                </Button>
+              </>
+            ) : (
+              <>
+                {/* 分享成功 */}
+                <div className="text-center mb-6">
+                  <div className="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Check className="h-8 w-8 text-green-400" />
+                  </div>
+                  <p className="text-green-400 font-medium">分享链接已生成</p>
+                </div>
+                
+                {/* 链接展示 */}
+                <div className="mb-4">
+                  <label className="text-sm text-zinc-400 mb-2 block">分享链接</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={shareUrl}
+                      readOnly
+                      className="flex-1 px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm truncate"
+                    />
+                    <Button
+                      onClick={copyShareUrl}
+                      className={cn(
+                        "px-4",
+                        shareCopied
+                          ? "bg-green-600 hover:bg-green-700"
+                          : "bg-zinc-700 hover:bg-zinc-600"
+                      )}
+                    >
+                      {shareCopied ? (
+                        <Check className="h-4 w-4" />
+                      ) : (
+                        <Copy className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+                
+                {/* 密码提示 */}
+                <div className="bg-zinc-800 rounded-lg p-4 mb-6">
+                  <p className="text-sm text-zinc-400">
+                    访问密码: <span className="text-white font-mono">{sharePassword}</span>
+                  </p>
+                  <p className="text-xs text-zinc-500 mt-1">
+                    请将链接和密码一起发送给他人
+                  </p>
+                </div>
+                
+                {/* 完成按钮 */}
+                <Button
+                  onClick={closeShareModal}
+                  className="w-full bg-zinc-700 hover:bg-zinc-600 text-white"
+                >
+                  完成
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* 主内容区 */}
       <div className={cn(

@@ -71,6 +71,18 @@ const config: Config = {
               marginBottom: '0.5rem',
               color: '#6366f1',
             },
+            pre: {
+              backgroundColor: '#18181b',
+              color: '#ffffff',
+            },
+            code: {
+              color: '#ffffff',
+              backgroundColor: 'transparent',
+            },
+            'pre code': {
+              color: '#ffffff',
+              backgroundColor: 'transparent',
+            },
           },
         },
       },

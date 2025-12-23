@@ -6,11 +6,12 @@ import { Button } from '@/components/ui/button';
 import { 
   ArrowLeft, Loader2, ChevronLeft, ChevronRight,
   Presentation, Play, Pause, Square, Volume2, Maximize2, Minimize2,
-  Mic, MicOff, MessageCircle, Sparkles, Image, Download, Radio
+  Mic, MicOff, MessageCircle, Sparkles, Image, Download, Radio, Camera, Hand
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
+import { FaceLandmarker, HandLandmarker, FilesetResolver, DrawingUtils } from '@mediapipe/tasks-vision';
 
 // ====== 定义 PPT 控制 API 类型 ======
 interface PPTApi {
@@ -101,6 +102,38 @@ function parseMarkdown(md: string, slideIndex: number): string {
   
   content = filteredLines.join('\n');
   
+  // 使用占位符保护代码块内容，避免被后续处理影响
+  const codeBlocks: string[] = [];
+  const CODE_PLACEHOLDER = '___CODE_BLOCK_PLACEHOLDER___';
+  
+  // 处理多行代码块 ```lang ... ```（支持各种格式）
+  const codeBlockRegex = /```\s*(\w*)\s*\n([\s\S]*?)```/g;
+  content = content.replace(codeBlockRegex, (_, lang, code) => {
+    const langLabel = lang?.trim() || 'code';
+    const escapedCode = code
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .trimEnd();
+    
+    const codeBlockHtml = `<div class="my-4 rounded-lg overflow-hidden border border-zinc-300 shadow-sm"><div class="bg-zinc-800 px-4 py-2 flex items-center justify-between"><span class="text-xs text-zinc-400 font-mono uppercase">${langLabel}</span></div><pre class="bg-zinc-900 p-4 overflow-x-auto text-sm leading-relaxed" style="color:#ffffff"><code class="text-white font-mono whitespace-pre" style="color:#ffffff">${escapedCode}</code></pre></div>`;
+    
+    codeBlocks.push(codeBlockHtml);
+    return `${CODE_PLACEHOLDER}${codeBlocks.length - 1}${CODE_PLACEHOLDER}`;
+  });
+  
+  // 处理行内 ``` 的情况（没有换行的短代码块）
+  content = content.replace(/```([^`]+)```/g, (_, code) => {
+    const escapedCode = code.trim()
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    const codeHtml = `<code class="px-2 py-1 bg-zinc-800 rounded text-sm font-mono text-zinc-100" style="color:#ffffff">${escapedCode}</code>`;
+    codeBlocks.push(codeHtml);
+    return `${CODE_PLACEHOLDER}${codeBlocks.length - 1}${CODE_PLACEHOLDER}`;
+  });
+
   // 处理 Markdown 表格
   const tableRegex = /(\|[^\n]+\|\n)+/g;
   content = content.replace(tableRegex, (tableBlock) => {
@@ -138,7 +171,9 @@ function parseMarkdown(md: string, slideIndex: number): string {
   const getDataId = () => `slide-${slideIndex}-el-${elementIndex++}`;
 
   let html = content
-    // 标题
+    // 标题（从多到少处理，避免 #### 被 ### 先匹配）
+    .replace(/^##### (.+)$/gm, (_, t) => `<h5 data-id="${getDataId()}" class="text-base font-semibold text-zinc-600 mt-3 mb-2 ppt-element">${t}</h5>`)
+    .replace(/^#### (.+)$/gm, (_, t) => `<h4 data-id="${getDataId()}" class="text-lg font-semibold text-zinc-700 mt-4 mb-2 ppt-element">${t}</h4>`)
     .replace(/^### (.+)$/gm, (_, t) => `<h3 data-id="${getDataId()}" class="text-xl font-semibold text-zinc-700 mt-4 mb-3 ppt-element">${t}</h3>`)
     .replace(/^## (.+)$/gm, (_, t) => `<h2 data-id="${getDataId()}" class="text-2xl font-bold text-zinc-800 mt-6 mb-3 pb-2 border-b-2 border-zinc-200 ppt-element">${t}</h2>`)
     .replace(/^# (.+)$/gm, (_, t) => `<h1 data-id="${getDataId()}" class="text-4xl font-bold text-zinc-900 mb-6 tracking-tight ppt-element">${t}</h1>`)
@@ -164,6 +199,11 @@ function parseMarkdown(md: string, slideIndex: number): string {
 
   // 渲染 LaTeX 公式
   html = renderLatex(html);
+
+  // 将占位符替换回实际的代码块 HTML
+  html = html.replace(new RegExp(`${CODE_PLACEHOLDER}(\\d+)${CODE_PLACEHOLDER}`, 'g'), (_, index) => {
+    return codeBlocks[parseInt(index, 10)] || '';
+  });
 
   return `<div class="slide-content text-lg"><p class="text-gray-700 leading-relaxed my-3">${html}</p></div>`;
 }
@@ -193,6 +233,7 @@ export default function PresentationPage() {
   // MiniMax TTS 音频播放
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioMapRef = useRef<Map<string, string>>(new Map()); // text -> audioUrl 预加载缓存
+  const audioCacheToSaveRef = useRef<Map<string, string>>(new Map()); // text -> base64 待保存的缓存
   
   // 高亮状态
   const [highlightedElement, setHighlightedElement] = useState<string | null>(null);
@@ -235,6 +276,19 @@ export default function PresentationPage() {
   const recognitionRef = useRef<any>(null);
   const [isListeningEnabled, setIsListeningEnabled] = useState(false);
   const listeningTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // ====== MediaPipe 学生检测状态 ======
+  const [cameraEnabled, setCameraEnabled] = useState(false);
+  const [mediaPipeReady, setMediaPipeReady] = useState(false);
+  const [detectionStatus, setDetectionStatus] = useState('');
+  const studentVideoRef = useRef<HTMLVideoElement>(null);
+  const skeletonCanvasRef = useRef<HTMLCanvasElement>(null);  // 骨架绘制 canvas
+  const faceLandmarkerRef = useRef<FaceLandmarker | null>(null);
+  const handLandmarkerRef = useRef<HandLandmarker | null>(null);
+  const detectionLoopRef = useRef<number | null>(null);
+  const handRaisedStartRef = useRef<number | null>(null);
+  const lastFrownAlertRef = useRef<number>(0);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
   
   // 用 refs 保存最新状态（解决闭包问题）
   const interactionModeRef = useRef(interactionMode);
@@ -295,11 +349,65 @@ export default function PresentationPage() {
       const result = await response.json();
       if (result.audioUrl) {
         audioMapRef.current.set(text, result.audioUrl);
+        // 同时存储 base64 数据用于入库
+        if (result.audioBase64) {
+          audioCacheToSaveRef.current.set(text, result.audioBase64);
+        }
         console.log('[TTS] 预加载成功:', text.substring(0, 30) + '...');
       }
     } catch (error) {
       console.error('[TTS] 预加载失败:', text.substring(0, 30), error);
     }
+  };
+  
+  // 保存音频缓存到数据库
+  const saveAudioCache = async (): Promise<void> => {
+    if (audioCacheToSaveRef.current.size === 0) return;
+    
+    const audioMap: Record<string, string> = {};
+    audioCacheToSaveRef.current.forEach((base64, text) => {
+      audioMap[text] = base64;
+    });
+    
+    try {
+      const response = await fetch(`/api/teaching/manuscript/${manuscriptId}/audio-cache`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ audioMap }),
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        console.log(`[TTS] 音频缓存已保存: ${result.addedCount} 条新增，共 ${result.totalCount} 条`);
+        audioCacheToSaveRef.current.clear();
+      }
+    } catch (error) {
+      console.error('[TTS] 保存音频缓存失败:', error);
+    }
+  };
+  
+  // 从数据库加载音频缓存
+  const loadAudioCache = async (): Promise<number> => {
+    try {
+      const response = await fetch(`/api/teaching/manuscript/${manuscriptId}/audio-cache`);
+      if (response.ok) {
+        const result = await response.json();
+        if (result.audioCache && typeof result.audioCache === 'object') {
+          // 将缓存的 base64 转为 data URL 存入 audioMapRef
+          let loadedCount = 0;
+          Object.entries(result.audioCache).forEach(([text, base64]) => {
+            const audioUrl = `data:audio/mp3;base64,${base64}`;
+            audioMapRef.current.set(text, audioUrl);
+            loadedCount++;
+          });
+          console.log(`[TTS] 从缓存加载了 ${loadedCount} 条音频`);
+          return loadedCount;
+        }
+      }
+    } catch (error) {
+      console.error('[TTS] 加载音频缓存失败:', error);
+    }
+    return 0;
   };
   
   // 预加载前 N 条音频（快速启动）
@@ -344,6 +452,9 @@ export default function PresentationPage() {
     
     preloadRemainingAudioRef.current = false;
     console.log('[TTS] 后台加载完成');
+    
+    // 保存音频缓存到数据库
+    await saveAudioCache();
   };
   
   // 停止后台预加载
@@ -683,6 +794,16 @@ export default function PresentationPage() {
           setHasLectureScript(true);
         }
         
+        // 加载音频缓存（如果有）
+        try {
+          const cachedCount = await loadAudioCache();
+          if (cachedCount > 0) {
+            console.log(`[Presentation] 从缓存加载了 ${cachedCount} 条音频`);
+          }
+        } catch (e) {
+          console.error('[Presentation] Failed to load audio cache:', e);
+        }
+        
         // 检查是否已发布课程
         try {
           const publishRes = await fetch(`/api/teaching/manuscript/${manuscriptId}/publish`);
@@ -790,7 +911,7 @@ export default function PresentationPage() {
   };
 
   // 发布为课程
-  const publishCourse = async () => {
+  const publishCourse = async (force: boolean = false) => {
     if (bananaImages.length === 0 || !hasLectureScript) {
       alert('请先生成精美PPT和讲解稿');
       return;
@@ -800,6 +921,8 @@ export default function PresentationPage() {
     try {
       const res = await fetch(`/api/teaching/manuscript/${manuscriptId}/publish`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force }),
       });
       
       if (!res.ok) {
@@ -921,6 +1044,11 @@ export default function PresentationPage() {
   
   // 开始 LLM 驱动的讲解（使用 SSE 获取进度）
   const startLecture = async () => {
+    // 自动启动摄像头（用于举手检测）
+    if (!cameraEnabled) {
+      startCamera();
+    }
+    
     // 显示全局 loading
     setIsPreparingLecture(true);
     setPrepareProgress(0);
@@ -1013,6 +1141,9 @@ export default function PresentationPage() {
       
       // 关闭 loading
       setIsPreparingLecture(false);
+      
+      // 标记有讲解稿（用于显示发布按钮）
+      setHasLectureScript(true);
       
       // 演讲稿就绪后，进入全屏演示模式
       if (!document.fullscreenElement) {
@@ -1111,13 +1242,8 @@ export default function PresentationPage() {
       if (!lastResult.isFinal) return;
       
       // 根据当前模式处理
-      if (mode === 'idle' && lecturing) {
-        // 检测唤醒词
-        if (transcript.includes('老师') || transcript.includes('laoshi') || transcript.includes('老斯')) {
-          console.log('[语音识别] 检测到唤醒词!');
-          handleWakeUp();
-        }
-      } else if (mode === 'listening') {
+      // 注意：语音唤醒已移除，改用 MediaPipe 举手检测触发 handleWakeUp()
+      if (mode === 'listening') {
         // 清除超时
         if (listeningTimeoutRef.current) {
           clearTimeout(listeningTimeoutRef.current);
@@ -1198,9 +1324,102 @@ export default function PresentationPage() {
     }
   }, []);
   
-  // 处理唤醒
+  // ====== MediaPipe 学生检测 ======
+  
+  // 初始化 MediaPipe 模型
+  const initMediaPipe = useCallback(async () => {
+    try {
+      setDetectionStatus('正在加载视觉模型...');
+      console.log('[MediaPipe] 初始化中...');
+      
+      const vision = await FilesetResolver.forVisionTasks('/models/wasm');
+      
+      const faceModel = await FaceLandmarker.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath: '/models/face_landmarker.task',
+          delegate: 'GPU'
+        },
+        outputFaceBlendshapes: true,
+        runningMode: 'VIDEO',
+        numFaces: 1
+      });
+      
+      const handModel = await HandLandmarker.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath: '/models/hand_landmarker.task',
+          delegate: 'GPU'
+        },
+        runningMode: 'VIDEO',
+        numHands: 2
+      });
+      
+      faceLandmarkerRef.current = faceModel;
+      handLandmarkerRef.current = handModel;
+      setMediaPipeReady(true);
+      setDetectionStatus('视觉检测就绪');
+      console.log('[MediaPipe] 初始化完成');
+    } catch (err) {
+      console.error('[MediaPipe] 初始化失败:', err);
+      setDetectionStatus('视觉模型加载失败');
+    }
+  }, []);
+  
+  // 启动摄像头和检测
+  const startCamera = useCallback(async () => {
+    try {
+      setDetectionStatus('正在启动摄像头...');
+      
+      // 先初始化 MediaPipe（如果还没有）
+      if (!mediaPipeReady) {
+        await initMediaPipe();
+      }
+      
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 640, height: 480, frameRate: 30 }
+      });
+      
+      cameraStreamRef.current = stream;
+      
+      if (studentVideoRef.current) {
+        studentVideoRef.current.srcObject = stream;
+        studentVideoRef.current.onloadedmetadata = () => {
+          // 设置 canvas 尺寸与视频匹配
+          if (skeletonCanvasRef.current && studentVideoRef.current) {
+            skeletonCanvasRef.current.width = studentVideoRef.current.videoWidth;
+            skeletonCanvasRef.current.height = studentVideoRef.current.videoHeight;
+          }
+          setCameraEnabled(true);
+          setDetectionStatus('学生监测中');
+          console.log('[MediaPipe] 摄像头已启动');
+        };
+      }
+    } catch (err) {
+      console.error('[MediaPipe] 摄像头启动失败:', err);
+      setDetectionStatus('摄像头启动失败');
+    }
+  }, [mediaPipeReady, initMediaPipe]);
+  
+  // 停止摄像头和检测
+  const stopCamera = useCallback(() => {
+    if (cameraStreamRef.current) {
+      cameraStreamRef.current.getTracks().forEach(track => track.stop());
+      cameraStreamRef.current = null;
+    }
+    if (detectionLoopRef.current) {
+      cancelAnimationFrame(detectionLoopRef.current);
+      detectionLoopRef.current = null;
+    }
+    setCameraEnabled(false);
+    setDetectionStatus('');
+    console.log('[MediaPipe] 摄像头已停止');
+  }, []);
+  
+  // 检测循环（需要在 handleWakeUp 定义后设置）
+  const runDetectionRef = useRef<(() => void) | null>(null);
+  
+  // 处理唤醒（由 MediaPipe 举手检测触发）
   const handleWakeUp = useCallback(() => {
-    console.log('[互动] 学生唤醒老师');
+    console.log('[互动] 学生举手唤醒老师');
     
     // 保存中断状态
     interruptStateRef.current = {
@@ -1215,10 +1434,10 @@ export default function PresentationPage() {
     
     // 切换到监听模式
     setInteractionMode('listening');
-    setInteractionStatus('我在听，你说...');
+    setInteractionStatus('检测到举手，请说...');
     
     // 语音回应
-    speak('我在，你说。').then(() => {
+    speak('我看到你举手了，请说！').then(() => {
       // 设置超时：5秒没输入就提示
       listeningTimeoutRef.current = setTimeout(() => {
         if (interactionModeRef.current === 'listening') {
@@ -1235,6 +1454,113 @@ export default function PresentationPage() {
     });
   }, [currentSlide, isLecturing, stopSpeaking, speak]);
   
+  // MediaPipe 检测循环
+  useEffect(() => {
+    if (!cameraEnabled || !faceLandmarkerRef.current || !handLandmarkerRef.current || !studentVideoRef.current) {
+      return;
+    }
+    
+    const video = studentVideoRef.current;
+    
+    const canvas = skeletonCanvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    
+    const runDetection = () => {
+      if (!cameraEnabled || video.readyState < 2) {
+        detectionLoopRef.current = requestAnimationFrame(runDetection);
+        return;
+      }
+      
+      const now = performance.now();
+      const faceResult = faceLandmarkerRef.current!.detectForVideo(video, now);
+      const handResult = handLandmarkerRef.current!.detectForVideo(video, now);
+      
+      // ====== 绘制骨架调试信息 ======
+      if (canvas && ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const drawingUtils = new DrawingUtils(ctx);
+        
+        // 绘制面部网格
+        if (faceResult.faceLandmarks) {
+          for (const landmarks of faceResult.faceLandmarks) {
+            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_TESSELATION, { color: "#C0C0C070", lineWidth: 1 });
+            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_RIGHT_EYE, { color: "#FF3030" });
+            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LEFT_EYE, { color: "#30FF30" });
+          }
+        }
+        
+        // 绘制手部骨架
+        if (handResult.landmarks) {
+          for (const landmarks of handResult.landmarks) {
+            drawingUtils.drawConnectors(landmarks, HandLandmarker.HAND_CONNECTIONS, { color: "#00FF00", lineWidth: 2 });
+            drawingUtils.drawLandmarks(landmarks, { color: "#FF0000", lineWidth: 1 });
+          }
+        }
+      }
+      
+      // 举手检测 -> 触发唤醒
+      if (handResult.landmarks && handResult.landmarks.length > 0 && faceResult.faceLandmarks?.[0]) {
+        const faceTop = faceResult.faceLandmarks[0][10].y;
+        const handTop = Math.min(...handResult.landmarks.flat().map(p => p.y));
+        
+        if (handTop < faceTop - 0.12) {
+          // 手高于头顶
+          if (!handRaisedStartRef.current) {
+            handRaisedStartRef.current = now;
+          }
+          // 持续举手 0.8 秒触发
+          if (now - handRaisedStartRef.current > 800) {
+            // 只在讲解中且空闲模式时触发
+            if (isLecturingRef2.current && interactionModeRef.current === 'idle') {
+              console.log('[MediaPipe] 检测到举手，触发唤醒');
+              handRaisedStartRef.current = null;
+              handleWakeUp();
+            }
+          }
+        } else {
+          handRaisedStartRef.current = null;
+        }
+      } else {
+        handRaisedStartRef.current = null;
+      }
+      
+      // 皱眉检测 -> 显示提示
+      if (faceResult.faceBlendshapes?.[0] && isLecturingRef2.current) {
+        const shapes = faceResult.faceBlendshapes[0].categories;
+        const getVal = (name: string) => shapes.find(s => s.categoryName === name)?.score || 0;
+        
+        const frownScore = (getVal('browDownLeft') + getVal('browDownRight')) / 2;
+        if (frownScore > 0.45 && now - lastFrownAlertRef.current > 10000) {
+          console.log('[MediaPipe] 检测到皱眉，学生可能困惑');
+          lastFrownAlertRef.current = now;
+          setDetectionStatus('检测到困惑表情');
+          setTimeout(() => {
+            if (cameraEnabled) setDetectionStatus('学生监测中');
+          }, 3000);
+        }
+      }
+      
+      detectionLoopRef.current = requestAnimationFrame(runDetection);
+    };
+    
+    detectionLoopRef.current = requestAnimationFrame(runDetection);
+    
+    return () => {
+      if (detectionLoopRef.current) {
+        cancelAnimationFrame(detectionLoopRef.current);
+      }
+    };
+  }, [cameraEnabled, handleWakeUp]);
+  
+  // 清理 MediaPipe 资源
+  useEffect(() => {
+    return () => {
+      stopCamera();
+      faceLandmarkerRef.current?.close();
+      handLandmarkerRef.current?.close();
+    };
+  }, [stopCamera]);
+  
   // 处理学生问题
   const handleStudentQuestion = useCallback(async (question: string) => {
     console.log('[互动] 处理学生问题:', question);
@@ -1244,14 +1570,23 @@ export default function PresentationPage() {
     setInteractionStatus('正在理解你的问题...');
     
     try {
-      // 调用问题理解 API
+      // 调用问题理解 API - 传递完整上下文
       const response = await fetch(`/api/teaching/lecture/${manuscriptId}/ask`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           question,
           currentSlide,
-          slideTitles: slides.map((s, i) => ({ index: i, title: s.title })),
+          // 传递完整的 slides 内容（标题 + 内容）
+          slides: slides.map((s, i) => ({ 
+            index: i, 
+            title: s.title, 
+            content: s.content 
+          })),
+          // 传递知识库类型（用于动态角色）
+          knowledgeBaseType: manuscript?.knowledgeBase?.type || 'k12',
+          // 传递章节元数据（用于确定学科/年级）
+          chapterMetadata: manuscript?.chapter?.metadata || null,
         }),
       });
       
@@ -1269,10 +1604,12 @@ export default function PresentationPage() {
         explainCount: 1,
       };
       
-      // 跳转到目标页
-      if (result.targetSlide !== undefined && result.targetSlide !== currentSlide) {
+      // 根据 jumpAction 决定是否跳转
+      if (result.jumpAction === 'jump' && result.targetSlide !== currentSlide) {
+        // 目标页在当前页之前，跳转回去讲解
         goToSlide(result.targetSlide);
       }
+      // 'stay' / 'later' / 'not_found' 都不跳转
       
       // 开始讲解
       setInteractionMode('explaining');
@@ -1294,7 +1631,7 @@ export default function PresentationPage() {
       await speak('抱歉，我没听清楚，你能再说一遍吗？');
       setInteractionMode('listening');
     }
-  }, [manuscriptId, currentSlide, slides, goToSlide, speak]);
+  }, [manuscriptId, currentSlide, slides, manuscript, goToSlide, speak]);
   
   // 学生明白了
   const handleStudentUnderstood = useCallback(async () => {
@@ -1316,11 +1653,16 @@ export default function PresentationPage() {
         goToSlide(slideIndex);
       }
       
-      // 如果之前在讲解，继续讲解
+      // 如果之前在讲解，从中断位置继续（不要重新开始）
       if (wasLecturing) {
-        // 重新开始讲解（简化处理）
+        // 恢复讲解状态，继续获取下一条指令
+        isLecturingRef.current = true;
+        setIsLecturing(true);
+        setLectureStatus('继续讲解...');
+        
+        // 等待跳转完成后继续
         setTimeout(() => {
-          startLecture();
+          fetchAndExecuteNext();
         }, 500);
       }
       
@@ -1592,13 +1934,27 @@ export default function PresentationPage() {
               className="bg-zinc-700/50 border-zinc-500/50 text-zinc-300 hover:bg-zinc-600/50"
             >
               <Play className="h-4 w-4 mr-2" />
-              AI 自动讲解
+              开始课程
             </Button>
           )}
           
-          <div className="h-4 w-px bg-white/20" />
+          {/* 摄像头状态（开始课程时自动开启） */}
+          {cameraEnabled && (
+            <>
+              <div className="h-4 w-px bg-white/20" />
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={stopCamera}
+                className="bg-green-500/20 border-green-400/50 text-green-400 hover:bg-green-500/30"
+              >
+                <Camera className="h-4 w-4 mr-2" />
+                举手检测中
+              </Button>
+            </>
+          )}
           
-          {/* 手动提问按钮（语音识别备选） */}
+          {/* 手动提问按钮（备选） */}
           {isLecturing && interactionMode === 'idle' && (
             <Button 
               variant="outline" 
@@ -1606,8 +1962,8 @@ export default function PresentationPage() {
               onClick={handleWakeUp}
               className="bg-zinc-700/50 border-zinc-500/50 text-zinc-300 hover:bg-zinc-600/50"
             >
-              <Mic className="h-4 w-4 mr-2" />
-              我要提问
+              <Hand className="h-4 w-4 mr-2" />
+              手动提问
             </Button>
           )}
           
@@ -1680,7 +2036,7 @@ export default function PresentationPage() {
                   <Button 
                     variant="outline" 
                     size="sm"
-                    onClick={publishCourse}
+                    onClick={() => publishCourse(false)}
                     disabled={isPublishing}
                     className="bg-purple-500/20 border-purple-400/50 text-purple-300 hover:bg-purple-500/30"
                   >
@@ -1984,6 +2340,45 @@ export default function PresentationPage() {
         </main>
       </div>
 
+      {/* 摄像头预览小窗 - video 元素始终存在，避免 ref 切换丢失 srcObject */}
+      <div className={cn(
+        "fixed bottom-24 right-6 z-50 transition-opacity duration-300",
+        cameraEnabled ? "opacity-100" : "opacity-0 pointer-events-none"
+      )}>
+        <div className="relative w-48 rounded-xl overflow-hidden shadow-2xl border border-white/20 bg-black">
+          <video 
+            ref={studentVideoRef} 
+            autoPlay 
+            playsInline 
+            muted
+            className="w-full aspect-video scale-x-[-1] object-cover"
+          />
+          {/* 骨架绘制 canvas - 叠加在视频上 */}
+          <canvas 
+            ref={skeletonCanvasRef}
+            className="absolute inset-0 w-full h-full scale-x-[-1] opacity-70 pointer-events-none"
+          />
+          {/* 状态指示 */}
+          <div className="absolute top-2 left-2 flex items-center gap-1.5 px-2 py-1 rounded-full bg-black/60 backdrop-blur text-[10px] text-white">
+            <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+            {detectionStatus || '监测中'}
+          </div>
+          {/* 关闭按钮 */}
+          <button
+            onClick={stopCamera}
+            className="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/60 backdrop-blur text-white/70 hover:text-white hover:bg-black/80 flex items-center justify-center text-xs"
+          >
+            ✕
+          </button>
+          {/* 举手提示 */}
+          <div className="absolute bottom-0 left-0 right-0 px-2 py-1.5 bg-gradient-to-t from-black/80 to-transparent">
+            <p className="text-[10px] text-white/80 text-center">
+              🙋 举手 0.8 秒可打断提问
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* 底部提示 - 全屏时隐藏 */}
       <footer className={cn(
         "bg-black/40 border-t border-white/10 px-6 py-2 text-center transition-all duration-300",
@@ -1993,7 +2388,7 @@ export default function PresentationPage() {
           使用 <kbd className="px-1.5 py-0.5 bg-zinc-700 rounded text-zinc-300 font-mono">←</kbd> <kbd className="px-1.5 py-0.5 bg-zinc-700 rounded text-zinc-300 font-mono">→</kbd> 切换幻灯片 · 
           <kbd className="px-1.5 py-0.5 bg-zinc-700 rounded text-zinc-300 font-mono ml-2">F</kbd> 全屏 · 
           <kbd className="px-1.5 py-0.5 bg-zinc-700 rounded text-zinc-300 font-mono ml-2">ESC</kbd> 退出/停止 · 
-          <span className="text-zinc-400 ml-2">🎤 讲解中说"老师"可提问</span>
+          <span className="text-zinc-400 ml-2">🙋 课程中举手可打断提问</span>
         </span>
       </footer>
     </div>

@@ -72,6 +72,40 @@ function renderMarkdownWithLatex(markdown: string): string {
   
   let html = markdown;
   
+  // 使用占位符保护代码块内容，避免被后续处理影响
+  const codeBlocks: string[] = [];
+  const CODE_PLACEHOLDER = '___CODE_BLOCK_PLACEHOLDER___';
+  
+  // 处理多行代码块 ```lang ... ```（必须在其他处理之前）
+  html = html.replace(/```\s*(\w*)\s*\n([\s\S]*?)```/g, (_, lang, code) => {
+    const langLabel = lang?.trim() || 'code';
+    const escapedCode = code
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .trimEnd();
+    
+    // 生成代码块 HTML
+    const codeBlockHtml = `<div class="not-prose" style="margin:1rem 0;border-radius:0.5rem;overflow:hidden;border:1px solid #3f3f46;box-shadow:0 2px 8px rgba(0,0,0,0.1)"><div style="background:#27272a;color:#a1a1aa;font-size:0.75rem;font-family:ui-monospace,monospace;text-transform:uppercase;padding:0.5rem 1rem;letter-spacing:0.05em">${langLabel}</div><pre class="not-prose" style="background:#18181b;color:#ffffff;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:0.875rem;line-height:1.6;padding:1rem;margin:0;overflow-x:auto;white-space:pre">${escapedCode}</pre></div>`;
+    
+    // 保存到数组，返回占位符
+    codeBlocks.push(codeBlockHtml);
+    return `${CODE_PLACEHOLDER}${codeBlocks.length - 1}${CODE_PLACEHOLDER}`;
+  });
+  
+  // 处理行内 ``` 的情况（没有换行的短代码块）
+  html = html.replace(/```([^`]+)```/g, (_, code) => {
+    const escapedCode = code.trim()
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    
+    const codeHtml = `<code class="not-prose" style="background:#27272a;color:#ffffff;font-family:ui-monospace,monospace;font-size:0.875em;padding:0.125rem 0.375rem;border-radius:0.25rem">${escapedCode}</code>`;
+    codeBlocks.push(codeHtml);
+    return `${CODE_PLACEHOLDER}${codeBlocks.length - 1}${CODE_PLACEHOLDER}`;
+  });
+  
   // 处理块级公式 $$...$$（支持跨行）
   html = html.replace(/\$\$([\s\S]+?)\$\$/g, (_, formula) => {
     try {
@@ -102,13 +136,16 @@ function renderMarkdownWithLatex(markdown: string): string {
   // 处理 Markdown 表格
   html = processMarkdownTables(html);
   
-  // 处理 Markdown 格式
+  // 处理 Markdown 格式（标题从多到少处理）
   html = html
+    .replace(/^##### (.+)$/gm, '<h5>$1</h5>')
+    .replace(/^#### (.+)$/gm, '<h4>$1</h4>')
     .replace(/^### (.+)$/gm, '<h3>$1</h3>')
     .replace(/^## (.+)$/gm, '<h2>$1</h2>')
     .replace(/^# (.+)$/gm, '<h1>$1</h1>')
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+    .replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>')
     .replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>')
     .replace(/^---$/gm, '<hr>')
     .replace(/^(\d+)\. (.+)$/gm, '<li class="ordered">$2</li>')
@@ -124,14 +161,21 @@ function renderMarkdownWithLatex(markdown: string): string {
       result.push('<br>');
       continue;
     }
-    if (trimmed.startsWith('<')) {
+    if (trimmed.startsWith('<') || trimmed.includes(CODE_PLACEHOLDER)) {
       result.push(trimmed);
     } else {
       result.push(`<p>${trimmed}</p>`);
     }
   }
   
-  return result.join('\n');
+  let finalHtml = result.join('\n');
+  
+  // 将占位符替换回实际的代码块 HTML
+  finalHtml = finalHtml.replace(new RegExp(`${CODE_PLACEHOLDER}(\\d+)${CODE_PLACEHOLDER}`, 'g'), (_, index) => {
+    return codeBlocks[parseInt(index, 10)] || '';
+  });
+  
+  return finalHtml;
 }
 
 // 处理 Markdown 表格转 HTML
@@ -514,7 +558,7 @@ export function TiptapEditor({
           /* 预览模式 */
           <div className="p-6">
             <div 
-              className="preview-content prose prose-lg max-w-none"
+              className="preview-content prose prose-lg max-w-none prose-pre:bg-zinc-900 prose-pre:text-white prose-code:text-white"
               dangerouslySetInnerHTML={{ __html: previewHtml }}
             />
           </div>
@@ -590,6 +634,20 @@ export function TiptapEditor({
           margin-top: 1rem;
           margin-bottom: 0.5rem;
         }
+        .preview-content h4 {
+          font-size: 1.125rem;
+          font-weight: 600;
+          color: #52525b;
+          margin-top: 0.875rem;
+          margin-bottom: 0.375rem;
+        }
+        .preview-content h5 {
+          font-size: 1rem;
+          font-weight: 600;
+          color: #71717a;
+          margin-top: 0.75rem;
+          margin-bottom: 0.25rem;
+        }
         .preview-content p {
           margin: 0.5rem 0;
           line-height: 1.75;
@@ -650,6 +708,105 @@ export function TiptapEditor({
           font-size: 0.9em;
           background: #fef2f2;
           padding: 0.25rem 0.5rem;
+          border-radius: 0.25rem;
+        }
+        
+        /* 代码块样式 */
+        .code-block-preview {
+          margin: 1rem 0 !important;
+          border-radius: 0.5rem !important;
+          overflow: hidden !important;
+          border: 1px solid #3f3f46 !important;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+        }
+        .code-block-header {
+          background: #27272a !important;
+          color: #a1a1aa !important;
+          font-size: 0.75rem !important;
+          font-family: ui-monospace, monospace !important;
+          text-transform: uppercase !important;
+          padding: 0.5rem 1rem !important;
+          letter-spacing: 0.05em !important;
+        }
+        .code-block-content {
+          background: #18181b !important;
+          color: #ffffff !important;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+          font-size: 0.875rem !important;
+          line-height: 1.6 !important;
+          padding: 1rem !important;
+          margin: 0 !important;
+          overflow-x: auto !important;
+          white-space: pre !important;
+        }
+        .code-block-content code,
+        .code-block-content code.code-text,
+        .code-block-preview code {
+          background: none !important;
+          padding: 0 !important;
+          color: #ffffff !important;
+          font-size: inherit !important;
+          border: none !important;
+        }
+        .preview-content pre {
+          background: #18181b !important;
+          color: #ffffff !important;
+        }
+        .preview-content pre code {
+          color: #ffffff !important;
+          background: none !important;
+        }
+        
+        /* 强制覆盖 not-prose 内的代码块颜色 */
+        .not-prose,
+        .not-prose pre,
+        .not-prose code,
+        div.not-prose pre,
+        pre.not-prose {
+          color: #ffffff !important;
+          --tw-text-opacity: 1 !important;
+          opacity: 1 !important;
+        }
+        .preview-content .not-prose pre {
+          color: #ffffff !important;
+          background: #18181b !important;
+        }
+        .prose .not-prose pre,
+        .prose-lg .not-prose pre {
+          color: #ffffff !important;
+        }
+        /* 强制覆盖 prose 样式 */
+        .prose pre,
+        .prose-lg pre,
+        .preview-content .code-block-preview pre {
+          background: #18181b !important;
+          color: #ffffff !important;
+        }
+        .prose pre code,
+        .prose-lg pre code,
+        .preview-content .code-block-content code {
+          color: #ffffff !important;
+          background: transparent !important;
+          border: none !important;
+          padding: 0 !important;
+        }
+        
+        /* 行内代码样式 */
+        .inline-code {
+          background: #f4f4f5;
+          color: #3f3f46;
+          font-family: ui-monospace, monospace;
+          font-size: 0.875em;
+          padding: 0.125rem 0.375rem;
+          border-radius: 0.25rem;
+          border: 1px solid #e4e4e7;
+        }
+        .inline-code-dark {
+          background: #27272a;
+          color: #e4e4e7;
+          font-family: ui-monospace, monospace;
+          font-size: 0.875em;
+          padding: 0.125rem 0.375rem;
           border-radius: 0.25rem;
         }
       `}</style>

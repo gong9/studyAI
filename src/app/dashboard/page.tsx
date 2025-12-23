@@ -185,7 +185,7 @@ export default function DashboardPage() {
               </div>
               <span className="text-sm font-semibold text-zinc-700">{session?.user?.name}</span>
             </div>
-            <button onClick={() => signOut()} className="text-zinc-400 hover:text-zinc-900 p-1 rounded-lg transition-colors">
+            <button onClick={() => signOut({ callbackUrl: '/login' })} className="text-zinc-400 hover:text-zinc-900 p-1 rounded-lg transition-colors">
               <LogOut className="w-4 h-4" />
             </button>
           </div>

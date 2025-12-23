@@ -175,7 +175,7 @@ export default function CodebasePage() {
                 {session?.user?.name}
               </span>
             </div>
-            <Button variant="ghost" size="icon" onClick={() => signOut()} className="text-zinc-400 hover:text-zinc-900 transition-colors hover:bg-zinc-100 h-8 w-8 sm:h-10 sm:w-10">
+            <Button variant="ghost" size="icon" onClick={() => signOut({ callbackUrl: '/login' })} className="text-zinc-400 hover:text-zinc-900 transition-colors hover:bg-zinc-100 h-8 w-8 sm:h-10 sm:w-10">
               <LogOut className="w-4 h-4" />
             </Button>
           </div>
