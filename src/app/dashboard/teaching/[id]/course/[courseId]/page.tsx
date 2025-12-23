@@ -670,13 +670,68 @@ export default function CoursePlayerPage() {
             ? "w-full h-full rounded-none" 
             : "w-full max-w-5xl aspect-[16/9] rounded-lg"
         )}>
-          {course.slides[currentSlideIndex] && (
-            <img
-              src={`data:image/png;base64,${course.slides[currentSlideIndex]}`}
-              alt={`Slide ${currentSlideIndex + 1}`}
-              className="w-full h-full object-contain"
-            />
-          )}
+          {course.slides[currentSlideIndex] && (() => {
+            const content = course.slides[currentSlideIndex];
+            // 判断是否是 base64 图片：不包含常见的 markdown 字符
+            const isImage = !content.includes('#') && !content.includes('\n') && content.length > 100;
+            
+            if (isImage) {
+              // 精美模式：显示图片
+              return (
+                <img
+                  src={`data:image/png;base64,${content}`}
+                  alt={`Slide ${currentSlideIndex + 1}`}
+                  className="w-full h-full object-contain"
+                />
+              );
+            } else {
+              // 普通模式：渲染 markdown（一屏展示，参考演示模式的渲染逻辑）
+              const renderMarkdown = (md: string) => {
+                // 1. 移除重复标题
+                const lines = md.split('\n');
+                const filteredLines: string[] = [];
+                let lastTitle = '';
+                
+                for (const line of lines) {
+                  const titleMatch = line.match(/^#+\s+(.+)$/);
+                  if (titleMatch) {
+                    const titleContent = titleMatch[1].trim();
+                    if (titleContent === lastTitle) continue;
+                    lastTitle = titleContent;
+                  }
+                  filteredLines.push(line);
+                }
+                
+                let cleaned = filteredLines.join('\n');
+                
+                // 2. 渲染 HTML
+                return cleaned
+                  // 图片：![alt](url) -> <img>
+                  .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<div class="my-4 flex justify-center"><img src="$2" alt="$1" class="max-h-48 w-auto rounded-lg shadow-lg" /></div>')
+                  // 标题
+                  .replace(/^# (.+)$/gm, '<h1 class="text-3xl font-bold mb-6 text-zinc-800 text-center">$1</h1>')
+                  .replace(/^## (.+)$/gm, '<h2 class="text-xl font-semibold mb-3 text-zinc-700 text-center">$1</h2>')
+                  .replace(/^### (.+)$/gm, '<h3 class="text-lg font-medium mb-2 text-zinc-600">$1</h3>')
+                  // 粗体和斜体
+                  .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                  .replace(/\*(.+?)\*/g, '<em>$1</em>')
+                  // 列表
+                  .replace(/^- (.+)$/gm, '<div class="flex items-start gap-2 mb-2 text-lg"><span class="text-blue-500 font-bold">•</span><span class="text-zinc-700">$1</span></div>')
+                  // 段落
+                  .replace(/\n\n/g, '<div class="mb-4"></div>')
+                  .replace(/\n/g, '<br/>');
+              };
+              
+              return (
+                <div className="w-full h-full overflow-auto bg-white p-8">
+                  <div 
+                    className="max-w-4xl mx-auto"
+                    dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }}
+                  />
+                </div>
+              );
+            }
+          })()}
           
           {/* 字幕 */}
           {subtitle && (

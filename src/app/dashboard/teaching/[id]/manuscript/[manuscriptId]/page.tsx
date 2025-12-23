@@ -213,7 +213,7 @@ export default function ManuscriptEditorPage() {
         return;
       }
     }
-    router.push(`/dashboard/teaching/${kbId}/manuscript/${manuscriptId}/preview`);
+    router.push(`/dashboard/teaching/${kbId}/manuscript/${manuscriptId}/presentation`);
   };
 
   const statusInfo = STATUS_MAP[manuscript?.status] || STATUS_MAP.draft;

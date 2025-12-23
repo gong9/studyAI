@@ -156,17 +156,38 @@ export async function POST(
       }
     }
 
-    // 检查必要数据
-    if (!manuscript.bananaImages) {
-      return NextResponse.json({ error: '请先生成精美PPT' }, { status: 400 });
-    }
-
+    // 检查必要数据 - 只需要讲解稿，精美PPT是可选的
     if (!manuscript.lectureScript) {
       return NextResponse.json({ error: '请先生成讲解稿' }, { status: 400 });
     }
 
     // 2. 解析数据
-    const slides: string[] = JSON.parse(manuscript.bananaImages);
+    // 优先使用精美PPT，如果没有则使用普通的 slidevMd
+    let slides: string[] = [];
+    const hasBananaImages = !!manuscript.bananaImages;
+    
+    if (hasBananaImages) {
+      slides = JSON.parse(manuscript.bananaImages);
+      console.log('[Publish] 使用精美PPT模式');
+    } else {
+      // 从 slidevMd 解析普通幻灯片
+      const slidevContent = manuscript.slidevMd || manuscript.enrichedContent || '';
+      if (slidevContent) {
+        let parts = slidevContent.split(/\n---\n/);
+        // 跳过 frontmatter
+        if (parts[0].trim().startsWith('---') || parts[0].includes('theme:')) {
+          parts = parts.slice(1);
+        }
+        // 普通模式下，slides 存储的是 markdown 内容（不是图片URL）
+        slides = parts.filter((p: string) => p.trim().length > 0);
+        console.log('[Publish] 使用普通PPT模式');
+      }
+    }
+    
+    if (slides.length === 0) {
+      return NextResponse.json({ error: '没有可发布的PPT内容' }, { status: 400 });
+    }
+    
     const lectureScript = JSON.parse(manuscript.lectureScript);
     
     console.log(`[Publish] 解析完成: ${slides.length} 页PPT, ${lectureScript.slides?.length || 0} 页讲解`);
@@ -305,12 +326,15 @@ export async function POST(
     console.log(`[Publish] 帧序列构建完成: ${frames.length} 帧, 总时长 ${Math.round(totalDuration / 1000)}秒`);
 
     // 5. 创建课程记录
+    // 封面图：精美模式用第一张图，普通模式暂无封面
+    const coverImage = hasBananaImages ? slides[0] : null;
+    
     const course = await prisma.course.create({
       data: {
         manuscriptId,
         title: manuscript.chapter.title,
-        description: `${manuscript.chapter.title} - AI 智能课程`,
-        coverImage: slides[0] || null,
+        description: `${manuscript.chapter.title} - AI 智能课程${hasBananaImages ? '' : '（普通模式）'}`,
+        coverImage,
         duration: totalDuration,
         slides: JSON.stringify(slides),
         frames: JSON.stringify(frames),

@@ -4,9 +4,10 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { 
-  ArrowLeft, Loader2, ChevronLeft, ChevronRight,
+  ArrowLeft, Loader2, ChevronLeft, ChevronRight, ChevronDown,
   Presentation, Play, Pause, Square, Volume2, Maximize2, Minimize2,
-  Mic, MicOff, MessageCircle, Sparkles, Image, Download, Radio, Camera, Hand
+  Mic, MicOff, MessageCircle, Sparkles, Image, Download, Radio, Camera, Hand,
+  FileText
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import katex from 'katex';
@@ -218,6 +219,8 @@ export default function PresentationPage() {
   const [manuscript, setManuscript] = useState<any>(null);
   const [slides, setSlides] = useState<{ content: string; title: string }[]>([]);
   const [currentSlide, setCurrentSlide] = useState(0);
+  const currentSlideRef = useRef(0); // 用于在回调中访问最新值
+  const slidesRef = useRef<{ content: string; title: string }[]>([]); // 用于在回调中访问最新值
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [slideScale, setSlideScale] = useState(1);
@@ -252,11 +255,19 @@ export default function PresentationPage() {
   const [publishedCourseId, setPublishedCourseId] = useState<string | null>(null);
   const [hasLectureScript, setHasLectureScript] = useState(false);
   
+  // ====== 导出状态 ======
+  const [exporting, setExporting] = useState<string | null>(null);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+  
   // ====== 语音互动状态 ======
   // 互动模式: idle | listening | processing | explaining | confirming
   const [interactionMode, setInteractionMode] = useState<'idle' | 'listening' | 'processing' | 'explaining' | 'confirming'>('idle');
   const [studentQuestion, setStudentQuestion] = useState('');
   const [interactionStatus, setInteractionStatus] = useState('');
+  const [listeningCountdown, setListeningCountdown] = useState(0); // 倒计时秒数
+  const [isTypingQuestion, setIsTypingQuestion] = useState(false); // 用户是否正在输入
+  const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
   // 中断状态保存
   const interruptStateRef = useRef<{
@@ -276,6 +287,13 @@ export default function PresentationPage() {
   const recognitionRef = useRef<any>(null);
   const [isListeningEnabled, setIsListeningEnabled] = useState(false);
   const listeningTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // 阿里云 ASR 录音
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const [isRecording, setIsRecording] = useState(false);
+  const [useAliyunASR, setUseAliyunASR] = useState(true); // 默认使用阿里云 ASR
+  const recordingStreamRef = useRef<MediaStream | null>(null);
   
   // ====== MediaPipe 学生检测状态 ======
   const [cameraEnabled, setCameraEnabled] = useState(false);
@@ -302,6 +320,19 @@ export default function PresentationPage() {
   useEffect(() => {
     isLecturingRef2.current = isLecturing;
   }, [isLecturing]);
+  
+  // 点击外部关闭导出菜单
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
+        setShowExportMenu(false);
+      }
+    };
+    if (showExportMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showExportMenu]);
   
   // refs
   const slideContainerRef = useRef<HTMLDivElement>(null);
@@ -517,6 +548,8 @@ export default function PresentationPage() {
       
       const onError = (e: Event) => {
         console.error('[TTS] 音频播放错误:', e);
+        audio.pause(); // 确保停止播放
+        audio.currentTime = 0;
         audio.removeEventListener('ended', onEnded);
         audio.removeEventListener('error', onError);
         setIsSpeaking(false);
@@ -529,6 +562,8 @@ export default function PresentationPage() {
       
       audio.play().catch((e) => {
         console.error('[TTS] 播放失败:', e);
+        audio.pause(); // 确保停止播放
+        audio.currentTime = 0;
         audio.removeEventListener('ended', onEnded);
         audio.removeEventListener('error', onError);
         setIsSpeaking(false);
@@ -616,27 +651,44 @@ export default function PresentationPage() {
     setHighlightedElement(null);
   }, []);
 
+  // 同步 currentSlide 和 slides 到 ref（用于异步回调）
+  useEffect(() => {
+    currentSlideRef.current = currentSlide;
+  }, [currentSlide]);
+  
+  useEffect(() => {
+    slidesRef.current = slides;
+    console.log('[同步] slides ref 更新:', slides.length);
+  }, [slides]);
+
   // ====== 导航函数 ======
   const goToSlide = useCallback((index: number) => {
-    if (index >= 0 && index < slides.length) {
+    const slidesLength = slidesRef.current.length;
+    console.log('[导航] goToSlide 被调用:', index, '当前:', currentSlideRef.current, 'slides:', slidesLength);
+    if (index >= 0 && index < slidesLength) {
+      console.log('[导航] 执行跳转到:', index);
       setCurrentSlide(index);
+      currentSlideRef.current = index; // 立即更新 ref
       clearHighlight();
       onSlideChangeRef.current?.(index);
+    } else {
+      console.log('[导航] 跳转失败，索引越界');
     }
-  }, [slides.length, clearHighlight]);
+  }, [clearHighlight]); // 移除 slides.length 依赖，使用 ref
 
   // 使用函数式更新避免闭包问题
   const nextSlide = useCallback(() => {
     setCurrentSlide(prev => {
       const next = prev + 1;
-      if (next < slides.length) {
+      if (next < slidesRef.current.length) {
         clearHighlight();
         onSlideChangeRef.current?.(next);
+        currentSlideRef.current = next;
         return next;
       }
       return prev;
     });
-  }, [slides.length, clearHighlight]);
+  }, [clearHighlight]);
 
   const prevSlide = useCallback(() => {
     setCurrentSlide(prev => {
@@ -644,6 +696,7 @@ export default function PresentationPage() {
       if (next >= 0) {
         clearHighlight();
         onSlideChangeRef.current?.(next);
+        currentSlideRef.current = next;
         return next;
       }
       return prev;
@@ -910,10 +963,54 @@ export default function PresentationPage() {
     }
   };
 
+  // 导出 PDF/PPTX（经典模式）
+  const handleExport = async (format: 'pdf' | 'pptx') => {
+    setExporting(format);
+    try {
+      // 如果还没有 slidevMd，先渲染生成
+      if (!manuscript?.slidevMd) {
+        const renderRes = await fetch(`/api/teaching/manuscript/${manuscriptId}/render`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+        
+        if (!renderRes.ok) {
+          const err = await renderRes.json();
+          alert(err.error || '渲染失败，无法导出');
+          setExporting(null);
+          return;
+        }
+        
+        const renderData = await renderRes.json();
+        setManuscript((prev: any) => ({ ...prev, slidevMd: renderData.slidevMd }));
+      }
+      
+      const res = await fetch(`/api/teaching/manuscript/${manuscriptId}/export?format=${format}`);
+      
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `courseware.${format}`;
+        a.click();
+        URL.revokeObjectURL(url);
+      } else {
+        const err = await res.json();
+        alert(err.error || '导出失败');
+      }
+    } catch (error: any) {
+      alert(error.message || '导出失败');
+    } finally {
+      setExporting(null);
+    }
+  };
+
   // 发布为课程
   const publishCourse = async (force: boolean = false) => {
-    if (bananaImages.length === 0 || !hasLectureScript) {
-      alert('请先生成精美PPT和讲解稿');
+    if (!hasLectureScript) {
+      alert('请先生成讲解稿');
       return;
     }
     
@@ -1196,6 +1293,17 @@ export default function PresentationPage() {
     stopSpeaking();
     clearHighlight();
     
+    // 关闭摄像头和监控
+    stopCamera();
+    
+    // 重置交互状态
+    setInteractionMode('idle');
+    setInteractionStatus('');
+    setStudentQuestion('');
+    questionContextRef.current = null;
+    interruptStateRef.current = null;
+    clearCountdown();
+    
     setIsLecturing(false);
     setLectureStatus('已停止');
   };
@@ -1321,8 +1429,206 @@ export default function PresentationPage() {
       } catch (e) {
         // 忽略
       }
+      // 清除引用，防止 onend 回调自动重启
+      recognitionRef.current = null;
     }
   }, []);
+  
+  // ====== 阿里云 ASR 录音功能 ======
+  
+  // 开始录音
+  const startRecording = useCallback(async () => {
+    try {
+      console.log('[ASR] 开始录音...');
+      
+      // 获取麦克风权限
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          sampleRate: 16000,
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+        } 
+      });
+      
+      recordingStreamRef.current = stream;
+      audioChunksRef.current = [];
+      
+      // 创建 MediaRecorder
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: 'audio/webm;codecs=opus',
+      });
+      
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+      
+      mediaRecorder.onstop = async () => {
+        console.log('[ASR] 录音结束，开始识别...');
+        
+        // 合并音频数据
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        
+        // 转换为 WAV 格式（阿里云需要）
+        try {
+          const wavBlob = await convertToWav(audioBlob);
+          await sendToASR(wavBlob);
+        } catch (error) {
+          console.error('[ASR] 转换或识别失败:', error);
+          // 回退到浏览器原生识别
+          setInteractionStatus('识别失败，请重试');
+        }
+        
+        // 清理
+        if (recordingStreamRef.current) {
+          recordingStreamRef.current.getTracks().forEach(track => track.stop());
+          recordingStreamRef.current = null;
+        }
+      };
+      
+      mediaRecorderRef.current = mediaRecorder;
+      mediaRecorder.start(100); // 每 100ms 收集一次数据
+      setIsRecording(true);
+      
+    } catch (error) {
+      console.error('[ASR] 录音启动失败:', error);
+      setInteractionStatus('麦克风权限获取失败');
+    }
+  }, []);
+  
+  // 停止录音
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      console.log('[ASR] 停止录音');
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+  }, []);
+  
+  // 转换为 WAV 格式
+  const convertToWav = async (webmBlob: Blob): Promise<Blob> => {
+    // 使用 AudioContext 解码并重新编码为 WAV
+    const audioContext = new AudioContext({ sampleRate: 16000 });
+    const arrayBuffer = await webmBlob.arrayBuffer();
+    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+    
+    // 获取 PCM 数据
+    const channelData = audioBuffer.getChannelData(0);
+    const length = channelData.length;
+    
+    // 创建 WAV 文件
+    const wavBuffer = new ArrayBuffer(44 + length * 2);
+    const view = new DataView(wavBuffer);
+    
+    // WAV 头
+    const writeString = (offset: number, string: string) => {
+      for (let i = 0; i < string.length; i++) {
+        view.setUint8(offset + i, string.charCodeAt(i));
+      }
+    };
+    
+    writeString(0, 'RIFF');
+    view.setUint32(4, 36 + length * 2, true);
+    writeString(8, 'WAVE');
+    writeString(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true); // PCM
+    view.setUint16(22, 1, true); // 单声道
+    view.setUint32(24, 16000, true); // 采样率
+    view.setUint32(28, 16000 * 2, true); // 字节率
+    view.setUint16(32, 2, true); // 块对齐
+    view.setUint16(34, 16, true); // 位深度
+    writeString(36, 'data');
+    view.setUint32(40, length * 2, true);
+    
+    // 写入 PCM 数据
+    const offset = 44;
+    for (let i = 0; i < length; i++) {
+      const sample = Math.max(-1, Math.min(1, channelData[i]));
+      view.setInt16(offset + i * 2, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+    }
+    
+    await audioContext.close();
+    return new Blob([wavBuffer], { type: 'audio/wav' });
+  };
+  
+  // 发送到 Whisper ASR
+  const sendToASR = async (wavBlob: Blob) => {
+    setInteractionStatus('正在识别语音...');
+    
+    const formData = new FormData();
+    formData.append('audio', wavBlob, 'recording.wav');
+    
+    // 记住发送前的模式，因为识别是异步的
+    const modeBeforeSend = interactionModeRef.current;
+    
+    try {
+      const response = await fetch('/api/asr', {
+        method: 'POST',
+        body: formData,
+      });
+      
+      const result = await response.json();
+      
+      if (result.success && result.text) {
+        const recognizedText = result.text.trim();
+        console.log('[ASR] 识别成功:', recognizedText);
+        
+        // 先显示识别结果
+        setStudentQuestion(recognizedText);
+        setInteractionStatus(`识别到: "${recognizedText}"`);
+        
+        // 短暂显示后处理（只处理 listening 模式，confirming 模式用按钮）
+        setTimeout(() => {
+          // 检查当前模式，如果已经不在 listening 模式了，就不处理
+          const currentMode = interactionModeRef.current;
+          
+          // 如果当前模式已经变了（比如用户举手了），忽略这次识别结果
+          if (currentMode !== 'listening' && modeBeforeSend !== 'listening') {
+            console.log('[ASR] 模式已变化，忽略识别结果:', { modeBeforeSend, currentMode });
+            return;
+          }
+          
+          if (recognizedText.length > 1) {
+            handleStudentQuestion(recognizedText);
+          } else {
+            setInteractionStatus('请再说一遍，我没听清楚');
+            // 恢复到监听模式
+            setInteractionMode('listening');
+          }
+        }, 500); // 500ms 让用户看到识别结果
+      } else {
+        console.error('[ASR] 识别失败:', result.error);
+        setInteractionStatus('识别失败，请重试或手动输入');
+        // 恢复到之前的模式
+        setInteractionMode(modeBeforeSend);
+      }
+    } catch (error: any) {
+      console.error('[ASR] 请求失败:', error);
+      setInteractionStatus('识别服务异常，请手动输入');
+      // 恢复到之前的模式
+      setInteractionMode(modeBeforeSend);
+    }
+  };
+  
+  // 监听 interactionMode 变化，控制录音（只在 listening 模式下录音）
+  useEffect(() => {
+    if (!useAliyunASR) return;
+    
+    if (interactionMode === 'listening') {
+      // 只在 listening 模式下开始录音，confirming 模式用按钮点击
+      startRecording();
+    } else {
+      // 停止录音
+      stopRecording();
+    }
+    
+    return () => {
+      stopRecording();
+    };
+  }, [interactionMode, useAliyunASR, startRecording, stopRecording]);
   
   // ====== MediaPipe 学生检测 ======
   
@@ -1417,6 +1723,35 @@ export default function PresentationPage() {
   // 检测循环（需要在 handleWakeUp 定义后设置）
   const runDetectionRef = useRef<(() => void) | null>(null);
   
+  // 清除倒计时
+  const clearCountdown = useCallback(() => {
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+      countdownIntervalRef.current = null;
+    }
+    setListeningCountdown(0);
+  }, []);
+  
+  // 启动倒计时
+  const startCountdown = useCallback((seconds: number, onComplete: () => void) => {
+    clearCountdown();
+    setListeningCountdown(seconds);
+    
+    countdownIntervalRef.current = setInterval(() => {
+      setListeningCountdown(prev => {
+        if (prev <= 1) {
+          clearCountdown();
+          // 检查是否正在输入，如果是则不触发 onComplete
+          if (!isTypingQuestion) {
+            onComplete();
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, [clearCountdown, isTypingQuestion]);
+  
   // 处理唤醒（由 MediaPipe 举手检测触发）
   const handleWakeUp = useCallback(() => {
     console.log('[互动] 学生举手唤醒老师');
@@ -1431,113 +1766,167 @@ export default function PresentationPage() {
     // 暂停讲解
     isLecturingRef.current = false;
     stopSpeaking();
+    setIsTypingQuestion(false);
     
-    // 切换到监听模式
-    setInteractionMode('listening');
-    setInteractionStatus('检测到举手，请说...');
+    // 清空之前的问题状态，防止显示旧数据
+    setStudentQuestion('');
     
-    // 语音回应
+    // 先设置为 processing 模式，避免语音识别录到 TTS 内容
+    setInteractionMode('processing');
+    setInteractionStatus('检测到举手...');
+    
+    // 语音回应，等说完后再切换到监听模式
     speak('我看到你举手了，请说！').then(() => {
-      // 设置超时：5秒没输入就提示
-      listeningTimeoutRef.current = setTimeout(() => {
-        if (interactionModeRef.current === 'listening') {
-          speak('你想问什么？我在听。');
-          // 再等 5 秒
-          listeningTimeoutRef.current = setTimeout(() => {
-            if (interactionModeRef.current === 'listening') {
-              speak('好的，我们继续上课。');
-              handleStudentUnderstood();
-            }
-          }, 5000);
-        }
-      }, 5000);
+      // TTS 说完后，延迟 300ms 再开始监听，避免录到尾音
+      setTimeout(() => {
+        // 切换到监听模式
+        setInteractionMode('listening');
+        setInteractionStatus('请说出你的问题...');
+        
+        // 启动倒计时：10秒
+        startCountdown(10, () => {
+          if (interactionModeRef.current === 'listening' && !isTypingQuestion) {
+            // 再次暂停监听
+            setInteractionMode('processing');
+            speak('你想问什么？我在听。').then(() => {
+              setTimeout(() => {
+                setInteractionMode('listening');
+                setInteractionStatus('请说出你的问题...');
+                // 再启动倒计时：10秒
+                startCountdown(10, () => {
+                  if (interactionModeRef.current === 'listening' && !isTypingQuestion) {
+                    speak('好的，我们继续上课。');
+                    handleStudentUnderstood();
+                  }
+                });
+              }, 300);
+            });
+          }
+        });
+      }, 300);
     });
-  }, [currentSlide, isLecturing, stopSpeaking, speak]);
+  }, [currentSlide, isLecturing, stopSpeaking, speak, startCountdown, isTypingQuestion]);
   
-  // MediaPipe 检测循环
+  // MediaPipe 检测循环 - 优化版本（限制帧率防止卡死）
   useEffect(() => {
     if (!cameraEnabled || !faceLandmarkerRef.current || !handLandmarkerRef.current || !studentVideoRef.current) {
       return;
     }
     
     const video = studentVideoRef.current;
-    
     const canvas = skeletonCanvasRef.current;
     const ctx = canvas?.getContext('2d');
     
+    // 创建一次 DrawingUtils，避免每帧创建
+    const drawingUtils = ctx ? new DrawingUtils(ctx) : null;
+    
+    // 帧率限制：每 100ms 检测一次（10fps），避免阻塞主线程
+    let lastDetectionTime = 0;
+    const DETECTION_INTERVAL = 100; // ms
+    
     const runDetection = () => {
-      if (!cameraEnabled || video.readyState < 2) {
+      // 检查是否还需要继续
+      if (!cameraEnabled) {
+        return;
+      }
+      
+      // 视频未就绪，等待
+      if (video.readyState < 2) {
         detectionLoopRef.current = requestAnimationFrame(runDetection);
         return;
       }
       
       const now = performance.now();
-      const faceResult = faceLandmarkerRef.current!.detectForVideo(video, now);
-      const handResult = handLandmarkerRef.current!.detectForVideo(video, now);
       
-      // ====== 绘制骨架调试信息 ======
-      if (canvas && ctx) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        const drawingUtils = new DrawingUtils(ctx);
-        
-        // 绘制面部网格
-        if (faceResult.faceLandmarks) {
-          for (const landmarks of faceResult.faceLandmarks) {
-            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_TESSELATION, { color: "#C0C0C070", lineWidth: 1 });
-            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_RIGHT_EYE, { color: "#FF3030" });
-            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LEFT_EYE, { color: "#30FF30" });
-          }
-        }
-        
-        // 绘制手部骨架
-        if (handResult.landmarks) {
-          for (const landmarks of handResult.landmarks) {
-            drawingUtils.drawConnectors(landmarks, HandLandmarker.HAND_CONNECTIONS, { color: "#00FF00", lineWidth: 2 });
-            drawingUtils.drawLandmarks(landmarks, { color: "#FF0000", lineWidth: 1 });
-          }
-        }
+      // 帧率限制
+      if (now - lastDetectionTime < DETECTION_INTERVAL) {
+        detectionLoopRef.current = requestAnimationFrame(runDetection);
+        return;
       }
+      lastDetectionTime = now;
       
-      // 举手检测 -> 触发唤醒
-      if (handResult.landmarks && handResult.landmarks.length > 0 && faceResult.faceLandmarks?.[0]) {
-        const faceTop = faceResult.faceLandmarks[0][10].y;
-        const handTop = Math.min(...handResult.landmarks.flat().map(p => p.y));
+      try {
+        // MediaPipe 检测
+        const faceResult = faceLandmarkerRef.current?.detectForVideo(video, now);
+        const handResult = handLandmarkerRef.current?.detectForVideo(video, now);
         
-        if (handTop < faceTop - 0.12) {
-          // 手高于头顶
-          if (!handRaisedStartRef.current) {
-            handRaisedStartRef.current = now;
-          }
-          // 持续举手 0.8 秒触发
-          if (now - handRaisedStartRef.current > 800) {
-            // 只在讲解中且空闲模式时触发
-            if (isLecturingRef2.current && interactionModeRef.current === 'idle') {
-              console.log('[MediaPipe] 检测到举手，触发唤醒');
-              handRaisedStartRef.current = null;
-              handleWakeUp();
+        if (!faceResult || !handResult) {
+          detectionLoopRef.current = requestAnimationFrame(runDetection);
+          return;
+        }
+        
+        // ====== 绘制骨架调试信息 ======
+        if (canvas && ctx && drawingUtils) {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          
+          // 绘制面部网格
+          if (faceResult.faceLandmarks) {
+            for (const landmarks of faceResult.faceLandmarks) {
+              drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_TESSELATION, { color: "#C0C0C070", lineWidth: 1 });
+              drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_RIGHT_EYE, { color: "#FF3030" });
+              drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LEFT_EYE, { color: "#30FF30" });
             }
+          }
+          
+          // 绘制手部骨架
+          if (handResult.landmarks) {
+            for (const landmarks of handResult.landmarks) {
+              drawingUtils.drawConnectors(landmarks, HandLandmarker.HAND_CONNECTIONS, { color: "#00FF00", lineWidth: 2 });
+              drawingUtils.drawLandmarks(landmarks, { color: "#FF0000", lineWidth: 1 });
+            }
+          }
+        }
+        
+        // 举手检测 -> 触发唤醒
+        if (handResult.landmarks && handResult.landmarks.length > 0 && faceResult.faceLandmarks?.[0]) {
+          const faceTop = faceResult.faceLandmarks[0][10].y;
+          const handTop = Math.min(...handResult.landmarks.flat().map(p => p.y));
+          
+          if (handTop < faceTop - 0.12) {
+            // 手高于头顶
+            if (!handRaisedStartRef.current) {
+              handRaisedStartRef.current = now;
+            }
+            // 持续举手 0.8 秒触发
+            if (now - handRaisedStartRef.current > 800) {
+              // 只在讲解中且空闲模式时触发
+              if (isLecturingRef2.current && interactionModeRef.current === 'idle') {
+                console.log('[MediaPipe] 检测到举手，触发唤醒');
+                handRaisedStartRef.current = null;
+                handleWakeUp();
+              }
+            }
+          } else {
+            handRaisedStartRef.current = null;
           }
         } else {
           handRaisedStartRef.current = null;
         }
-      } else {
-        handRaisedStartRef.current = null;
-      }
-      
-      // 皱眉检测 -> 显示提示
-      if (faceResult.faceBlendshapes?.[0] && isLecturingRef2.current) {
-        const shapes = faceResult.faceBlendshapes[0].categories;
-        const getVal = (name: string) => shapes.find(s => s.categoryName === name)?.score || 0;
         
-        const frownScore = (getVal('browDownLeft') + getVal('browDownRight')) / 2;
-        if (frownScore > 0.45 && now - lastFrownAlertRef.current > 10000) {
-          console.log('[MediaPipe] 检测到皱眉，学生可能困惑');
-          lastFrownAlertRef.current = now;
-          setDetectionStatus('检测到困惑表情');
-          setTimeout(() => {
-            if (cameraEnabled) setDetectionStatus('学生监测中');
-          }, 3000);
+        // 皱眉检测 -> 显示提示
+        if (faceResult.faceBlendshapes?.[0] && isLecturingRef2.current) {
+          const shapes = faceResult.faceBlendshapes[0].categories;
+          const getVal = (name: string) => shapes.find(s => s.categoryName === name)?.score || 0;
+          
+          const frownScore = (getVal('browDownLeft') + getVal('browDownRight')) / 2;
+          if (frownScore > 0.45 && now - lastFrownAlertRef.current > 10000) {
+            console.log('[MediaPipe] 检测到皱眉，学生可能困惑');
+            lastFrownAlertRef.current = now;
+            setDetectionStatus('检测到困惑表情');
+            setTimeout(() => {
+              if (cameraEnabled) setDetectionStatus('学生监测中');
+            }, 3000);
+          }
         }
+      } catch (error) {
+        console.error('[MediaPipe] 检测出错:', error);
+        // 出错后暂停一会儿再继续，避免连续报错
+        setTimeout(() => {
+          if (cameraEnabled) {
+            detectionLoopRef.current = requestAnimationFrame(runDetection);
+          }
+        }, 500);
+        return;
       }
       
       detectionLoopRef.current = requestAnimationFrame(runDetection);
@@ -1548,6 +1937,7 @@ export default function PresentationPage() {
     return () => {
       if (detectionLoopRef.current) {
         cancelAnimationFrame(detectionLoopRef.current);
+        detectionLoopRef.current = null;
       }
     };
   }, [cameraEnabled, handleWakeUp]);
@@ -1564,25 +1954,33 @@ export default function PresentationPage() {
   // 处理学生问题
   const handleStudentQuestion = useCallback(async (question: string) => {
     console.log('[互动] 处理学生问题:', question);
+    console.log('[互动] slides 数量:', slides.length);
+    console.log('[互动] 第一页内容:', slides[0]?.title, slides[0]?.content?.slice(0, 100));
     
     setStudentQuestion(question);
     setInteractionMode('processing');
     setInteractionStatus('正在理解你的问题...');
     
     try {
-      // 调用问题理解 API - 传递完整上下文
+      // 调用问题理解 API - 使用 RAG 检索知识库
+      // 使用 ref 获取最新的 currentSlide（避免闭包问题）
+      const actualCurrentSlide = currentSlideRef.current;
+      console.log('[互动] 实际当前页:', actualCurrentSlide);
+      
       const response = await fetch(`/api/teaching/lecture/${manuscriptId}/ask`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           question,
-          currentSlide,
-          // 传递完整的 slides 内容（标题 + 内容）
+          currentSlide: actualCurrentSlide,
+          // 传递 slides（用于定位页码）
           slides: slides.map((s, i) => ({ 
             index: i, 
             title: s.title, 
             content: s.content 
           })),
+          // 传递知识库 ID（用于 RAG 检索）- 直接使用 URL 参数
+          knowledgeBaseId: kbId,
           // 传递知识库类型（用于动态角色）
           knowledgeBaseType: manuscript?.knowledgeBase?.type || 'k12',
           // 传递章节元数据（用于确定学科/年级）
@@ -1605,8 +2003,9 @@ export default function PresentationPage() {
       };
       
       // 根据 jumpAction 决定是否跳转
-      if (result.jumpAction === 'jump' && result.targetSlide !== currentSlide) {
-        // 目标页在当前页之前，跳转回去讲解
+      if (result.jumpAction === 'jump' && result.targetSlide !== actualCurrentSlide) {
+        // 跳转到目标页
+        console.log('[互动] 跳转到:', result.targetSlide);
         goToSlide(result.targetSlide);
       }
       // 'stay' / 'later' / 'not_found' 都不跳转
@@ -1623,7 +2022,7 @@ export default function PresentationPage() {
       // 切换到确认模式
       setInteractionMode('confirming');
       setInteractionStatus('等待确认...');
-      await speak('现在明白了吗？');
+      await speak('还有其他问题吗？');
       
     } catch (error: any) {
       console.error('[互动] 处理问题失败:', error);
@@ -1631,7 +2030,7 @@ export default function PresentationPage() {
       await speak('抱歉，我没听清楚，你能再说一遍吗？');
       setInteractionMode('listening');
     }
-  }, [manuscriptId, currentSlide, slides, manuscript, goToSlide, speak]);
+  }, [manuscriptId, kbId, currentSlide, slides, manuscript, goToSlide, speak]);
   
   // 学生明白了
   const handleStudentUnderstood = useCallback(async () => {
@@ -1670,9 +2069,29 @@ export default function PresentationPage() {
     }
   }, [currentSlide, goToSlide, speak]);
   
-  // 学生没明白
+  // 学生还有问题 - 让学生提新问题
   const handleStudentNotUnderstood = useCallback(async () => {
-    console.log('[互动] 学生没明白，继续解释');
+    console.log('[互动] 学生还有问题，等待新问题');
+    
+    // 清空之前的问题上下文
+    questionContextRef.current = null;
+    setStudentQuestion('');
+    
+    // 切换到监听模式，等待新问题
+    await speak('好的，你说。');
+    setInteractionMode('listening');
+    setInteractionStatus('请说出你的问题...');
+    
+    // 启动倒计时
+    startCountdown(10, () => {
+      speak('好的，我们继续上课。');
+      handleStudentUnderstood();
+    });
+  }, [speak, startCountdown, handleStudentUnderstood]);
+  
+  // 旧的继续解释逻辑（保留但不使用）
+  const handleContinueExplaining = useCallback(async () => {
+    console.log('[互动] 继续解释');
     
     const ctx = questionContextRef.current;
     if (!ctx) {
@@ -1716,7 +2135,7 @@ export default function PresentationPage() {
       // 再次确认
       setInteractionMode('confirming');
       setInteractionStatus('等待确认...');
-      await speak('现在明白了吗？');
+      await speak('还有其他问题吗？');
       
     } catch (error: any) {
       console.error('[互动] 继续解释失败:', error);
@@ -1725,17 +2144,17 @@ export default function PresentationPage() {
     }
   }, [manuscriptId, slides, speak, handleStudentUnderstood]);
   
-  // 讲解时自动启动语音识别
+  // 讲解时自动启动语音识别（仅当不使用阿里云 ASR 时）
   useEffect(() => {
-    if (isLecturing && interactionMode === 'idle') {
+    if (!useAliyunASR && isLecturing && interactionMode === 'idle') {
       startListening();
     }
     return () => {
-      if (!isLecturing) {
+      if (!isLecturing && !useAliyunASR) {
         stopListening();
       }
     };
-  }, [isLecturing, interactionMode, startListening, stopListening]);
+  }, [isLecturing, interactionMode, startListening, stopListening, useAliyunASR]);
 
   // 清理
   useEffect(() => {
@@ -1840,7 +2259,7 @@ export default function PresentationPage() {
 
       {/* 顶部工具栏 - 全屏时隐藏 */}
       <header className={cn(
-        "bg-black/40 backdrop-blur-xl border-b border-white/10 px-6 py-3 flex items-center justify-between transition-all duration-300",
+        "bg-black/40 backdrop-blur-xl border-b border-white/10 px-6 py-3 flex items-center justify-between transition-all duration-300 relative z-[100]",
         isFullscreen && "hidden"
       )}>
         <div className="flex items-center gap-4">
@@ -1848,15 +2267,54 @@ export default function PresentationPage() {
             variant="ghost" 
             size="sm" 
             className="text-zinc-400 hover:text-white hover:bg-white/10"
-            onClick={() => router.push(`/dashboard/teaching/${kbId}/manuscript/${manuscriptId}/preview`)}
+            onClick={() => router.push(`/dashboard/teaching/${kbId}/manuscript/${manuscriptId}`)}
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
-            返回预览
+            返回编辑
           </Button>
           <div className="h-4 w-px bg-white/20" />
           <h1 className="text-white font-medium">
             🎙️ 演示模式
           </h1>
+          <div className="h-4 w-px bg-white/20" />
+          
+          {/* 生成精美PPT - 放在左边更显眼 */}
+          {bananaImages.length > 0 ? (
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => setUseBananaMode(!useBananaMode)}
+              className={cn(
+                "border-zinc-500/50",
+                useBananaMode 
+                  ? "bg-amber-500/30 border-amber-400/50 text-amber-300 hover:bg-amber-500/40" 
+                  : "bg-zinc-700/50 text-zinc-300 hover:bg-zinc-600/50"
+              )}
+            >
+              <Image className="h-4 w-4 mr-2" />
+              {useBananaMode ? '精美模式' : '经典模式'}
+            </Button>
+          ) : (
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={generateBananaPPT}
+              disabled={isGeneratingBanana || slides.length === 0}
+              className="bg-amber-500/20 border-amber-400/50 text-amber-300 hover:bg-amber-500/30"
+            >
+              {isGeneratingBanana ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  生成中...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  生成精美PPT
+                </>
+              )}
+            </Button>
+          )}
         </div>
 
         <div className="flex items-center gap-4">
@@ -1903,18 +2361,7 @@ export default function PresentationPage() {
           
           <div className="h-4 w-px bg-white/20" />
           
-          {/* 讲解控制按钮 */}
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={testSpeak}
-            disabled={isLecturing || isSpeaking}
-            className="bg-zinc-700/50 border-zinc-600/50 text-zinc-300 hover:bg-zinc-600/50"
-          >
-            <Volume2 className="h-4 w-4 mr-2" />
-            测试语音
-          </Button>
-          
+          {/* 开始课程 - 主要操作 */}
           {isLecturing ? (
             <Button 
               variant="outline" 
@@ -1938,36 +2385,6 @@ export default function PresentationPage() {
             </Button>
           )}
           
-          {/* 摄像头状态（开始课程时自动开启） */}
-          {cameraEnabled && (
-            <>
-              <div className="h-4 w-px bg-white/20" />
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={stopCamera}
-                className="bg-green-500/20 border-green-400/50 text-green-400 hover:bg-green-500/30"
-              >
-                <Camera className="h-4 w-4 mr-2" />
-                举手检测中
-              </Button>
-            </>
-          )}
-          
-          {/* 手动提问按钮（备选） */}
-          {isLecturing && interactionMode === 'idle' && (
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={handleWakeUp}
-              className="bg-zinc-700/50 border-zinc-500/50 text-zinc-300 hover:bg-zinc-600/50"
-            >
-              <Hand className="h-4 w-4 mr-2" />
-              手动提问
-            </Button>
-          )}
-          
-          {/* 确认按钮（语音识别备选） */}
           {interactionMode === 'confirming' && (
             <>
               <Button 
@@ -1989,105 +2406,102 @@ export default function PresentationPage() {
             </>
           )}
           
-          <div className="h-4 w-px bg-white/20" />
-          
-          {/* Banana 精美模式控制 */}
-          {bananaImages.length > 0 ? (
-            <>
+          {/* 课程发布按钮 */}
+          {hasLectureScript && (
+            publishedCourseId ? (
               <Button 
                 variant="outline" 
                 size="sm"
-                onClick={() => setUseBananaMode(!useBananaMode)}
-                className={cn(
-                  "border-zinc-500/50",
-                  useBananaMode 
-                    ? "bg-amber-500/30 border-amber-400/50 text-amber-300 hover:bg-amber-500/40" 
-                    : "bg-zinc-700/50 text-zinc-300 hover:bg-zinc-600/50"
-                )}
+                onClick={viewCourse}
+                className="bg-green-500/20 border-green-400/50 text-green-300 hover:bg-green-500/30"
               >
-                <Image className="h-4 w-4 mr-2" />
-                {useBananaMode ? '精美模式' : '经典模式'}
+                <Radio className="h-4 w-4 mr-2" />
+                查看课程
               </Button>
-              {useBananaMode && (
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={exportBananaPPTX}
-                  className="bg-zinc-700/50 border-zinc-500/50 text-zinc-300 hover:bg-zinc-600/50"
-                >
-                  <Download className="h-4 w-4 mr-2" />
-                  导出精美PPT
-                </Button>
-              )}
-              
-              {/* 课程发布按钮 */}
-              {hasLectureScript && (
-                publishedCourseId ? (
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={viewCourse}
-                    className="bg-green-500/20 border-green-400/50 text-green-300 hover:bg-green-500/30"
-                  >
-                    <Radio className="h-4 w-4 mr-2" />
-                    查看课程
-                  </Button>
+            ) : (
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => publishCourse(false)}
+                disabled={isPublishing}
+                className="bg-purple-500/20 border-purple-400/50 text-purple-300 hover:bg-purple-500/30"
+              >
+                {isPublishing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    发布中...
+                  </>
                 ) : (
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => publishCourse(false)}
-                    disabled={isPublishing}
-                    className="bg-purple-500/20 border-purple-400/50 text-purple-300 hover:bg-purple-500/30"
-                  >
-                    {isPublishing ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        发布中...
-                      </>
-                    ) : (
-                      <>
-                        <Radio className="h-4 w-4 mr-2" />
-                        发布课程
-                      </>
-                    )}
-                  </Button>
-                )
-              )}
-            </>
-          ) : (
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={generateBananaPPT}
-              disabled={isGeneratingBanana || slides.length === 0}
-              className="bg-amber-500/20 border-amber-400/50 text-amber-300 hover:bg-amber-500/30"
-            >
-              {isGeneratingBanana ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  生成中...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="h-4 w-4 mr-2" />
-                  生成精美PPT
-                </>
-              )}
-            </Button>
+                  <>
+                    <Radio className="h-4 w-4 mr-2" />
+                    发布课程
+                  </>
+                )}
+              </Button>
+            )
           )}
           
           <div className="h-4 w-px bg-white/20" />
           
-          {/* 全屏按钮 */}
+          {/* 3. 导出 - 次要操作 */}
+          <div className="relative" ref={exportMenuRef}>
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => setShowExportMenu(!showExportMenu)}
+              disabled={!!exporting || slides.length === 0}
+              className="bg-zinc-700/50 border-zinc-500/50 text-zinc-300 hover:bg-zinc-600/50"
+            >
+              {exporting ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Download className="h-4 w-4 mr-2" />
+              )}
+              导出
+              <ChevronDown className={cn("h-3 w-3 ml-1 transition-transform", showExportMenu && "rotate-180")} />
+            </Button>
+            
+            {showExportMenu && (
+              <div className="absolute top-full mt-2 right-0 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl overflow-hidden z-[9999] min-w-[160px] py-1">
+                <button
+                  onClick={() => { handleExport('pdf'); setShowExportMenu(false); }}
+                  className="w-full px-4 py-2.5 text-left text-sm text-white hover:bg-zinc-700/80 flex items-center gap-3 transition-colors"
+                >
+                  <FileText className="h-4 w-4 text-zinc-400" />
+                  导出 PDF
+                </button>
+                <button
+                  onClick={() => { handleExport('pptx'); setShowExportMenu(false); }}
+                  className="w-full px-4 py-2.5 text-left text-sm text-white hover:bg-zinc-700/80 flex items-center gap-3 transition-colors"
+                >
+                  <Presentation className="h-4 w-4 text-zinc-400" />
+                  导出 PPTX
+                </button>
+                {bananaImages.length > 0 && useBananaMode && (
+                  <>
+                    <div className="h-px bg-zinc-700 my-1" />
+                    <button
+                      onClick={() => { exportBananaPPTX(); setShowExportMenu(false); }}
+                      className="w-full px-4 py-2.5 text-left text-sm text-amber-400 hover:bg-zinc-700/80 flex items-center gap-3 transition-colors"
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      导出精美PPT
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+          
+          {/* 4. 全屏 - 辅助功能 */}
           <Button 
             variant="outline" 
-            size="sm"
+            size="icon"
             onClick={toggleFullscreen}
-            className="bg-zinc-700/50 border-zinc-500/50 text-zinc-300 hover:bg-zinc-600/50"
+            className="bg-zinc-700/50 border-zinc-500/50 text-zinc-300 hover:bg-zinc-600/50 h-8 w-8"
+            title="全屏演示"
           >
-            <Maximize2 className="h-4 w-4 mr-2" />
-            全屏演示
+            <Maximize2 className="h-4 w-4" />
           </Button>
         </div>
       </header>
@@ -2223,10 +2637,52 @@ export default function PresentationPage() {
                   )}>
                     {interactionMode === 'listening' && (
                       <>
-                        <Mic className="h-12 w-12 mx-auto mb-3 text-white animate-pulse" />
-                        <p className="text-white font-medium text-lg">我在听，你说...</p>
+                        <div className="relative">
+                          <Mic className={cn(
+                            "h-12 w-12 mx-auto mb-3 text-white",
+                            isRecording ? "animate-pulse" : ""
+                          )} />
+                          {/* 倒计时显示 */}
+                          {listeningCountdown > 0 && !isTypingQuestion && !isRecording && (
+                            <div className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-amber-500 text-white text-xs font-bold flex items-center justify-center">
+                              {listeningCountdown}
+                            </div>
+                          )}
+                        </div>
+                        <p className="text-white font-medium text-lg">
+                          {isRecording ? '正在录音...' : (interactionStatus || '请说出你的问题')}
+                        </p>
+                        {/* 录音指示 */}
+                        {isRecording && (
+                          <div className="flex items-center justify-center gap-2 mt-2">
+                            <span className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></span>
+                            <span className="text-red-400 text-sm">录音中</span>
+                          </div>
+                        )}
+                        {/* 识别结果显示 */}
                         {studentQuestion && (
-                          <p className="text-white/80 text-sm mt-2">"{studentQuestion}"</p>
+                          <p className="text-green-400 text-sm mt-2 font-medium">"{studentQuestion}"</p>
+                        )}
+                        {/* 倒计时提示 */}
+                        {listeningCountdown > 0 && !isTypingQuestion && !isRecording && (
+                          <p className="text-white/50 text-xs mt-1">{listeningCountdown} 秒后自动继续</p>
+                        )}
+                        {isTypingQuestion && (
+                          <p className="text-green-400 text-xs mt-1">正在输入中...</p>
+                        )}
+                        {/* 手动停止录音按钮 */}
+                        {isRecording && (
+                          <button
+                            className="mt-3 px-4 py-2 rounded-lg bg-red-500 text-white text-sm font-medium hover:bg-red-600 transition-colors"
+                            onClick={() => {
+                              // 先设置状态为处理中，显示正在识别
+                              setInteractionStatus('正在识别语音...');
+                              stopRecording();
+                              clearCountdown();
+                            }}
+                          >
+                            ✓ 说完了
+                          </button>
                         )}
                         {/* 手动输入备选 */}
                         <div className="mt-4 flex gap-2">
@@ -2234,10 +2690,23 @@ export default function PresentationPage() {
                             type="text"
                             placeholder="或在这里输入问题..."
                             className="px-3 py-2 rounded-lg bg-white/20 text-white placeholder-white/50 text-sm w-48 focus:outline-none focus:ring-2 focus:ring-white/50"
+                            onFocus={() => {
+                              // 用户开始输入，取消倒计时
+                              setIsTypingQuestion(true);
+                              clearCountdown();
+                            }}
+                            onBlur={(e) => {
+                              // 如果输入框为空，恢复倒计时
+                              if (!e.target.value.trim()) {
+                                setIsTypingQuestion(false);
+                              }
+                            }}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') {
                                 const input = e.target as HTMLInputElement;
                                 if (input.value.trim()) {
+                                  setIsTypingQuestion(false);
+                                  clearCountdown();
                                   handleStudentQuestion(input.value.trim());
                                   input.value = '';
                                 }
@@ -2249,6 +2718,8 @@ export default function PresentationPage() {
                             onClick={() => {
                               const input = document.querySelector('input[placeholder*="输入问题"]') as HTMLInputElement;
                               if (input?.value.trim()) {
+                                setIsTypingQuestion(false);
+                                clearCountdown();
                                 handleStudentQuestion(input.value.trim());
                                 input.value = '';
                               }
@@ -2262,8 +2733,12 @@ export default function PresentationPage() {
                     {interactionMode === 'processing' && (
                       <>
                         <Loader2 className="h-12 w-12 mx-auto mb-3 text-white animate-spin" />
-                        <p className="text-white font-medium text-lg">正在理解你的问题...</p>
-                        <p className="text-white/80 text-sm mt-2">"{studentQuestion}"</p>
+                        <p className="text-white font-medium text-lg">
+                          {interactionStatus || '正在处理...'}
+                        </p>
+                        {studentQuestion && (
+                          <p className="text-white/80 text-sm mt-2">"{studentQuestion}"</p>
+                        )}
                       </>
                     )}
                     {interactionMode === 'explaining' && (
@@ -2274,22 +2749,21 @@ export default function PresentationPage() {
                     )}
                     {interactionMode === 'confirming' && (
                       <>
-                        <Mic className="h-12 w-12 mx-auto mb-3 text-white animate-pulse" />
-                        <p className="text-white font-medium text-lg">明白了吗？</p>
-                        <p className="text-white/80 text-sm mt-2">说"明白了"或"没明白"</p>
-                        {/* 手动点击备选 */}
+                        <MessageCircle className="h-12 w-12 mx-auto mb-3 text-white" />
+                        <p className="text-white font-medium text-lg">还有其他问题吗？</p>
+                        {/* 按钮选择 */}
                         <div className="mt-4 flex gap-3 justify-center">
                           <button
-                            className="px-4 py-2 rounded-lg bg-zinc-500 text-white text-sm font-medium hover:bg-zinc-600"
+                            className="px-5 py-2.5 rounded-lg bg-green-500 text-white text-sm font-medium hover:bg-green-600 transition-colors"
                             onClick={handleStudentUnderstood}
                           >
-                            ✓ 明白了
+                            ✓ 没有了，继续
                           </button>
                           <button
-                            className="px-4 py-2 rounded-lg bg-amber-400 text-white text-sm font-medium hover:bg-amber-500"
+                            className="px-5 py-2.5 rounded-lg bg-amber-500 text-white text-sm font-medium hover:bg-amber-600 transition-colors"
                             onClick={handleStudentNotUnderstood}
                           >
-                            ✗ 没明白
+                            ✗ 还有问题
                           </button>
                         </div>
                       </>
@@ -2345,7 +2819,7 @@ export default function PresentationPage() {
         "fixed bottom-24 right-6 z-50 transition-opacity duration-300",
         cameraEnabled ? "opacity-100" : "opacity-0 pointer-events-none"
       )}>
-        <div className="relative w-48 rounded-xl overflow-hidden shadow-2xl border border-white/20 bg-black">
+        <div className="relative w-80 rounded-2xl overflow-hidden shadow-2xl border border-white/20 bg-black">
           <video 
             ref={studentVideoRef} 
             autoPlay 
@@ -2359,20 +2833,13 @@ export default function PresentationPage() {
             className="absolute inset-0 w-full h-full scale-x-[-1] opacity-70 pointer-events-none"
           />
           {/* 状态指示 */}
-          <div className="absolute top-2 left-2 flex items-center gap-1.5 px-2 py-1 rounded-full bg-black/60 backdrop-blur text-[10px] text-white">
-            <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
-            {detectionStatus || '监测中'}
+          <div className="absolute top-3 left-3 flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/60 backdrop-blur text-xs text-white">
+            <span className="w-2.5 h-2.5 bg-green-400 rounded-full animate-pulse"></span>
+            {detectionStatus || '学生监测中'}
           </div>
-          {/* 关闭按钮 */}
-          <button
-            onClick={stopCamera}
-            className="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/60 backdrop-blur text-white/70 hover:text-white hover:bg-black/80 flex items-center justify-center text-xs"
-          >
-            ✕
-          </button>
           {/* 举手提示 */}
-          <div className="absolute bottom-0 left-0 right-0 px-2 py-1.5 bg-gradient-to-t from-black/80 to-transparent">
-            <p className="text-[10px] text-white/80 text-center">
+          <div className="absolute bottom-0 left-0 right-0 px-3 py-2 bg-gradient-to-t from-black/80 to-transparent">
+            <p className="text-xs text-white/80 text-center">
               🙋 举手 0.8 秒可打断提问
             </p>
           </div>
