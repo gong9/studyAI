@@ -16,7 +16,7 @@ import { configureLLM } from '../../llm/config';
 // ==================== 场景类型 ====================
 
 /** 场景类型 */
-export type SceneType = 'k12_teaching' | 'tech_training' | 'product_launch' | 'business_report' | 'company_training' | 'general';
+export type SceneType = 'k12_teaching' | 'tech_training' | 'product_launch' | 'business_report' | 'company_training' | 'legal_training' | 'general';
 
 /** 场景配置 */
 interface SceneConfig {
@@ -443,6 +443,95 @@ const SCENE_CONFIGS: Record<SceneType, SceneConfig> = {
 1. sections 的 type 必须是: intro, overview, policy, process, cases, qa, compliance, summary 之一
 2. 每个 section 都要有明确的 key_points
 3. 语言要通俗易懂，避免过于法律化的表述
+4. 请直接输出 JSON，不要有其他解释文字`,
+  },
+
+  legal_training: {
+    name: '普法讲座',
+    types: ['intro', 'background', 'provisions', 'interpretation', 'cases', 'application', 'qa', 'summary'],
+    prompt: `你是一位资深的普法讲师。请阅读以下法律条文内容，规划一场面向普通群众的普法讲座。
+
+## 主题
+标题：{chapterTitle}
+
+## 法律条文内容
+{chapterContent}
+
+## 任务
+1. 明确普法目标和受众特点
+2. 提炼核心法条和关键规定
+3. 设计通俗易懂的讲解流程
+4. 准备生活化案例说明
+
+## 输出格式 (JSON)
+{
+  "chapter": "普法主题",
+  "teaching_goals": ["了解法律基本规定", "学会维护自身权益"],
+  "key_concepts": ["核心法条1", "核心法条2"],
+  "prerequisites": ["受众背景"],
+  "sections": [
+    {
+      "type": "intro",
+      "title": "开场：为什么要了解这部法律",
+      "key_points": ["法律背景", "与生活的关系"],
+      "duration_minutes": 5
+    },
+    {
+      "type": "background",
+      "title": "背景：立法目的与适用范围",
+      "key_points": ["立法背景", "适用对象"],
+      "duration_minutes": 5
+    },
+    {
+      "type": "provisions",
+      "title": "核心条款：重点法条解读",
+      "key_points": ["条款1", "条款2", "条款3"],
+      "duration_minutes": 15
+    },
+    {
+      "type": "interpretation",
+      "title": "通俗解读：用大白话讲法律",
+      "key_points": ["条款释义", "权利义务"],
+      "duration_minutes": 10
+    },
+    {
+      "type": "cases",
+      "title": "案例分析：身边的法律故事",
+      "key_points": ["典型案例", "法律后果"],
+      "duration_minutes": 10
+    },
+    {
+      "type": "application",
+      "title": "实用指南：遇到问题怎么办",
+      "key_points": ["维权途径", "注意事项"],
+      "duration_minutes": 8
+    },
+    {
+      "type": "qa",
+      "title": "答疑解惑：常见问题",
+      "key_points": ["FAQ", "误区澄清"],
+      "duration_minutes": 5
+    },
+    {
+      "type": "summary",
+      "title": "总结：要点回顾",
+      "key_points": ["核心收获", "记住这几点"],
+      "duration_minutes": 2
+    }
+  ],
+  "constraints": {
+    "grade": "普通群众",
+    "subject": "普法讲座",
+    "duration": "60min",
+    "difficulty": "easy"
+  },
+  "notes": "讲座建议"
+}
+
+## 注意
+1. sections 的 type 必须是: intro, background, provisions, interpretation, cases, application, qa, summary 之一
+2. 每个 section 都要有明确的 key_points
+3. 语言要通俗易懂，多用生活化比喻，避免过于专业的法律术语
 4. 请直接输出 JSON，不要有其他解释文字`,
   },
 

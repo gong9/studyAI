@@ -476,7 +476,7 @@ export default function CoursePlayerPage() {
           </p>
         </div>
         
-        <div className="relative">
+        <div className="relative z-[100]">
           <Button
             variant="outline"
             size="sm"
@@ -497,10 +497,17 @@ export default function CoursePlayerPage() {
             )}
           </Button>
           
-          {/* 导出选项弹窗 */}
+          {/* 导出选项弹窗 - 使用 fixed 定位确保在最上层 */}
           {showExportOptions && (
-            <div className="absolute right-0 top-full mt-2 w-72 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl z-50 p-4">
-              <h3 className="text-white font-medium mb-3">导出选项</h3>
+            <>
+              {/* 背景遮罩 */}
+              <div 
+                className="fixed inset-0 z-[998]" 
+                onClick={() => setShowExportOptions(false)}
+              />
+              {/* 弹窗内容 */}
+              <div className="fixed top-20 right-4 w-72 bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl z-[999] p-4">
+                <h3 className="text-white font-medium mb-3">导出选项</h3>
               
               {/* 质量选择 */}
               <div className="mb-4">
@@ -579,7 +586,8 @@ export default function CoursePlayerPage() {
                   开始导出
                 </Button>
               </div>
-            </div>
+              </div>
+            </>
           )}
         </div>
         

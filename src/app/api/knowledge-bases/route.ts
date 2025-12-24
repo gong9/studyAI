@@ -7,7 +7,7 @@ import { z } from 'zod';
 const createKBSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().max(500).optional(),
-  type: z.enum(['document', 'teaching', 'k12', 'tech', 'policy']).optional().default('k12'),
+  type: z.enum(['document', 'teaching', 'k12', 'tech', 'policy', 'legal']).optional().default('k12'),
 });
 
 export async function GET(request: Request) {
@@ -20,7 +20,10 @@ export async function GET(request: Request) {
     const userId = (session.user as any).id;
 
     const knowledgeBases = await prisma.knowledgeBase.findMany({
-      where: { userId },
+      where: { 
+        userId,
+        isPreset: false,  // 不显示预置知识库（如法律库）
+      },
       include: {
         _count: {
           select: { documents: true },

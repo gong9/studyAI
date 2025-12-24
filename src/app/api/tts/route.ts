@@ -37,6 +37,23 @@ function getActiveVoiceId(): string {
   return 'male-qn-qingse'; // 默认音色
 }
 
+// 延迟函数
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// 检查是否是限速错误
+function isRateLimitError(response: Response, result?: any): boolean {
+  if (response.status === 429) return true;
+  if (result?.base_resp?.status_msg) {
+    const msg = result.base_resp.status_msg.toLowerCase();
+    if (msg.includes('rate') || msg.includes('limit') || msg.includes('频率')) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // POST: 同步语音合成
 export async function POST(request: NextRequest) {
   try {

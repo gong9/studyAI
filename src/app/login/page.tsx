@@ -139,7 +139,7 @@ export default function LoginPage() {
 
       {/* 底部版权信息 */}
       <div className="absolute bottom-4 sm:bottom-6 text-center w-full px-4">
-         <p className="text-[10px] sm:text-xs text-zinc-400 font-medium tracking-wide">智研课堂 © 2025</p>
+         <p className="text-[10px] sm:text-xs text-zinc-400 font-medium tracking-wide">StudyAI © 2025</p>
       </div>
     </div>
   );

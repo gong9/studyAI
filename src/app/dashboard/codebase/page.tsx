@@ -8,7 +8,7 @@ import { signOut, useSession } from 'next-auth/react';
 // 自定义登出函数，确保跳转到当前环境的登录页
 const handleSignOut = async () => {
   await signOut({ redirect: false });
-  window.location.href = '/login';
+  window.location.replace('/login'); // 使用 replace 不留历史记录
 };
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
@@ -35,7 +35,7 @@ interface CodeBase {
 const PAGE_SIZE = 6;
 
 export default function CodebasePage() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const router = useRouter();
   const [codeBases, setCodeBases] = useState<CodeBase[]>([]);
   const [loading, setLoading] = useState(true);
@@ -43,6 +43,13 @@ export default function CodebasePage() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newCodeBase, setNewCodeBase] = useState({ name: '', description: '', githubUrl: '', branch: 'main' });
   const [currentPage, setCurrentPage] = useState(1);
+
+  // 检测未登录状态，重定向到登录页
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      window.location.replace('/login');
+    }
+  }, [status]);
 
   useEffect(() => {
     fetchCodeBases();

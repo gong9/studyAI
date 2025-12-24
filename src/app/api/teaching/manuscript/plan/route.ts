@@ -4,11 +4,29 @@
  * 阶段1：生成教学规划
  * 输入：chapterId
  * 输出：创建 TeachingManuscript 记录，返回教学规划
+ * 
+ * 优化：根据知识库类型自动推断场景类型
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { generateTeachingPlan } from '@/lib/teaching/agents/teaching-planner';
+import { generateTeachingPlan, SceneType } from '@/lib/teaching/agents/teaching-planner';
+
+/** 根据知识库类型推断场景类型 */
+function getSceneTypeFromKbType(kbType: string): SceneType {
+  switch (kbType) {
+    case 'k12':
+      return 'k12_teaching';
+    case 'tech':
+      return 'tech_training';
+    case 'policy':
+      return 'company_training';
+    case 'legal':
+      return 'legal_training';
+    default:
+      return 'general';
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -49,11 +67,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // 根据知识库类型推断场景类型（如果前端未传入）
+    const inferredSceneType = getSceneTypeFromKbType(chapter.knowledgeBase.type);
+    const finalSceneType = sceneType || inferredSceneType;
+    console.log(`[API] Scene type: requested=${sceneType}, inferred=${inferredSceneType}, final=${finalSceneType}`);
+
     // 生成教学规划
     const result = await generateTeachingPlan({
       chapterTitle: chapter.title,
       chapterContent: chapter.contentFull || chapter.contentPreview || '',
-      sceneType: sceneType || 'general',
+      sceneType: finalSceneType,
       metadata,
     });
 

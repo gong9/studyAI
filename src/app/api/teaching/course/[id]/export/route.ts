@@ -222,6 +222,40 @@ async function generateSubtitles(
   return srtPath;
 }
 
+// 并行控制：限制同时运行的任务数
+async function runWithConcurrency<T>(
+  tasks: (() => Promise<T>)[],
+  concurrency: number
+): Promise<T[]> {
+  const results: T[] = [];
+  const executing: Promise<void>[] = [];
+  
+  for (const task of tasks) {
+    const p = Promise.resolve().then(() => task()).then(result => {
+      results.push(result);
+    });
+    executing.push(p as Promise<void>);
+    
+    if (executing.length >= concurrency) {
+      await Promise.race(executing);
+      // 移除已完成的
+      const idx = executing.findIndex(e => e === p);
+      if (idx !== -1) executing.splice(idx, 1);
+    }
+  }
+  
+  await Promise.all(executing);
+  return results;
+}
+
+// 检测是否支持硬件加速
+// 注意：h264_videotoolbox 对 -loop 1 静态图片输入可能有兼容性问题，暂时禁用
+async function detectHardwareEncoder(): Promise<string> {
+  // 暂时禁用硬件加速，因为对静态图片循环有兼容性问题
+  console.log('[Export] 使用软件编码: libx264 (并行处理)');
+  return 'libx264';
+}
+
 // 生成视频
 async function generateVideo(
   slides: string[],
@@ -234,21 +268,24 @@ async function generateVideo(
   const preset = PRESET_CONFIG[options.quality];
   const resolution = RESOLUTION_CONFIG[options.resolution];
   
-  console.log(`[Export] 使用预设: ${options.quality} (${preset.preset}), 分辨率: ${options.resolution}`);
+  // 检测硬件加速
+  const encoder = await detectHardwareEncoder();
+  const useHardwareEncoder = encoder === 'h264_videotoolbox';
+  
+  console.log(`[Export] 使用预设: ${options.quality} (${preset.preset}), 分辨率: ${options.resolution}, 编码器: ${encoder}`);
 
-  // 写入所有图片
+  // 写入所有图片（并行）
+  console.log('[Export] 写入图片文件...');
   const imageFiles: string[] = [];
-  for (let i = 0; i < slides.length; i++) {
+  await Promise.all(slides.map(async (slide, i) => {
     const imagePath = path.join(tempDir, `slide_${i}.png`);
-    await writeBase64ToFile(slides[i], imagePath);
-    imageFiles.push(imagePath);
-  }
+    await writeBase64ToFile(slide, imagePath);
+    imageFiles[i] = imagePath;
+  }));
 
-  // 创建视频片段并拼接
-  const videoListPath = path.join(tempDir, 'video_list.txt');
-  const videoParts: string[] = [];
-
-  for (let i = 0; i < slides.length; i++) {
+  // 创建视频片段生成任务
+  const videoParts: string[] = new Array(slides.length);
+  const tasks = slides.map((_, i) => async () => {
     const partPath = path.join(tempDir, `part_${i}.mp4`);
     const duration = slideDurations[i] / 1000; // 转为秒
 
@@ -256,10 +293,24 @@ async function generateVideo(
 
     // 为每张图片生成对应时长的视频
     await new Promise<void>((resolve, reject) => {
-      ffmpeg()
+      const cmd = ffmpeg()
         .input(imageFiles[i])
-        .inputOptions(['-loop', '1'])
-        .outputOptions([
+        .inputOptions(['-loop', '1']);
+      
+      // 根据编码器选择不同的参数
+      if (useHardwareEncoder) {
+        // 硬件编码：VideoToolbox 不支持 -preset 和 -crf，使用 -b:v
+        cmd.outputOptions([
+          '-c:v', 'h264_videotoolbox',
+          '-b:v', options.quality === 'high' ? '8M' : options.quality === 'balanced' ? '5M' : '3M',
+          '-t', duration.toString(),
+          '-pix_fmt', 'yuv420p',
+          '-vf', `scale=${resolution.width}:${resolution.height}:force_original_aspect_ratio=decrease,pad=${resolution.width}:${resolution.height}:(ow-iw)/2:(oh-ih)/2`,
+          '-r', preset.fps,
+        ]);
+      } else {
+        // 软件编码
+        cmd.outputOptions([
           '-c:v', 'libx264',
           '-preset', preset.preset,
           '-crf', preset.crf,
@@ -267,21 +318,32 @@ async function generateVideo(
           '-pix_fmt', 'yuv420p',
           '-vf', `scale=${resolution.width}:${resolution.height}:force_original_aspect_ratio=decrease,pad=${resolution.width}:${resolution.height}:(ow-iw)/2:(oh-ih)/2`,
           '-r', preset.fps,
-        ])
+        ]);
+      }
+      
+      cmd
         .output(partPath)
         .on('end', () => resolve())
         .on('error', (err) => reject(err))
         .run();
     });
 
-    videoParts.push(partPath);
-  }
+    videoParts[i] = partPath;
+    return partPath;
+  });
+
+  // 并行生成视频片段（限制并发数为 4，避免资源耗尽）
+  console.log(`[Export] 并行生成 ${slides.length} 个视频片段 (并发数: 4)...`);
+  const startTime = Date.now();
+  await runWithConcurrency(tasks, 4);
+  console.log(`[Export] 视频片段生成完成，耗时: ${((Date.now() - startTime) / 1000).toFixed(1)}s`);
 
   // 创建拼接列表
+  const videoListPath = path.join(tempDir, 'video_list.txt');
   const listContent = videoParts.map(f => `file '${f}'`).join('\n');
   await fs.writeFile(videoListPath, listContent);
 
-  // 拼接所有视频片段
+  // 拼接所有视频片段（使用 -c copy 避免重编码）
   console.log('[Export] 拼接视频片段...');
   const videoOnlyPath = path.join(tempDir, 'video_only.mp4');
   await new Promise<void>((resolve, reject) => {
@@ -299,24 +361,36 @@ async function generateVideo(
   console.log('[Export] 合并视频、音频和字幕...');
   const finalVideoPath = path.join(tempDir, 'final.mp4');
   
-  // 字幕样式：底部居中，白色文字，黑色描边
-  // 使用 subtitles 滤镜烧录字幕
-  // 注意：路径中的特殊字符需要转义
+  // 字幕样式
   const escapedSubtitlePath = subtitlePath.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'");
-  const subtitleFilter = `subtitles='${escapedSubtitlePath}':force_style='FontSize=22,PrimaryColour=&HFFFFFF,OutlineColour=&H000000,BorderStyle=1,Outline=2,Shadow=1,MarginV=25,Alignment=2'`;
+  const subtitleFilter = `subtitles='${escapedSubtitlePath}':force_style='FontName=PingFang SC,FontSize=14,PrimaryColour=&HFFFFFF,BackColour=&H80404040,BorderStyle=4,Outline=0,Shadow=0,MarginV=30,MarginL=100,MarginR=100,Alignment=2'`;
   
   await new Promise<void>((resolve, reject) => {
-    ffmpeg()
+    const cmd = ffmpeg()
       .input(videoOnlyPath)
-      .input(mergedAudioPath)
-      .outputOptions([
+      .input(mergedAudioPath);
+    
+    // 最终合成时也使用硬件加速（如果可用）
+    if (useHardwareEncoder) {
+      cmd.outputOptions([
+        '-c:v', 'h264_videotoolbox',
+        '-b:v', options.quality === 'high' ? '8M' : options.quality === 'balanced' ? '5M' : '3M',
+        '-vf', subtitleFilter,
+        '-c:a', 'aac',
+        '-shortest',
+      ]);
+    } else {
+      cmd.outputOptions([
         '-c:v', 'libx264',
         '-preset', preset.preset,
         '-crf', preset.crf,
         '-vf', subtitleFilter,
         '-c:a', 'aac',
         '-shortest',
-      ])
+      ]);
+    }
+    
+    cmd
       .output(finalVideoPath)
       .on('end', () => resolve())
       .on('error', (err) => {
@@ -375,6 +449,20 @@ export async function POST(
     const audioData: { [key: number]: string } = JSON.parse(course.audioData);
 
     console.log(`[Export] 数据: ${slides.length} 页, ${frames.length} 帧, ${Object.keys(audioData).length} 音频`);
+
+    // 检测 slides 格式：base64 图片还是 Markdown
+    const isBase64Image = slides.length > 0 && 
+      !slides[0].includes('#') && 
+      !slides[0].includes('\n') && 
+      slides[0].length > 100;
+    
+    if (!isBase64Image) {
+      console.log('[Export] 检测到 Markdown 格式，暂不支持导出');
+      return NextResponse.json({ 
+        error: '当前课程使用普通模式发布，暂不支持导出视频。请回到课件页面，使用"精美模式"重新发布后再导出。',
+        hint: '精美模式会将课件渲染为高清图片，导出效果更佳。'
+      }, { status: 400 });
+    }
 
     // 创建临时目录
     tempDir = await createTempDir();

@@ -8,9 +8,26 @@ import { prisma } from '@/lib/prisma';
 import { 
   generateFullLectureScript,
   parseSlideElements,
-  ProgressCallback
+  ProgressCallback,
+  LectureSceneType
 } from '@/lib/teaching/lecture/lecture-agent';
 import type { SlideInfo, LectureAction } from '@/lib/teaching/lecture/types';
+
+// 根据知识库类型推断讲解场景类型
+function getSceneTypeFromKbType(kbType: string): LectureSceneType {
+  switch (kbType) {
+    case 'k12':
+      return 'k12_teaching';
+    case 'tech':
+      return 'tech_training';
+    case 'policy':
+      return 'company_training';
+    case 'legal':
+      return 'legal_training';
+    default:
+      return 'general';
+  }
+}
 
 // 使用全局共享的讲解状态（与主 route 共享）
 const globalForLecture = globalThis as unknown as {
@@ -75,7 +92,7 @@ export async function GET(
         // 发送开始事件
         sendEvent('progress', { stage: 'init', message: '正在获取课件内容...', percent: 5 });
 
-        // 获取稿件内容
+        // 获取稿件内容（包含知识库类型用于确定讲解风格）
         const manuscript = await prisma.teachingManuscript.findUnique({
           where: { id: manuscriptId },
           select: {
@@ -84,8 +101,16 @@ export async function GET(
             enrichedContent: true,
             confirmedContent: true,
             draftContent: true,
+            knowledgeBase: {
+              select: { type: true },
+            },
           },
         });
+        
+        // 根据知识库类型确定讲解场景
+        const sceneType = manuscript?.knowledgeBase 
+          ? getSceneTypeFromKbType(manuscript.knowledgeBase.type) 
+          : 'general';
 
         if (!manuscript) {
           sendEvent('error', { message: '稿件不存在' });
@@ -136,8 +161,9 @@ export async function GET(
             sendEvent('progress', progress);
           };
 
-          // 生成完整演讲稿（带进度回调）
-          scriptResult = await generateFullLectureScript(slides, onProgress);
+          // 生成完整演讲稿（带进度回调和场景类型）
+          console.log(`[Lecture SSE] 使用场景类型: ${sceneType}`);
+          scriptResult = await generateFullLectureScript(slides, onProgress, sceneType);
           
           // 保存到数据库
           await prisma.teachingManuscript.update({

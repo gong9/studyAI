@@ -11,9 +11,7 @@ import {
   ListTree,
   Target,
   Mic,
-  Highlighter,
   MessageSquare,
-  Wand2,
   FileSearch,
   Image,
   Presentation,
@@ -30,7 +28,8 @@ import {
   Radio,
   Film,
   Users,
-  Building2
+  Building2,
+  Scale
 } from 'lucide-react';
 
 // 三大场景 - 统一采用 Zinc-900 主色调逻辑
@@ -59,6 +58,14 @@ const scenarios = [
     highlight: '合规培训',
     examples: ['入职培训', '安全规范', '流程宣贯'],
   },
+  { 
+    id: 'legal',
+    icon: Scale, 
+    name: '普法讲座', 
+    desc: '法律条文转化为通俗易懂的科普讲座',
+    highlight: '法律普及',
+    examples: ['劳动法', '民法典', '消费维权'],
+  },
 ];
 
 // 核心功能 - 统一配色
@@ -70,10 +77,10 @@ const preparationFeatures = [
 ];
 
 const teachingFeatures = [
-  { icon: Highlighter, name: '元素高亮联动', desc: '讲到哪里亮哪里，同步演示' },
+  { icon: Presentation, name: 'PPT 自动生成', desc: '一键生成精美演示课件' },
   { icon: Mic, name: '语音合成 TTS', desc: '真人级语音，多种音色可选' },
   { icon: MessageSquare, name: '1对1私教互动', desc: '随时打断提问，AI 即时解答' },
-  { icon: Wand2, name: '智能引导语', desc: '自动添加过渡与互动引导' },
+  { icon: Download, name: '课程导出分享', desc: '一键导出视频，轻松分享传播' },
 ];
 
 const exportFeatures = [
@@ -98,7 +105,7 @@ export default function LandingPage() {
 
   useEffect(() => {
     setMounted(true);
-    document.title = "智研平台 - 一站式 AI 内容演示平台";
+    document.title = "StudyAI - 一站式 AI 内容演示平台";
     const handleScroll = () => setScrollY(window.scrollY);
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
@@ -133,7 +140,7 @@ export default function LandingPage() {
               <div className="absolute inset-0 bg-zinc-900 rounded-lg opacity-20 transform -rotate-3 transition-transform group-hover:-rotate-6"></div>
               <Sparkles className="relative w-5 h-5 text-white" />
             </div>
-            <span className="font-bold text-xl tracking-tighter text-zinc-900">智研平台</span>
+            <span className="font-bold text-xl tracking-tighter text-zinc-900">StudyAI</span>
           </div>
           <div className="flex items-center gap-4">
             <Link href="/login" className="px-5 py-2 bg-zinc-900 text-white rounded-full text-sm font-bold hover:bg-zinc-800 transition-all shadow-lg shadow-zinc-200">
@@ -152,7 +159,7 @@ export default function LandingPage() {
               一站式 AI 内容数字化演示平台
             </span>
             <h1 className="text-6xl sm:text-8xl lg:text-[10rem] font-black tracking-tighter mb-8 text-zinc-900 leading-[0.9]">
-              智研平台
+              StudyAI
               <span className="inline-block ml-4 text-2xl sm:text-4xl font-normal text-zinc-300 tracking-normal italic">AI</span>
             </h1>
           </div>
@@ -184,7 +191,7 @@ export default function LandingPage() {
             <p className="text-zinc-400 text-lg font-medium max-w-2xl mx-auto">针对不同领域，提供极致的 AI 内容转化方案</p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
             {scenarios.map((scenario, index) => (
               <div key={scenario.id} className="scroll-fade-in bg-white border border-zinc-100 rounded-[2.5rem] p-10 hover:border-zinc-900 hover:shadow-2xl transition-all duration-500 group">
                 <div className="w-16 h-16 bg-zinc-900 rounded-2xl flex items-center justify-center mb-8 shadow-xl group-hover:scale-110 transition-transform">
@@ -377,7 +384,7 @@ export default function LandingPage() {
           </Link>
           
           <div className="mt-24 pt-8 border-t border-zinc-50 w-full flex flex-col sm:flex-row justify-between items-center gap-4 text-[11px] font-bold text-zinc-300 uppercase tracking-widest">
-            <span>© 2025 智研平台 · 一站式 AI 内容演示</span>
+            <span>© 2025 StudyAI · 一站式 AI 内容演示</span>
             <div className="flex gap-8">
               <span className="hover:text-zinc-900 cursor-pointer">Privacy</span>
               <span className="hover:text-zinc-900 cursor-pointer">Terms</span>

@@ -7,7 +7,7 @@ import {
   ArrowLeft, Loader2, ChevronLeft, ChevronRight, ChevronDown,
   Presentation, Play, Pause, Square, Volume2, Maximize2, Minimize2,
   Mic, MicOff, MessageCircle, Sparkles, Image, Download, Radio, Camera, Hand,
-  FileText
+  FileText, RefreshCw
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import katex from 'katex';
@@ -259,6 +259,9 @@ export default function PresentationPage() {
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishedCourseId, setPublishedCourseId] = useState<string | null>(null);
   const [hasLectureScript, setHasLectureScript] = useState(false);
+  
+  // ====== 重新生成状态 ======
+  const [isRegenerating, setIsRegenerating] = useState(false);
   
   // ====== 导出状态 ======
   const [exporting, setExporting] = useState<string | null>(null);
@@ -1018,6 +1021,63 @@ export default function PresentationPage() {
       alert(error.message || '导出失败');
     } finally {
       setExporting(null);
+    }
+  };
+
+  // 重新生成讲稿（使用正确的场景类型）
+  const handleRegenerate = async () => {
+    if (!confirm('确定要重新生成讲稿吗？这将覆盖现有内容（包括讲解稿和语音缓存），并使用正确的场景类型。')) {
+      return;
+    }
+    
+    setIsRegenerating(true);
+    try {
+      // 0. 先清除旧的讲解稿和音频缓存
+      await fetch(`/api/teaching/manuscript/${manuscriptId}/clear-cache`, {
+        method: 'POST',
+      });
+      
+      // 1. 调用 draft API 重新生成讲稿
+      const draftRes = await fetch('/api/teaching/manuscript/draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ manuscriptId }),
+      });
+      
+      if (!draftRes.ok) {
+        const err = await draftRes.json();
+        throw new Error(err.error || '重新生成讲稿失败');
+      }
+      
+      // 2. 调用 enrich API 润色
+      const enrichRes = await fetch(`/api/teaching/manuscript/${manuscriptId}/enrich`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force: true }),
+      });
+      
+      if (!enrichRes.ok) {
+        console.warn('[Presentation] Enrich failed, continuing...');
+      }
+      
+      // 3. 调用 render API 重新生成课件
+      const renderRes = await fetch(`/api/teaching/manuscript/${manuscriptId}/render`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force: true }),
+      });
+      
+      if (!renderRes.ok) {
+        console.warn('[Presentation] Render failed, continuing...');
+      }
+      
+      // 4. 刷新页面数据
+      window.location.reload();
+    } catch (error: any) {
+      console.error('[Presentation] Regenerate error:', error);
+      alert('重新生成失败: ' + error.message);
+    } finally {
+      setIsRegenerating(false);
     }
   };
 
@@ -2374,6 +2434,24 @@ export default function PresentationPage() {
           </div>
           
           <div className="h-4 w-px bg-white/20" />
+          
+          {/* 重新生成 - 只有生成过才显示 */}
+          {(manuscript?.draftContent || manuscript?.enrichedContent) && (
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={handleRegenerate}
+              disabled={isRegenerating || isLecturing}
+              className="bg-zinc-700/50 border-zinc-500/50 text-zinc-300 hover:bg-zinc-600/50"
+            >
+              {isRegenerating ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <RefreshCw className="h-4 w-4 mr-2" />
+              )}
+              {isRegenerating ? '生成中...' : '重新生成'}
+            </Button>
+          )}
           
           {/* 开始课程 - 主要操作 */}
           {isLecturing ? (

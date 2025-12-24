@@ -294,7 +294,7 @@ export default function ManuscriptEditorPage() {
             <Button 
               variant="ghost" 
               size="sm" 
-              onClick={() => router.push(`/dashboard/teaching/${kbId}`)}
+              onClick={() => router.back()}
               className="hover:bg-slate-100 text-slate-600 rounded-full transition-all"
             >
               <ArrowLeft className="h-4 w-4 mr-1" />

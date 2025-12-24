@@ -8,12 +8,12 @@ import {
   ArrowLeft, Upload, FileText, ChevronRight, ChevronDown, 
   GraduationCap, Sparkles, Loader2, CheckCircle, 
   BookOpen, ListTree, Play, Eye, Plus, LayoutGrid, Clock,
-  Target, Book, Settings2, Zap, Cpu, FileCheck
+  Target, Book, Settings2, Zap, Cpu, FileCheck, Scale
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // 根据项目类型配置不同的文案和图标
-type ProjectType = 'k12' | 'tech' | 'policy' | 'teaching';
+type ProjectType = 'k12' | 'tech' | 'policy' | 'legal' | 'teaching';
 
 interface TypeConfig {
   icon: React.ComponentType<{ className?: string }>;
@@ -82,6 +82,19 @@ const TYPE_CONFIGS: Record<ProjectType, TypeConfig> = {
     selectHint: '请在左侧选择条款开始创作',
     headerSubtitle: '制度培训',
   },
+  legal: {
+    icon: Scale,
+    docLibTitle: '法律文档',
+    addDocText: '添加法律',
+    emptyDocText: '暂无法律文档，请先上传',
+    indexTitle: '法律条文索引',
+    emptyIndexText: '请上传法律文档后点击"智能扫描"',
+    workbenchTitle: '普法工作台',
+    generateBtnText: '生成普法讲座',
+    generatingText: '正在生成普法讲稿...',
+    selectHint: '请在左侧选择法律条文开始创作',
+    headerSubtitle: '普法讲座',
+  },
 };
 
 const getTypeConfig = (type: string): TypeConfig => {
@@ -142,6 +155,8 @@ export default function TeachingDetailPage() {
         return 'tech_training';
       case 'policy':
         return 'company_training';
+      case 'legal':
+        return 'legal_training';
       default:
         return 'general';
     }

@@ -1,6 +1,8 @@
 /**
  * LLM 讲解 Agent
  * 根据幻灯片内容生成讲解指令
+ * 
+ * 支持多种场景类型：K12教学、技术培训、普法讲座等
  */
 //@ts-ignore
 import OpenAI from 'openai';
@@ -17,7 +19,64 @@ const client = new OpenAI({
   baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
 });
 
-const LECTURE_PROMPT = `你是一位专业的教学讲解助手。你的任务是根据当前幻灯片的内容，生成讲解指令序列。
+// ====== 场景类型配置 ======
+export type LectureSceneType = 'k12_teaching' | 'tech_training' | 'company_training' | 'legal_training' | 'general';
+
+interface SceneConfig {
+  role: string;           // 讲师角色描述
+  audience: string;       // 受众称呼
+  openingGreeting: string; // 开场问候语模板
+  closingWords: string;   // 结束语
+  style: string;          // 讲解风格描述
+}
+
+const SCENE_CONFIGS: Record<LectureSceneType, SceneConfig> = {
+  k12_teaching: {
+    role: '一位优秀的小学数学老师',
+    audience: '同学们',
+    openingGreeting: '同学们，今天我们来学习：',
+    closingWords: '好，这节课的内容就讲到这里，同学们有什么问题吗？',
+    style: '亲切、耐心，用生活中的例子解释抽象概念',
+  },
+  tech_training: {
+    role: '一位资深的技术专家',
+    audience: '各位',
+    openingGreeting: '各位好，今天我们来学习：',
+    closingWords: '好，今天的内容就到这里，有问题随时讨论。',
+    style: '专业、清晰，注重实践应用和代码示例',
+  },
+  company_training: {
+    role: '一位企业内训讲师',
+    audience: '各位同事',
+    openingGreeting: '各位同事好，今天我们来学习：',
+    closingWords: '好，今天的培训就到这里，希望对大家的工作有所帮助。',
+    style: '务实、高效，结合工作场景',
+  },
+  legal_training: {
+    role: '一位经验丰富的普法讲师',
+    audience: '各位听众',
+    openingGreeting: '各位听众好，今天我们来了解：',
+    closingWords: '好，今天的普法讲座就到这里。记住，法律是保护我们的武器，有问题可以随时咨询。',
+    style: '通俗易懂、生动有趣，多用生活案例，把法条"翻译"成大白话',
+  },
+  general: {
+    role: '一位专业的讲师',
+    audience: '各位',
+    openingGreeting: '各位好，今天我们来学习：',
+    closingWords: '好，今天的内容就到这里，感谢大家的聆听。',
+    style: '清晰、专业',
+  },
+};
+
+// 获取场景配置
+function getSceneConfig(sceneType?: LectureSceneType): SceneConfig {
+  return SCENE_CONFIGS[sceneType || 'general'] || SCENE_CONFIGS.general;
+}
+
+// 根据场景类型生成 LECTURE_PROMPT
+function getLecturePrompt(sceneType?: LectureSceneType): string {
+  const config = getSceneConfig(sceneType);
+  return `你是${config.role}。你的任务是根据当前幻灯片的内容，生成讲解指令序列。
 
 ## 输入信息
 - 当前幻灯片内容和元素
@@ -41,16 +100,16 @@ const LECTURE_PROMPT = `你是一位专业的教学讲解助手。你的任务�
 
 ## 讲解原则
 1. 每个幻灯片先讲标题，再按顺序讲解各个元素
-2. 讲解前先高亮对应元素，让学生知道在讲什么
-3. 讲解语言要口语化、亲切，像老师在课堂上讲课
-4. 遇到公式或专业术语要解释清楚
+2. 讲解前先高亮对应元素，让听众知道在讲什么
+3. 讲解语言要${config.style}
+4. 遇到专业术语要解释清楚
 5. 一个幻灯片讲完后再翻页
 6. 最后一页讲完后输出 end
 
 ## 重要：根据页面位置调整开场白
-- **第一页**：用欢迎语开场，如"同学们，今天我们来学习..."
+- **第一页**：用欢迎语开场，如"${config.openingGreeting}..."
 - **中间页**：直接讲内容，如"接下来我们看..."、"好，下面讲..."
-- **最后一页**：讲完内容后总结，如"好，这节课就到这里..."
+- **最后一页**：讲完内容后总结，如"${config.closingWords}"
 
 ## 输出格式（严格 JSON）
 
@@ -58,7 +117,7 @@ const LECTURE_PROMPT = `你是一位专业的教学讲解助手。你的任务�
 {
   "actions": [
     {"action": "highlight", "target": "slide-0-el-0"},
-    {"action": "speak", "text": "同学们，今天我们来学习小数的认识"},
+    {"action": "speak", "text": "${config.openingGreeting}本节主题"},
     {"action": "highlight", "target": "slide-0-el-1"},
     {"action": "speak", "text": "首先，我们看第一个知识点..."},
     {"action": "next_slide"}
@@ -69,12 +128,13 @@ const LECTURE_PROMPT = `你是一位专业的教学讲解助手。你的任务�
 {
   "actions": [
     {"action": "highlight", "target": "slide-1-el-0"},
-    {"action": "speak", "text": "接下来我们看小数的读法"},
+    {"action": "speak", "text": "接下来我们看这部分内容"},
     {"action": "highlight", "target": "slide-1-el-1"},
-    {"action": "speak", "text": "读小数时，整数部分按整数读法读..."},
+    {"action": "speak", "text": "这里要注意的是..."},
     {"action": "next_slide"}
   ]
 }`;
+}
 
 // 解析幻灯片内容，提取元素信息
 export function parseSlideElements(content: string, slideIndex: number): SlideElement[] {
@@ -206,8 +266,10 @@ ${currentSlide.elements.map(el => `- [${el.id}] (${el.type}): ${el.content}`).jo
 function generateFallbackActions(
   slide: SlideInfo, 
   isLastSlide: boolean,
-  isFirstSlide: boolean = false
+  isFirstSlide: boolean = false,
+  sceneType?: LectureSceneType
 ): LectureAgentOutput {
+  const config = getSceneConfig(sceneType);
   const actions: LectureAction[] = [];
   
   // 讲解标题
@@ -216,7 +278,7 @@ function generateFallbackActions(
     actions.push({ action: 'highlight', target: titleElement.id });
     // 第一页用欢迎语，其他页直接讲
     if (isFirstSlide) {
-      actions.push({ action: 'speak', text: `同学们，今天我们来学习：${titleElement.content}` });
+      actions.push({ action: 'speak', text: `${config.openingGreeting}${titleElement.content}` });
     } else {
       actions.push({ action: 'speak', text: `接下来我们看：${titleElement.content}` });
     }
@@ -248,7 +310,7 @@ function generateFallbackActions(
   
   // 翻页或结束
   if (isLastSlide) {
-    actions.push({ action: 'speak', text: '好，这节课的内容就讲到这里，同学们有什么问题吗？' });
+    actions.push({ action: 'speak', text: config.closingWords });
     actions.push({ action: 'end' });
   } else {
     actions.push({ action: 'speak', text: '好，我们继续看下一页' });
@@ -286,7 +348,18 @@ export async function generateQuickLecture(
 
 // ====== 完整演讲稿生成 ======
 
-const FULL_SCRIPT_PROMPT = `你是一位优秀的小学数学老师，正在准备一堂精彩的课。
+// 根据场景类型生成完整演讲稿的 Prompt
+function getFullScriptPrompt(sceneType?: LectureSceneType): string {
+  const config = getSceneConfig(sceneType);
+  
+  // 根据场景类型生成不同的示例
+  const exampleOpening = sceneType === 'legal_training' 
+    ? `${config.audience}好！今天我们来聊一个非常重要的话题——法律。很多人觉得法律离自己很远，但其实法律就在我们身边，它是保护我们权益的武器。`
+    : sceneType === 'tech_training'
+    ? `${config.audience}好！今天我们来学习一个技术主题。这个技术在实际项目中非常有用，让我们一起来深入了解。`
+    : `${config.audience}好！今天我们来学习一个非常有趣的知识点。让我们开始吧。`;
+  
+  return `你是${config.role}，正在准备一场精彩的讲解。
 
 ## 你的任务
 根据提供的 PPT 幻灯片内容，生成一份完整的、专业的演讲稿。
@@ -297,11 +370,14 @@ const FULL_SCRIPT_PROMPT = `你是一位优秀的小学数学老师，正在准�
 ## 输出要求
 生成一个 JSON 对象，包含 slides 数组。每个 slide 包含该页的讲解指令序列。
 
+## 讲解风格
+${config.style}
+
 ## 讲解原则
-1. **不要照着 PPT 读！** 要像真正的老师一样，用自己的话讲解
-2. **扩展内容**：PPT 上写"小数的认识"，你要解释什么是小数、为什么要学、生活中哪里用到
+1. **不要照着 PPT 读！** 要用自己的话讲解，${config.style}
+2. **扩展内容**：PPT 上的要点要展开讲解，结合实际案例
 3. **循序渐进**：先引入概念，再举例说明，最后总结
-4. **互动引导**：适当加入"同学们想一想"、"大家看这里"等引导语
+4. **互动引导**：适当加入引导语，如"大家想一想"、"这里要注意"
 5. **高亮配合**：讲到某个知识点时，先高亮对应元素，再开始讲解
 6. **过渡自然**：页与页之间要有过渡语
 
@@ -317,18 +393,18 @@ const FULL_SCRIPT_PROMPT = `你是一位优秀的小学数学老师，正在准�
     {
       "index": 0,
       "actions": [
-        {"action": "speak", "text": "同学们好！今天我们来学习一个非常有趣的数学知识——小数。大家在生活中见过小数吗？比如超市里的价格标签，3.5元、2.8元，这些就是小数。"},
+        {"action": "speak", "text": "${exampleOpening}"},
         {"action": "highlight", "target": "slide-0-el-0"},
-        {"action": "speak", "text": "我们先来看今天要学习的主题：小数的认识。"},
+        {"action": "speak", "text": "我们先来看今天要讲的主题。"},
         {"action": "highlight", "target": "slide-0-el-1"},
-        {"action": "speak", "text": "那什么是小数呢？简单来说，小数就是用来表示不满一个整数的数..."},
+        {"action": "speak", "text": "这个要点非常重要，让我来详细解释..."},
         {"action": "next_slide"}
       ]
     },
     {
       "index": 1,
       "actions": [
-        {"action": "speak", "text": "好，我们继续。刚才我们了解了什么是小数，现在来看看小数怎么读。"},
+        {"action": "speak", "text": "好，我们继续。刚才我们了解了基本概念，现在来看具体内容。"},
         {"action": "highlight", "target": "slide-1-el-0"},
         ...
       ]
@@ -337,9 +413,11 @@ const FULL_SCRIPT_PROMPT = `你是一位优秀的小学数学老师，正在准�
 }
 
 ## 注意
+- 受众是：${config.audience}
 - 每页的讲解内容要有深度，不是简单复述 PPT
 - 讲解时长要合适，每页大约 30-60 秒的讲解内容
-- 最后一页要有课堂总结`;
+- 最后一页的结束语：${config.closingWords}`;
+}
 
 // 进度回调类型
 export type ProgressCallback = (progress: {
@@ -351,8 +429,12 @@ export type ProgressCallback = (progress: {
 // 生成完整演讲稿（包含所有页的指令）
 export async function generateFullLectureScript(
   slides: SlideInfo[],
-  onProgress?: ProgressCallback
+  onProgress?: ProgressCallback,
+  sceneType?: LectureSceneType
 ): Promise<{ slides: { index: number; actions: LectureAction[] }[] }> {
+  
+  const config = getSceneConfig(sceneType);
+  console.log(`[LectureAgent] Scene type: ${sceneType || 'general'}, audience: ${config.audience}`);
   
   // 发送进度
   onProgress?.({ stage: 'parsing', message: '正在分析幻灯片内容...', percent: 10 });
@@ -379,10 +461,11 @@ ${slide.content.slice(0, 500)}${slide.content.length > 500 ? '...' : ''}
 ${slidesContext}
 
 请生成完整的演讲稿，记住：
-1. 不要照读 PPT，要用老师的口吻讲解
+1. 不要照读 PPT，要用讲师的口吻讲解
 2. 每讲一个知识点前先高亮对应元素
 3. 讲解内容要比 PPT 文字丰富
 4. 页与页之间要有过渡
+5. 称呼受众为"${config.audience}"
 `;
 
   try {
@@ -392,7 +475,7 @@ ${slidesContext}
     const response = await client.chat.completions.create({
       model: 'qwen-plus', // 用更强的模型生成完整演讲稿
       messages: [
-        { role: 'system', content: FULL_SCRIPT_PROMPT },
+        { role: 'system', content: getFullScriptPrompt(sceneType) },
         { role: 'user', content: userMessage },
       ],
       response_format: { type: 'json_object' },
@@ -424,7 +507,7 @@ ${slidesContext}
         }
       } else {
         if (!lastAction || lastAction.action !== 'end') {
-          actions.push({ action: 'speak', text: '好，今天的课就到这里，同学们下课后可以做做练习巩固一下。有问题随时问老师，下课！' });
+          actions.push({ action: 'speak', text: config.closingWords });
           actions.push({ action: 'end' });
         }
       }
@@ -447,7 +530,7 @@ ${slidesContext}
     const fallbackSlides = slides.map((slide, idx) => {
       const isFirst = idx === 0;
       const isLast = idx === slides.length - 1;
-      const result = generateFallbackActions(slide, isLast, isFirst);
+      const result = generateFallbackActions(slide, isLast, isFirst, sceneType);
       return {
         index: idx,
         actions: result.actions,

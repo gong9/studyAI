@@ -236,6 +236,74 @@ const SCENE_PROMPTS: Record<string, ScenePromptConfig> = {
 请直接输出 Markdown 内容，不要有额外解释。`,
   },
 
+  legal_training: {
+    name: '普法讲座',
+    audienceLabel: '普通群众',
+    speakingStyle: '通俗易懂、生动有趣',
+    prompt: `你是一位经验丰富的普法讲师，擅长用通俗易懂的语言向普通群众讲解法律知识。请根据以下规划和法律条文，撰写一份生动、实用的普法讲座讲稿。
+
+## 讲座规划
+主题：{chapter}
+受众：{grade}
+类型：{subject}
+时长：{duration}
+
+讲座目标：
+{goals}
+
+核心法条：
+{concepts}
+
+内容安排：
+{sections}
+
+## 法律要点（必须覆盖）
+{keyPoints}
+
+## 内容摘要
+{summary}
+
+## 法律条文内容（RAG 检索结果）
+{ragContent}
+
+## 输出要求
+
+### 语言风格（必须遵守）
+1. **使用通俗易懂的大白话**，避免过多法律术语
+2. 多用生活化的比喻和例子，如：
+   - "这就好比我们平时买东西..."
+   - "打个比方说..."
+   - "大家可能都遇到过这种情况..."
+3. 适当使用互动性语言：
+   - "大家想一想..."
+   - "有没有遇到过这种情况？"
+   - "这里要划重点了..."
+4. 可以用幽默轻松的方式讲严肃的法律问题
+5. 每讲一个法条，都要用"翻译成大白话就是..."来解释
+
+### 内容结构（必须遵守）
+1. **法条引用**：先引用原文，格式为 \`> 第X条：原文内容\`
+2. **通俗解读**：紧跟"翻译成大白话"的解释
+3. **生活案例**：每个重点法条配一个生活中的小故事或案例
+4. **维权指南**：告诉听众遇到问题应该怎么做
+
+### 格式要求
+1. **格式**：使用 Markdown 格式
+2. **结构**：按照内容安排组织，层次清晰
+3. **法条引用**：使用引用格式 \`> 第X条：原文内容\`
+4. **重点标注**：关键信息用 **加粗** 强调
+5. **图表标记**：需要示意图的地方用 \`> visual: 描述\` 标记
+6. **分页**：每个部分用 \`---\` 分隔（幻灯片分页标记）
+
+### 重要提示
+1. 必须让普通人能听懂，不能太专业
+2. 多讲故事、少念条文
+3. 每页内容要充实（每个部分至少 150-300 字）
+4. 让听众觉得"法律和我有关"、"学到了有用的东西"
+
+请直接输出 Markdown 内容，不要有额外解释。`,
+  },
+
   general: {
     name: '通用演示',
     audienceLabel: '受众',
@@ -332,6 +400,11 @@ export async function generateManuscript(input: ManuscriptInput): Promise<Manusc
     // 3. 根据场景类型获取对应的 Prompt 模板
     const sceneType = plan.sceneType || 'general';
     const promptTemplate = getScenePrompt(sceneType);
+    
+    // 验证场景类型是否有效
+    if (!SCENE_PROMPTS[sceneType]) {
+      console.warn(`[ManuscriptGenerator] Unknown scene type: ${sceneType}, falling back to general`);
+    }
 
     // 4. 构建 prompt
     const prompt = promptTemplate

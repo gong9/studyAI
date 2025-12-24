@@ -7,18 +7,18 @@ import { signOut, useSession } from 'next-auth/react';
 // 自定义登出函数，确保跳转到当前环境的登录页
 const handleSignOut = async () => {
   await signOut({ redirect: false });
-  window.location.href = '/login';
+  window.location.replace('/login'); // 使用 replace 不留历史记录
 };
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { 
   LogOut, Plus, Trash2, FileText, ChevronRight, ChevronLeft, 
-  Clock, GraduationCap, Sparkles, Cpu, FileCheck, ArrowRight
+  Clock, GraduationCap, Sparkles, Cpu, FileCheck, ArrowRight, Scale
 } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 
-type ScenarioType = 'k12' | 'tech' | 'policy';
+type ScenarioType = 'k12' | 'tech' | 'policy' | 'legal';
 
 interface ScenarioConfig {
   id: ScenarioType;
@@ -66,6 +66,17 @@ const scenarios: ScenarioConfig[] = [
     examples: ['入职培训', '安全规范', '流程宣贯'],
     placeholder: '例如：新员工入职手册',
   },
+  {
+    id: 'legal',
+    name: '普法讲座',
+    desc: '法律条文转化为通俗易懂的科普讲座',
+    icon: Scale,
+    accentColor: 'text-zinc-600',
+    accentBg: 'bg-zinc-50',
+    accentBorder: 'group-hover:border-zinc-400',
+    examples: ['劳动法', '民法典', '消费维权'],
+    placeholder: '例如：劳动者权益保护',
+  },
 ];
 
 const getScenarioConfig = (type: string): ScenarioConfig => {
@@ -88,9 +99,10 @@ interface KnowledgeBase {
 const PAGE_SIZE = 6;
 
 export default function DashboardPage() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const router = useRouter();
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
+  const [legalManuscripts, setLegalManuscripts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -99,8 +111,16 @@ export default function DashboardPage() {
   const [newKB, setNewKB] = useState({ name: '', description: '', type: 'k12' as ScenarioType });
   const [currentPage, setCurrentPage] = useState(1);
 
+  // 检测未登录状态，重定向到登录页
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      window.location.replace('/login');
+    }
+  }, [status]);
+
   useEffect(() => {
     fetchKnowledgeBases();
+    fetchLegalManuscripts();
   }, []);
 
   const fetchKnowledgeBases = async () => {
@@ -109,7 +129,7 @@ export default function DashboardPage() {
       if (response.ok) {
         const data = await response.json();
         const scenarioKBs = data.filter((kb: any) => 
-          ['k12', 'tech', 'policy', 'teaching'].includes(kb.type)
+          ['k12', 'tech', 'policy', 'legal', 'teaching'].includes(kb.type)
         );
         setKnowledgeBases(scenarioKBs);
       }
@@ -117,6 +137,18 @@ export default function DashboardPage() {
       console.error('获取失败:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchLegalManuscripts = async () => {
+    try {
+      const response = await fetch('/api/legal/manuscripts');
+      if (response.ok) {
+        const data = await response.json();
+        setLegalManuscripts(data.manuscripts || []);
+      }
+    } catch (error) {
+      console.error('获取普法讲稿失败:', error);
     }
   };
 
@@ -156,12 +188,29 @@ export default function DashboardPage() {
   };
 
   const getScenarioCount = (scenarioId: ScenarioType) => {
+    if (scenarioId === 'legal') {
+      return legalManuscripts.length;
+    }
     return knowledgeBases.filter(kb => (kb.type === 'teaching' ? 'k12' : kb.type) === scenarioId).length;
   };
 
+  // 将普法讲稿转换为统一的项目格式
+  const legalProjects = legalManuscripts.map(m => ({
+    id: m.id,
+    name: m.title,
+    description: `${m.metadata?.lawName || '法律讲座'} · ${m.metadata?.audience || '普通群众'}`,
+    type: 'legal' as const,
+    createdAt: m.createdAt,
+    _count: { documents: 0 },
+    _isManuscript: true,
+    _kbId: m.kbId,
+  }));
+
+  const allProjects = [...knowledgeBases, ...legalProjects];
+
   const filteredKBs = activeFilter === 'all' 
-    ? knowledgeBases 
-    : knowledgeBases.filter(kb => (kb.type === 'teaching' ? 'k12' : kb.type) === activeFilter);
+    ? allProjects 
+    : allProjects.filter(kb => (kb.type === 'teaching' ? 'k12' : kb.type) === activeFilter);
 
   const sortedKBs = [...filteredKBs].sort((a, b) => 
     new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -181,7 +230,7 @@ export default function DashboardPage() {
               <div className="absolute inset-0 bg-zinc-900 rounded-lg transform rotate-3 transition-transform group-hover:rotate-6"></div>
               <Sparkles className="relative w-4 h-4 text-white" />
             </div>
-            <span className="font-bold text-lg tracking-tight">智研平台</span>
+            <span className="font-bold text-lg tracking-tight">StudyAI</span>
           </div>
           
           <div className="flex items-center gap-4">
@@ -207,59 +256,64 @@ export default function DashboardPage() {
         </div>
 
         {/* 场景入口卡片 */}
-        <div className="flex-none grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="flex-none grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {scenarios.map((scenario) => {
             const count = getScenarioCount(scenario.id);
             return (
               <div 
                 key={scenario.id}
                 onClick={() => {
+                  // 普法讲座跳转到专门入口页
+                  if (scenario.id === 'legal') {
+                    router.push('/dashboard/legal');
+                    return;
+                  }
                   setSelectedScenario(scenario.id);
                   setNewKB({ ...newKB, type: scenario.id });
                   setShowCreateForm(true);
                 }}
-                className={`group relative bg-white border border-zinc-200 rounded-xl px-7 py-6 transition-all duration-300 cursor-pointer hover:shadow-lg ${scenario.accentBorder}`}
+                className={`group relative bg-white border border-zinc-200 rounded-xl px-5 py-5 transition-all duration-300 cursor-pointer hover:shadow-lg ${scenario.accentBorder}`}
               >
                 {/* 顶部彩色指示条 */}
                 <div className={`absolute top-0 left-0 right-0 h-1 rounded-t-xl opacity-0 group-hover:opacity-100 transition-opacity ${scenario.accentColor.replace('text', 'bg')}`} />
                 
                 {/* 顶部：图标 + 项目数 */}
-                <div className="flex items-start justify-between mb-6">
-                  <div className="relative group/icon w-14 h-14 flex items-center justify-center">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="relative group/icon w-11 h-11 flex items-center justify-center">
                     {/* 背景：极其微弱的磨砂感 */}
                     <div className="absolute inset-0 bg-white border border-zinc-200 rounded-xl shadow-sm transform rotate-3 group-hover/icon:rotate-6 transition-transform duration-500" />
                     
                     {/* 极其细微的彩色点缀：仅在左上角一个圆点 */}
-                    <div className={`absolute -top-1 -left-1 w-3 h-3 rounded-full border-2 border-white shadow-sm ${scenario.accentColor.replace('text', 'bg')} z-20`} />
+                    <div className={`absolute -top-0.5 -left-0.5 w-2.5 h-2.5 rounded-full border-2 border-white shadow-sm ${scenario.accentColor.replace('text', 'bg')} z-20`} />
                     
                     {/* 主色图标 */}
                     <div className="relative z-10 transform -rotate-3 group-hover/icon:-rotate-6 transition-transform duration-500">
-                      <scenario.icon className={`w-7 h-7 text-zinc-900`} />
+                      <scenario.icon className={`w-5 h-5 text-zinc-900`} />
                     </div>
                   </div>
                   
-                  <div className={`flex items-center gap-1.5 px-3 py-1.5 bg-zinc-50 rounded-lg border border-zinc-100 group-hover:border-zinc-300 transition-all`}>
+                  <div className={`flex items-center gap-1.5 px-2 py-1 bg-zinc-50 rounded-lg border border-zinc-100 group-hover:border-zinc-300 transition-all`}>
                     <div className={`w-1.5 h-1.5 rounded-full ${scenario.accentColor.replace('text', 'bg')}`} />
-                    <span className="text-xs font-bold text-zinc-600">{count} 项目</span>
+                    <span className="text-[10px] font-bold text-zinc-600">{count} 项目</span>
                   </div>
                 </div>
                 
                 {/* 中部：标题 + 描述 */}
-                <div className="mb-5">
-                  <h3 className="text-xl font-bold text-zinc-900 mb-2">{scenario.name}</h3>
-                  <p className="text-sm font-medium text-zinc-500 leading-relaxed">{scenario.desc}</p>
+                <div className="mb-4">
+                  <h3 className="text-lg font-bold text-zinc-900 mb-1.5">{scenario.name}</h3>
+                  <p className="text-xs font-medium text-zinc-500 leading-relaxed line-clamp-2 h-8">{scenario.desc}</p>
                 </div>
 
                 {/* 底部：标签 + 箭头 */}
-                <div className="flex items-center justify-between pt-5 border-t border-zinc-100">
-                  <div className="flex gap-2">
-                    {scenario.examples.map((ex, i) => (
-                      <span key={i} className={`text-xs font-medium px-2.5 py-1 rounded-lg border border-zinc-100 bg-zinc-50 text-zinc-500`}>
+                <div className="flex items-center justify-between pt-4 border-t border-zinc-100">
+                  <div className="flex gap-1.5">
+                    {scenario.examples.slice(0, 2).map((ex, i) => (
+                      <span key={i} className={`text-[10px] font-medium px-2 py-0.5 rounded-lg border border-zinc-100 bg-zinc-50 text-zinc-500`}>
                         {ex}
                       </span>
                     ))}
                   </div>
-                  <ArrowRight className={`w-5 h-5 text-zinc-300 group-hover:translate-x-1 transition-all ${scenario.accentColor}`} />
+                  <ArrowRight className={`w-4 h-4 text-zinc-300 group-hover:translate-x-1 transition-all ${scenario.accentColor}`} />
                 </div>
               </div>
             );
@@ -311,20 +365,34 @@ export default function DashboardPage() {
                   return (
                     <div 
                       key={kb.id}
-                      onClick={() => router.push(`/dashboard/teaching/${kb.id}`)}
+                      onClick={() => {
+                        // 普法讲稿直接跳转到讲稿编辑页面
+                        if ((kb as any)._isManuscript) {
+                          router.push(`/dashboard/teaching/${(kb as any)._kbId}/manuscript/${kb.id}`);
+                        } else if (kb.type === 'legal') {
+                          router.push('/dashboard/legal');
+                        } else {
+                          router.push(`/dashboard/teaching/${kb.id}`);
+                        }
+                      }}
                       className="group bg-white border border-zinc-200 rounded-xl p-5 hover:border-zinc-900 transition-all duration-300 cursor-pointer flex flex-col h-full hover:shadow-md"
                     >
                       <div className="flex justify-between items-start mb-4">
                         <div className={`flex items-center gap-1.5 px-2 py-1 bg-zinc-50 border border-zinc-100 rounded-md group-hover:border-zinc-300 transition-all`}>
                           <div className={`w-1.5 h-1.5 rounded-full ${config.accentColor.replace('text', 'bg')}`} />
-                          <span className="text-[10px] font-bold text-zinc-600">{config.name}</span>
+                          <span className="text-[10px] font-bold text-zinc-600">
+                            {(kb as any)._isManuscript ? '普法讲稿' : config.name}
+                          </span>
                         </div>
-                        <button
-                          onClick={(e) => handleDelete(kb.id, e)}
-                          className="w-7 h-7 rounded-lg flex items-center justify-center text-zinc-300 hover:bg-red-50 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {/* 普法讲稿暂不支持删除 */}
+                        {!(kb as any)._isManuscript && (
+                          <button
+                            onClick={(e) => handleDelete(kb.id, e)}
+                            className="w-7 h-7 rounded-lg flex items-center justify-center text-zinc-300 hover:bg-red-50 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                       <h4 className="text-base font-bold text-zinc-900 mb-1 truncate group-hover:text-zinc-700">{kb.name}</h4>
                       <p className="text-xs font-medium text-zinc-400 line-clamp-1 mb-4">{kb.description || '暂无描述内容'}</p>
@@ -332,7 +400,7 @@ export default function DashboardPage() {
                       <div className="mt-auto flex items-center justify-between pt-4 border-t border-zinc-50">
                         <div className="flex items-center gap-1.5 text-[10px] font-bold text-zinc-400">
                           <FileText className="w-3.5 h-3.5" />
-                          <span>{kb._count.documents} 文档</span>
+                          <span>{(kb as any)._isManuscript ? '讲稿' : `${kb._count.documents} 文档`}</span>
                         </div>
                         <span className="text-[10px] font-bold text-zinc-300 uppercase tracking-tighter">{formatDate(kb.createdAt)}</span>
                       </div>

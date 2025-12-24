@@ -52,61 +52,121 @@ function getActiveVoiceId(): string {
   return 'male-qn-qingse'; // 默认音色
 }
 
-// 调用 TTS 并返回音频 base64
-async function generateTTSAudio(text: string): Promise<{ base64: string; duration: number }> {
+// 延迟函数
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// 全局限速状态
+let isRateLimited = false;
+let rateLimitResetTime = 0;
+
+// 调用 TTS 并返回音频 base64（带重试机制）
+async function generateTTSAudio(
+  text: string, 
+  maxRetries: number = 5,           // 增加到 5 次重试
+  retryDelayMs: number = 5000       // 增加到 5 秒基础等待
+): Promise<{ base64: string; duration: number }> {
   const apiKey = getApiKey();
   const voiceId = getActiveVoiceId(); // 使用复刻音色或默认音色
   
-  const response = await fetch(`${MINIMAX_API_BASE}/v1/t2a_v2`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: 'speech-2.6-turbo',
-      text,
-      stream: false,
-      language_boost: 'auto',
-      voice_setting: {
-        voice_id: voiceId,
-        speed: 1,
-        vol: 1,
-        pitch: 0,
-      },
-      audio_setting: {
-        sample_rate: 32000,
-        bitrate: 128000,
-        format: 'mp3',
-        channel: 1,
-      },
-      output_format: 'url',
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`TTS API 调用失败: ${response.status}`);
-  }
-
-  const result = await response.json();
+  let lastError: Error | null = null;
   
-  if (result.base_resp?.status_code !== 0) {
-    throw new Error(result.base_resp?.status_msg || 'TTS 合成失败');
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    // 检查全局限速状态，如果还在限速期内，先等待
+    if (isRateLimited && Date.now() < rateLimitResetTime) {
+      const waitTime = rateLimitResetTime - Date.now();
+      console.log(`[Publish] 全局限速中，等待 ${Math.ceil(waitTime / 1000)}s...`);
+      await delay(waitTime);
+    }
+    
+    try {
+      const response = await fetch(`${MINIMAX_API_BASE}/v1/t2a_v2`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'speech-2.6-turbo',
+          text,
+          stream: false,
+          language_boost: 'auto',
+          voice_setting: {
+            voice_id: voiceId,
+            speed: 1,
+            vol: 1,
+            pitch: 0,
+          },
+          audio_setting: {
+            sample_rate: 32000,
+            bitrate: 128000,
+            format: 'mp3',
+            channel: 1,
+          },
+          output_format: 'url',
+        }),
+      });
+
+      if (!response.ok) {
+        // 检查是否是限速错误 (429)
+        if (response.status === 429) {
+          throw new Error('rate limit');
+        }
+        throw new Error(`TTS API 调用失败: ${response.status}`);
+      }
+
+      const result = await response.json();
+      
+      // 检查 API 返回的错误
+      if (result.base_resp?.status_code !== 0) {
+        const errorMsg = result.base_resp?.status_msg || 'TTS 合成失败';
+        // 检查是否是限速相关的错误
+        if (errorMsg.toLowerCase().includes('rate') || errorMsg.toLowerCase().includes('limit') || errorMsg.includes('频率')) {
+          throw new Error('rate limit');
+        }
+        throw new Error(errorMsg);
+      }
+
+      const audioUrl = result.data?.audio;
+      const duration = result.extra_info?.audio_length || 0;
+
+      if (!audioUrl) {
+        throw new Error('TTS 未返回音频数据');
+      }
+
+      // 下载音频并转为 base64
+      const audioResponse = await fetch(audioUrl);
+      const audioBuffer = await audioResponse.arrayBuffer();
+      const base64 = Buffer.from(audioBuffer).toString('base64');
+
+      return { base64, duration };
+      
+    } catch (error: any) {
+      lastError = error;
+      
+      // 如果是限速错误，等待后重试
+      if (error.message === 'rate limit' && attempt < maxRetries) {
+        // 设置全局限速状态，等待时间递增：5s, 10s, 15s, 20s, 25s
+        const waitTime = retryDelayMs * attempt;
+        isRateLimited = true;
+        rateLimitResetTime = Date.now() + waitTime;
+        
+        console.log(`[Publish] ⚠️ 遇到限速，等待 ${waitTime / 1000}s 后重试 (${attempt}/${maxRetries})...`);
+        await delay(waitTime);
+        
+        // 重试前清除限速状态
+        isRateLimited = false;
+        continue;
+      }
+      
+      // 其他错误直接抛出
+      throw error;
+    }
   }
-
-  const audioUrl = result.data?.audio;
-  const duration = result.extra_info?.audio_length || 0;
-
-  if (!audioUrl) {
-    throw new Error('TTS 未返回音频数据');
-  }
-
-  // 下载音频并转为 base64
-  const audioResponse = await fetch(audioUrl);
-  const audioBuffer = await audioResponse.arrayBuffer();
-  const base64 = Buffer.from(audioBuffer).toString('base64');
-
-  return { base64, duration };
+  
+  // 所有重试都失败
+  throw lastError || new Error('TTS 生成失败');
 }
 
 export async function POST(
@@ -258,8 +318,17 @@ export async function POST(
         const result = await generateTTSAudio(item.text);
         audioResults.set(key, result);
         generateCount++;
+        
+        // 每次成功后稍微等待一下，避免请求过快
+        await delay(200);
       } catch (error: any) {
-        console.error(`[Publish] 语音生成失败:`, error.message);
+        console.error(`[Publish] ❌ 语音生成失败:`, error.message);
+        
+        // 如果是限速错误，在外层也等待一下再继续
+        if (error.message === 'rate limit') {
+          console.log(`[Publish] 限速未解除，等待 10s 后继续下一条...`);
+          await delay(10000);
+        }
         // 继续处理其他语音，失败的跳过
       }
     }

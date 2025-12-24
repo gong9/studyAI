@@ -8,13 +8,30 @@
  * 优化：
  * - 传入章节重点（keyPoints）和摘要（summary）
  * - 使用 RAG 检索教材内容
+ * - 根据知识库类型自动推断场景类型
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { generateManuscript } from '@/lib/teaching/agents/manuscript-generator';
-import type { TeachingPlan } from '@/lib/teaching/agents/teaching-planner';
+import type { TeachingPlan, SceneType } from '@/lib/teaching/agents/teaching-planner';
 import type { KeyPoint } from '@/lib/teaching/agents/chapter-analyzer';
+
+/** 根据知识库类型推断场景类型 */
+function getSceneTypeFromKbType(kbType: string): SceneType {
+  switch (kbType) {
+    case 'k12':
+      return 'k12_teaching';
+    case 'tech':
+      return 'tech_training';
+    case 'policy':
+      return 'company_training';
+    case 'legal':
+      return 'legal_training';
+    default:
+      return 'general';
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -28,11 +45,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 获取手稿记录（包含章节信息）
+    // 获取手稿记录（包含章节信息和知识库类型）
     const manuscript = await prisma.teachingManuscript.findUnique({
       where: { id: manuscriptId },
       include: {
         chapter: true,
+        knowledgeBase: {
+          select: { type: true },
+        },
       },
     });
 
@@ -61,6 +81,13 @@ export async function POST(request: NextRequest) {
         { error: '教学规划数据无效' },
         { status: 400 }
       );
+    }
+
+    // 根据知识库类型推断并强制设置场景类型（修复 sceneType 丢失问题）
+    const inferredSceneType = getSceneTypeFromKbType(manuscript.knowledgeBase.type);
+    if (!plan.sceneType || plan.sceneType !== inferredSceneType) {
+      console.log(`[API] Correcting sceneType: ${plan.sceneType} -> ${inferredSceneType}`);
+      plan.sceneType = inferredSceneType;
     }
 
     // 解析章节重点（如果已分析）

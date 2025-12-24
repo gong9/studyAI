@@ -57,6 +57,7 @@ export async function GET(
         id: manuscript.knowledgeBase.id,
         name: manuscript.knowledgeBase.name,
         type: manuscript.knowledgeBase.type,
+        isPreset: manuscript.knowledgeBase.isPreset,
       },
       teachingPlan,
       draftContent: manuscript.draftContent,
