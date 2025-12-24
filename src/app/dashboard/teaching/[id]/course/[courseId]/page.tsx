@@ -236,28 +236,71 @@ export default function CoursePlayerPage() {
     playbackRef.current.isPlaying = false;
   };
 
-  // 全屏切换
+  // 全屏切换（支持移动端横屏）
   const toggleFullscreen = async () => {
     try {
-      if (!document.fullscreenElement) {
-        await containerRef.current?.requestFullscreen();
+      if (!isFullscreen) {
+        // 进入全屏
+        if (containerRef.current?.requestFullscreen) {
+          await containerRef.current.requestFullscreen();
+        } else if ((containerRef.current as any)?.webkitRequestFullscreen) {
+          await (containerRef.current as any).webkitRequestFullscreen();
+        }
+        
+        // 尝试锁定横屏
+        try {
+          if (screen.orientation && (screen.orientation as any).lock) {
+            await (screen.orientation as any).lock('landscape');
+          }
+        } catch (e) {
+          console.log('横屏锁定不支持');
+        }
+        
+        // CSS 模拟全屏（iOS 等）
+        if (!document.fullscreenElement && !(document as any).webkitFullscreenElement) {
+          setIsFullscreen(true);
+        }
       } else {
-        await document.exitFullscreen();
+        // 退出全屏
+        if (document.fullscreenElement) {
+          await document.exitFullscreen();
+        } else if ((document as any).webkitFullscreenElement) {
+          await (document as any).webkitExitFullscreen();
+        }
+        
+        try {
+          if (screen.orientation && (screen.orientation as any).unlock) {
+            (screen.orientation as any).unlock();
+          }
+        } catch (e) {}
+        
+        setIsFullscreen(false);
       }
     } catch (err) {
       console.error('全屏切换失败:', err);
+      setIsFullscreen(!isFullscreen);
     }
   };
 
   // 监听全屏状态变化
   useEffect(() => {
     const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
+      const isFS = !!(document.fullscreenElement || (document as any).webkitFullscreenElement);
+      setIsFullscreen(isFS);
+      if (!isFS) {
+        try {
+          if (screen.orientation && (screen.orientation as any).unlock) {
+            (screen.orientation as any).unlock();
+          }
+        } catch (e) {}
+      }
     };
     
     document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
     return () => {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
     };
   }, []);
 
@@ -382,8 +425,35 @@ export default function CoursePlayerPage() {
   return (
     <div 
       ref={containerRef}
-      className="min-h-screen bg-zinc-950 flex flex-col"
+      className={cn(
+        "min-h-screen bg-zinc-950 flex flex-col",
+        isFullscreen && "fixed inset-0 z-[9999]"
+      )}
     >
+      {/* 全屏样式 */}
+      {isFullscreen && (
+        <style jsx global>{`
+          body { overflow: hidden !important; }
+          @media (orientation: portrait) and (max-width: 768px) {
+            .fullscreen-landscape-hint { display: flex !important; }
+          }
+          @media (orientation: landscape) {
+            .fullscreen-landscape-hint { display: none !important; }
+          }
+        `}</style>
+      )}
+      
+      {/* 移动端横屏提示 */}
+      {isFullscreen && (
+        <div className="fullscreen-landscape-hint hidden fixed inset-0 z-[10000] bg-black/95 flex-col items-center justify-center text-white">
+          <div className="text-6xl mb-4">📱</div>
+          <p className="text-lg">请旋转手机至横屏观看</p>
+          <button onClick={toggleFullscreen} className="mt-6 px-6 py-2 bg-zinc-700 rounded-lg text-sm">
+            退出全屏
+          </button>
+        </div>
+      )}
+      
       {/* 顶部栏 */}
       <header className={cn(
         "bg-black/50 backdrop-blur-sm border-b border-white/10 px-4 py-3 flex items-center gap-4",
@@ -527,133 +597,141 @@ export default function CoursePlayerPage() {
       
       {/* 分享弹窗 */}
       {showShareModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center">
-          <div className="bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-semibold text-white">分享课程</h2>
-              <button
-                onClick={closeShareModal}
-                className="text-zinc-400 hover:text-white"
-              >
-                <X className="h-5 w-5" />
-              </button>
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            {/* 头部 */}
+            <div className="px-6 py-5 border-b border-zinc-800">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                  <Share2 className="h-5 w-5 text-blue-400" />
+                  分享课程
+                </h2>
+                <button
+                  onClick={closeShareModal}
+                  className="text-zinc-500 hover:text-white transition-colors"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
             </div>
             
-            {!shareUrl ? (
-              <>
-                {/* 设置密码 */}
-                <div className="mb-4">
-                  <label className="text-sm text-zinc-400 mb-2 block">设置访问密码</label>
-                  <input
-                    type="text"
-                    value={sharePassword}
-                    onChange={(e) => setSharePassword(e.target.value)}
-                    placeholder="至少4位密码"
-                    className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-green-500"
-                  />
-                </div>
-                
-                {/* 有效期 */}
-                <div className="mb-6">
-                  <label className="text-sm text-zinc-400 mb-2 block">有效期</label>
-                  <div className="flex gap-2">
-                    {[
-                      { value: 7, label: '7天' },
-                      { value: 30, label: '30天' },
-                      { value: 0, label: '永久' },
-                    ].map((opt) => (
-                      <button
-                        key={opt.value}
-                        onClick={() => setShareExpiresInDays(opt.value)}
-                        className={cn(
-                          "flex-1 py-2 px-3 rounded-lg text-sm transition-colors",
-                          shareExpiresInDays === opt.value
-                            ? "bg-green-500/20 border border-green-400/50 text-green-300"
-                            : "bg-zinc-800 border border-zinc-700 text-zinc-400 hover:bg-zinc-700"
-                        )}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                
-                {/* 创建按钮 */}
-                <Button
-                  onClick={createShare}
-                  disabled={isCreatingShare || sharePassword.length < 4}
-                  className="w-full bg-green-600 hover:bg-green-700 text-white"
-                >
-                  {isCreatingShare ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      创建中...
-                    </>
-                  ) : (
-                    <>
-                      <Share2 className="h-4 w-4 mr-2" />
-                      生成分享链接
-                    </>
-                  )}
-                </Button>
-              </>
-            ) : (
-              <>
-                {/* 分享成功 */}
-                <div className="text-center mb-6">
-                  <div className="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Check className="h-8 w-8 text-green-400" />
-                  </div>
-                  <p className="text-green-400 font-medium">分享链接已生成</p>
-                </div>
-                
-                {/* 链接展示 */}
-                <div className="mb-4">
-                  <label className="text-sm text-zinc-400 mb-2 block">分享链接</label>
-                  <div className="flex gap-2">
+            <div className="p-6">
+              {!shareUrl ? (
+                <>
+                  {/* 设置密码 */}
+                  <div className="mb-5">
+                    <label className="text-sm text-zinc-400 mb-2 block">设置访问密码</label>
                     <input
                       type="text"
-                      value={shareUrl}
-                      readOnly
-                      className="flex-1 px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm truncate"
+                      value={sharePassword}
+                      onChange={(e) => setSharePassword(e.target.value)}
+                      placeholder="至少4位密码"
+                      className="w-full px-4 py-3 bg-zinc-800/50 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
                     />
-                    <Button
-                      onClick={copyShareUrl}
-                      className={cn(
-                        "px-4",
-                        shareCopied
-                          ? "bg-green-600 hover:bg-green-700"
-                          : "bg-zinc-700 hover:bg-zinc-600"
-                      )}
-                    >
-                      {shareCopied ? (
-                        <Check className="h-4 w-4" />
-                      ) : (
-                        <Copy className="h-4 w-4" />
-                      )}
-                    </Button>
                   </div>
-                </div>
-                
-                {/* 密码提示 */}
-                <div className="bg-zinc-800 rounded-lg p-4 mb-6">
-                  <p className="text-sm text-zinc-400">
-                    访问密码: <span className="text-white font-mono">{sharePassword}</span>
-                  </p>
-                  <p className="text-xs text-zinc-500 mt-1">
-                    请将链接和密码一起发送给他人
-                  </p>
-                </div>
-                
-                {/* 完成按钮 */}
-                <Button
-                  onClick={closeShareModal}
-                  className="w-full bg-zinc-700 hover:bg-zinc-600 text-white"
-                >
-                  完成
-                </Button>
-              </>
-            )}
+                  
+                  {/* 有效期 */}
+                  <div className="mb-6">
+                    <label className="text-sm text-zinc-400 mb-2 block">有效期</label>
+                    <div className="flex gap-2">
+                      {[
+                        { value: 7, label: '7天' },
+                        { value: 30, label: '30天' },
+                        { value: 0, label: '永久' },
+                      ].map((opt) => (
+                        <button
+                          key={opt.value}
+                          onClick={() => setShareExpiresInDays(opt.value)}
+                          className={cn(
+                            "flex-1 py-2.5 px-3 rounded-xl text-sm font-medium transition-all",
+                            shareExpiresInDays === opt.value
+                              ? "bg-blue-500/20 border border-blue-500/50 text-blue-400"
+                              : "bg-zinc-800/50 border border-zinc-700 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-300"
+                          )}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  {/* 创建按钮 */}
+                  <Button
+                    onClick={createShare}
+                    disabled={isCreatingShare || sharePassword.length < 4}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isCreatingShare ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        创建中...
+                      </>
+                    ) : (
+                      <>
+                        <Share2 className="h-4 w-4 mr-2" />
+                        生成分享链接
+                      </>
+                    )}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  {/* 分享成功 */}
+                  <div className="text-center mb-6">
+                    <div className="w-14 h-14 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-3">
+                      <Check className="h-7 w-7 text-emerald-400" />
+                    </div>
+                    <p className="text-emerald-400 font-medium">分享链接已生成</p>
+                  </div>
+                  
+                  {/* 链接展示 */}
+                  <div className="mb-4">
+                    <label className="text-sm text-zinc-400 mb-2 block">分享链接</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={shareUrl}
+                        readOnly
+                        className="flex-1 px-4 py-3 bg-zinc-800/50 border border-zinc-700 rounded-xl text-zinc-300 text-sm truncate"
+                      />
+                      <Button
+                        onClick={copyShareUrl}
+                        className={cn(
+                          "px-4 rounded-xl transition-all",
+                          shareCopied
+                            ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                            : "bg-zinc-700 hover:bg-zinc-600 text-zinc-300"
+                        )}
+                      >
+                        {shareCopied ? (
+                          <Check className="h-4 w-4" />
+                        ) : (
+                          <Copy className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                  
+                  {/* 密码提示 */}
+                  <div className="bg-zinc-800/50 rounded-xl p-4 mb-6 border border-zinc-700">
+                    <p className="text-sm text-zinc-400">
+                      访问密码: <span className="text-white font-mono">{sharePassword}</span>
+                    </p>
+                    <p className="text-xs text-zinc-500 mt-1">
+                      请将链接和密码一起发送给他人
+                    </p>
+                  </div>
+                  
+                  {/* 完成按钮 */}
+                  <Button
+                    onClick={closeShareModal}
+                    className="w-full bg-zinc-700 hover:bg-zinc-600 text-white py-3 rounded-xl font-medium"
+                  >
+                    完成
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}

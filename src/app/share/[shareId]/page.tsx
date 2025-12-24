@@ -276,28 +276,82 @@ export default function SharePlayerPage() {
     playbackRef.current.isPlaying = false;
   };
 
-  // 全屏切换
+  // 全屏切换（支持移动端横屏）
   const toggleFullscreen = async () => {
     try {
-      if (!document.fullscreenElement) {
-        await containerRef.current?.requestFullscreen();
+      if (!isFullscreen) {
+        // 进入全屏
+        // 1. 先尝试标准 Fullscreen API
+        if (containerRef.current?.requestFullscreen) {
+          await containerRef.current.requestFullscreen();
+        } else if ((containerRef.current as any)?.webkitRequestFullscreen) {
+          // Safari
+          await (containerRef.current as any).webkitRequestFullscreen();
+        }
+        
+        // 2. 尝试锁定横屏（移动端）
+        try {
+          if (screen.orientation && (screen.orientation as any).lock) {
+            await (screen.orientation as any).lock('landscape');
+          }
+        } catch (e) {
+          // 横屏锁定失败，忽略（iOS 不支持）
+          console.log('横屏锁定不支持');
+        }
+        
+        // 3. 对于不支持 Fullscreen API 的设备，使用 CSS 模拟
+        if (!document.fullscreenElement && !(document as any).webkitFullscreenElement) {
+          setIsFullscreen(true);
+        }
       } else {
-        await document.exitFullscreen();
+        // 退出全屏
+        if (document.fullscreenElement) {
+          await document.exitFullscreen();
+        } else if ((document as any).webkitFullscreenElement) {
+          await (document as any).webkitExitFullscreen();
+        }
+        
+        // 解锁屏幕方向
+        try {
+          if (screen.orientation && (screen.orientation as any).unlock) {
+            (screen.orientation as any).unlock();
+          }
+        } catch (e) {
+          // 忽略
+        }
+        
+        setIsFullscreen(false);
       }
     } catch (err) {
       console.error('全屏切换失败:', err);
+      // Fullscreen API 失败时，使用 CSS 模拟全屏
+      setIsFullscreen(!isFullscreen);
     }
   };
 
   // 监听全屏状态变化
   useEffect(() => {
     const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
+      const isFS = !!(document.fullscreenElement || (document as any).webkitFullscreenElement);
+      setIsFullscreen(isFS);
+      
+      // 退出全屏时解锁屏幕方向
+      if (!isFS) {
+        try {
+          if (screen.orientation && (screen.orientation as any).unlock) {
+            (screen.orientation as any).unlock();
+          }
+        } catch (e) {
+          // 忽略
+        }
+      }
     };
     
     document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
     return () => {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
     };
   }, []);
 
@@ -372,8 +426,8 @@ export default function SharePlayerPage() {
           {/* 密码输入 */}
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
             <div className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 bg-green-500/20 rounded-full flex items-center justify-center">
-                <Lock className="h-5 w-5 text-green-400" />
+              <div className="w-10 h-10 bg-zinc-700/50 rounded-full flex items-center justify-center">
+                <Lock className="h-5 w-5 text-zinc-400" />
               </div>
               <div>
                 <h2 className="text-white font-medium">需要访问密码</h2>
@@ -388,7 +442,7 @@ export default function SharePlayerPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="输入密码"
-                className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-green-500 pr-12"
+                className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-500 pr-12"
               />
               <button
                 type="button"
@@ -406,7 +460,7 @@ export default function SharePlayerPage() {
             <Button
               onClick={verifyPassword}
               disabled={verifying || !password}
-              className="w-full bg-green-600 hover:bg-green-700 text-white"
+              className="w-full bg-zinc-700 hover:bg-zinc-600 text-white"
             >
               {verifying ? (
                 <>
@@ -441,8 +495,46 @@ export default function SharePlayerPage() {
   return (
     <div 
       ref={containerRef}
-      className="min-h-screen bg-zinc-950 flex flex-col"
+      className={cn(
+        "min-h-screen bg-zinc-950 flex flex-col",
+        // CSS 模拟全屏（支持 iOS 等不支持 Fullscreen API 的设备）
+        isFullscreen && "fixed inset-0 z-[9999]"
+      )}
     >
+      {/* 全屏样式注入 */}
+      {isFullscreen && (
+        <style jsx global>{`
+          body {
+            overflow: hidden !important;
+          }
+          /* 移动端横屏提示隐藏 */
+          @media (orientation: portrait) and (max-width: 768px) {
+            .fullscreen-landscape-hint {
+              display: flex !important;
+            }
+          }
+          @media (orientation: landscape) {
+            .fullscreen-landscape-hint {
+              display: none !important;
+            }
+          }
+        `}</style>
+      )}
+      
+      {/* 移动端竖屏时的横屏提示 */}
+      {isFullscreen && (
+        <div className="fullscreen-landscape-hint hidden fixed inset-0 z-[10000] bg-black/95 flex-col items-center justify-center text-white">
+          <div className="text-6xl mb-4">📱</div>
+          <p className="text-lg">请旋转手机至横屏观看</p>
+          <button 
+            onClick={toggleFullscreen}
+            className="mt-6 px-6 py-2 bg-zinc-700 rounded-lg text-sm"
+          >
+            退出全屏
+          </button>
+        </div>
+      )}
+      
       {/* 顶部栏 */}
       <header className={cn(
         "bg-black/50 backdrop-blur-sm border-b border-white/10 px-4 py-3 flex items-center gap-4",
@@ -472,13 +564,61 @@ export default function SharePlayerPage() {
             ? "w-full h-full rounded-none" 
             : "w-full max-w-5xl aspect-[16/9] rounded-lg"
         )}>
-          {course.slides[currentSlideIndex] && (
-            <img
-              src={`data:image/png;base64,${course.slides[currentSlideIndex]}`}
-              alt={`Slide ${currentSlideIndex + 1}`}
-              className="w-full h-full object-contain"
-            />
-          )}
+          {course.slides[currentSlideIndex] && (() => {
+            const content = course.slides[currentSlideIndex];
+            // 判断是否是 base64 图片：不包含常见的 markdown 字符
+            const isImage = !content.includes('#') && !content.includes('\n') && content.length > 100;
+            
+            if (isImage) {
+              // 精美模式：显示图片
+              return (
+                <img
+                  src={`data:image/png;base64,${content}`}
+                  alt={`Slide ${currentSlideIndex + 1}`}
+                  className="w-full h-full object-contain"
+                />
+              );
+            } else {
+              // 普通模式：渲染 markdown
+              const renderMarkdown = (md: string) => {
+                const lines = md.split('\n');
+                const filteredLines: string[] = [];
+                let lastTitle = '';
+                
+                for (const line of lines) {
+                  const titleMatch = line.match(/^#+\s+(.+)$/);
+                  if (titleMatch) {
+                    const titleContent = titleMatch[1].trim();
+                    if (titleContent === lastTitle) continue;
+                    lastTitle = titleContent;
+                  }
+                  filteredLines.push(line);
+                }
+                
+                let cleaned = filteredLines.join('\n');
+                
+                return cleaned
+                  .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<div class="my-4 flex justify-center"><img src="$2" alt="$1" class="max-h-48 w-auto rounded-lg shadow-lg" /></div>')
+                  .replace(/^# (.+)$/gm, '<h1 class="text-3xl font-bold mb-6 text-zinc-800 text-center">$1</h1>')
+                  .replace(/^## (.+)$/gm, '<h2 class="text-xl font-semibold mb-3 text-zinc-700 text-center">$1</h2>')
+                  .replace(/^### (.+)$/gm, '<h3 class="text-lg font-medium mb-2 text-zinc-600">$1</h3>')
+                  .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                  .replace(/\*(.+?)\*/g, '<em>$1</em>')
+                  .replace(/^- (.+)$/gm, '<div class="flex items-start gap-2 mb-2 text-lg"><span class="text-zinc-500 font-bold">•</span><span class="text-zinc-700">$1</span></div>')
+                  .replace(/\n\n/g, '<div class="mb-4"></div>')
+                  .replace(/\n/g, '<br/>');
+              };
+              
+              return (
+                <div className="w-full h-full overflow-auto bg-white p-8">
+                  <div 
+                    className="max-w-4xl mx-auto"
+                    dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }}
+                  />
+                </div>
+              );
+            }
+          })()}
           
           {/* 字幕 */}
           {subtitle && (
@@ -518,7 +658,7 @@ export default function SharePlayerPage() {
               }}
             >
               <div 
-                className="h-full bg-gradient-to-r from-green-500 to-emerald-500 transition-all duration-300"
+                className="h-full bg-white transition-all duration-300"
                 style={{ width: `${progress}%` }}
               />
             </div>
@@ -555,7 +695,7 @@ export default function SharePlayerPage() {
               
               <Button
                 onClick={togglePlay}
-                className="h-14 w-14 rounded-full bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white shadow-lg"
+                className="h-14 w-14 rounded-full bg-white hover:bg-zinc-200 text-zinc-900 shadow-lg"
               >
                 {isPlaying ? (
                   <Pause className="h-6 w-6" />

@@ -1,27 +1,37 @@
 'use client';
 
 // @ts-ignore
-import React, { useState } from 'react';
-import { signIn } from 'next-auth/react';
+import React, { useState, useEffect } from 'react';
+import { signIn, useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { LayoutDashboard } from 'lucide-react';
-
-// ========== 临时预填账号配置 ==========
-// TODO: 上线前删除此配置
-const DEFAULT_USERNAME = '18201188804';
-const DEFAULT_PASSWORD = 'gongzhen123';
-// =====================================
+import { Loader2 } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
-  const [username, setUsername] = useState(DEFAULT_USERNAME);
-  const [password, setPassword] = useState(DEFAULT_PASSWORD);
+  const { status } = useSession();
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // 已登录用户自动跳转到 dashboard
+  useEffect(() => {
+    if (status === 'authenticated') {
+      router.push('/dashboard');
+    }
+  }, [status, router]);
+
+  // 正在检查登录状态时显示 loading
+  if (status === 'loading') {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-zinc-50/30">
+        <Loader2 className="h-8 w-8 animate-spin text-zinc-400" />
+      </div>
+    );
+  }
 
   const handleSubmit = async (e: any) => {
     e.preventDefault();
@@ -83,11 +93,13 @@ export default function LoginPage() {
               </label>
               <Input
                 id="username"
+                name="username"
                 type="text"
                 placeholder="请输入用户名"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required
+                autoComplete="username"
                 className="h-11 bg-zinc-50/50 border-zinc-200 focus:bg-white transition-all duration-200"
               />
             </div>
@@ -99,11 +111,13 @@ export default function LoginPage() {
               </div>
               <Input
                 id="password"
+                name="password"
                 type="password"
-                placeholder="••••••••"
+                placeholder="请输入密码"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                autoComplete="current-password"
                 className="h-11 bg-zinc-50/50 border-zinc-200 focus:bg-white transition-all duration-200"
               />
             </div>
@@ -119,12 +133,6 @@ export default function LoginPage() {
                 </div>
               ) : '登 录'}
             </Button>
-            <div className="text-center pt-2">
-              <span className="text-zinc-400 text-sm">还没有账号？</span>
-              <Link href="/register" className="ml-2 text-sm font-medium text-zinc-900 hover:text-zinc-700 hover:underline transition-colors">
-                创建新账号
-              </Link>
-            </div>
           </form>
         </CardContent>
       </Card>

@@ -1,16 +1,8 @@
-2025-12-23 15:08:25,403 - __main__ - INFO - Starting LightRAG service on 0.0.0.0:8005
-2025-12-23 15:08:25,403 - __main__ - INFO - Storage directory: /Users/gongzhen/code/2025/hzm/rag/lightrag-data
-2025-12-23 15:08:25,403 - __main__ - INFO - LLM Model: qwen-turbo
-INFO:     Started server process [25983]
+2025-12-24 09:44:02,514 - __main__ - INFO - Starting LightRAG service on 0.0.0.0:8005
+2025-12-24 09:44:02,514 - __main__ - INFO - Storage directory: /Users/gongzhen/code/2025/hzm/rag/lightrag-data
+2025-12-24 09:44:02,514 - __main__ - INFO - LLM Model: qwen-turbo
+INFO:     Started server process [60872]
 INFO:     Waiting for application startup.
-2025-12-23 15:08:25,433 - main - INFO - LightRAG service starting...
+2025-12-24 09:44:02,538 - main - INFO - LightRAG service starting...
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://0.0.0.0:8005 (Press CTRL+C to quit)
-INFO:     127.0.0.1:53765 - "POST /query HTTP/1.1" 404 Not Found
-INFO:     127.0.0.1:55653 - "POST /query HTTP/1.1" 404 Not Found
-INFO:     127.0.0.1:57985 - "POST /query HTTP/1.1" 404 Not Found
-INFO:     127.0.0.1:60145 - "POST /query HTTP/1.1" 404 Not Found
-INFO:     127.0.0.1:60805 - "POST /query HTTP/1.1" 404 Not Found
-INFO:     127.0.0.1:64004 - "POST /query HTTP/1.1" 404 Not Found
-INFO:     127.0.0.1:49602 - "POST /query HTTP/1.1" 404 Not Found
-INFO:     127.0.0.1:52013 - "POST /query HTTP/1.1" 404 Not Found

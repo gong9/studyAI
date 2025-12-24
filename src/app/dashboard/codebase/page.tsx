@@ -4,6 +4,12 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { signOut, useSession } from 'next-auth/react';
+
+// 自定义登出函数，确保跳转到当前环境的登录页
+const handleSignOut = async () => {
+  await signOut({ redirect: false });
+  window.location.href = '/login';
+};
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -175,7 +181,7 @@ export default function CodebasePage() {
                 {session?.user?.name}
               </span>
             </div>
-            <Button variant="ghost" size="icon" onClick={() => signOut({ callbackUrl: '/login' })} className="text-zinc-400 hover:text-zinc-900 transition-colors hover:bg-zinc-100 h-8 w-8 sm:h-10 sm:w-10">
+            <Button variant="ghost" size="icon" onClick={handleSignOut} className="text-zinc-400 hover:text-zinc-900 transition-colors hover:bg-zinc-100 h-8 w-8 sm:h-10 sm:w-10">
               <LogOut className="w-4 h-4" />
             </Button>
           </div>

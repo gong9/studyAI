@@ -54,6 +54,7 @@ export default function ManuscriptEditorPage() {
   const [confirming, setConfirming] = useState(false);
   const [reviewing, setReviewing] = useState(false);
   const [enriching, setEnriching] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [error, setError] = useState('');
   const [aiSidebarOpen, setAiSidebarOpen] = useState(true);  // 默认打开 AI 助手
@@ -216,6 +217,49 @@ export default function ManuscriptEditorPage() {
     router.push(`/dashboard/teaching/${kbId}/manuscript/${manuscriptId}/presentation`);
   };
 
+  const handleRegenerate = async () => {
+    if (!confirm('确定要重新生成课件吗？这将覆盖现有的课件内容。')) {
+      return;
+    }
+
+    setRegenerating(true);
+    try {
+      // 先调用 enrich API 重新生成 enrichedContent
+      const enrichRes = await fetch(`/api/teaching/manuscript/${manuscriptId}/enrich`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force: true }), // 强制重新生成
+      });
+
+      if (!enrichRes.ok) {
+        const err = await enrichRes.json();
+        alert(err.error || '重新生成失败');
+        return;
+      }
+
+      // 再调用 render API 重新生成 slidevMd
+      const renderRes = await fetch(`/api/teaching/manuscript/${manuscriptId}/render`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force: true }), // 强制重新生成
+      });
+
+      if (!renderRes.ok) {
+        const err = await renderRes.json();
+        alert(err.error || '渲染失败');
+        return;
+      }
+
+      // 刷新手稿数据
+      await fetchManuscript();
+      alert('课件已重新生成！');
+    } catch (error: any) {
+      alert(error.message || '重新生成失败');
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
   const statusInfo = STATUS_MAP[manuscript?.status] || STATUS_MAP.draft;
   const isEditable = !['confirmed', 'reviewing', 'enriching', 'rendering', 'completed'].includes(manuscript?.status);
 
@@ -326,14 +370,26 @@ export default function ManuscriptEditorPage() {
 
 
             {['enriching', 'completed'].includes(manuscript?.status) && manuscript?.enrichedContent && (
-              <Button 
-                size="sm" 
-                onClick={handleRender}
-                className="h-8 bg-zinc-800 hover:bg-zinc-700 text-white shadow-sm rounded-lg text-xs font-semibold px-4"
-              >
-                <Eye className="h-3 w-3 mr-1.5" />
-                预览课件
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button 
+                  variant="outline"
+                  size="sm" 
+                  onClick={handleRegenerate}
+                  disabled={regenerating}
+                  className="h-8 border-slate-200 text-slate-600 hover:bg-slate-50 rounded-lg text-xs"
+                >
+                  {regenerating ? <Loader2 className="h-3 w-3 animate-spin mr-1.5" /> : <RefreshCw className="h-3 w-3 mr-1.5" />}
+                  重新生成
+                </Button>
+                <Button 
+                  size="sm" 
+                  onClick={handleRender}
+                  className="h-8 bg-zinc-800 hover:bg-zinc-700 text-white shadow-sm rounded-lg text-xs font-semibold px-4"
+                >
+                  <Eye className="h-3 w-3 mr-1.5" />
+                  预览课件
+                </Button>
+              </div>
             )}
 
             <div className="w-px h-4 bg-slate-200 mx-2" />

@@ -131,11 +131,29 @@ function normalizeSlideBreaks(content: string): string {
   // 确保 --- 前后有足够的空行
   let normalized = content;
 
-  // 将连续的 --- 替换为标准格式
-  normalized = normalized.replace(/\n{0,2}---+\n{0,2}/g, '\n\n---\n\n');
+  // 先保护表格中的分隔线（|---|---| 这种格式）
+  // 用占位符替换
+  const TABLE_SEP_PLACEHOLDER = '___TABLE_SEPARATOR___';
+  normalized = normalized.replace(/\|[\s\-:]+\|/g, (match) => {
+    // 把表格分隔行中的内容保护起来
+    return match.replace(/-+/g, TABLE_SEP_PLACEHOLDER);
+  });
+
+  // 将独立的 --- 替换为分页符（只匹配独立成行的 ---）
+  // 必须是行首或换行后，且 --- 后面是换行或行尾
+  normalized = normalized.replace(/(\n|^)---+(\n|$)/g, '\n\n---\n\n');
 
   // 处理标题后的分隔
   normalized = normalized.replace(/^(#{1,2}\s+.+)\n{0,2}---/gm, '$1\n\n---');
+
+  // 恢复表格分隔线
+  normalized = normalized.replace(new RegExp(TABLE_SEP_PLACEHOLDER, 'g'), '---');
+
+  // 移除空白页（只有空白字符或单个 | 的页）
+  normalized = normalized.replace(/\n---\n\n\s*\|?\s*\n\n---\n/g, '\n\n---\n\n');
+  
+  // 移除末尾的空页
+  normalized = normalized.replace(/\n---\n\n\s*\|?\s*$/g, '');
 
   return normalized;
 }

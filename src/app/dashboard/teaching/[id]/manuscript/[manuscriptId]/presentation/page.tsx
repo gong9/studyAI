@@ -135,7 +135,7 @@ function parseMarkdown(md: string, slideIndex: number): string {
     return `${CODE_PLACEHOLDER}${codeBlocks.length - 1}${CODE_PLACEHOLDER}`;
   });
 
-  // 处理 Markdown 表格
+  // 处理 Markdown 表格 - 转换为简单的卡片列表形式（避免表格渲染问题）
   const tableRegex = /(\|[^\n]+\|\n)+/g;
   content = content.replace(tableRegex, (tableBlock) => {
     const tableLines = tableBlock.trim().split('\n').filter(line => line.trim());
@@ -144,27 +144,32 @@ function parseMarkdown(md: string, slideIndex: number): string {
     const separatorLine = tableLines[1];
     if (!separatorLine.includes('---')) return tableBlock;
     
-    let tableHtml = '<table style="border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: 0.95rem;"><thead><tr>';
-    
+    // 提取表头
     const headerCells = tableLines[0].split('|').filter(c => c.trim());
-    headerCells.forEach(cell => {
-      tableHtml += `<th style="border: 1px solid #d1d5db; padding: 0.5rem 1rem; background-color: #f4f4f5; font-weight: 600; text-align: left; color: #27272a;">${cell.trim()}</th>`;
-    });
-    tableHtml += '</tr></thead><tbody>';
     
+    // 使用卡片列表形式展示，不用表格
+    let listHtml = '<div class="my-4 space-y-2">';
+    
+    // 数据行 - 每行是一个卡片
     for (let j = 2; j < tableLines.length; j++) {
       const cells = tableLines[j].split('|').filter(c => c.trim());
       if (cells.length > 0) {
-        tableHtml += '<tr>';
-        cells.forEach(cell => {
-          tableHtml += `<td style="border: 1px solid #d1d5db; padding: 0.5rem 1rem; color: #374151;">${cell.trim()}</td>`;
+        listHtml += '<div class="flex flex-wrap gap-4 py-3 px-4 bg-zinc-50 rounded-lg border border-zinc-200">';
+        cells.forEach((cell, i) => {
+          const header = headerCells[i] || '';
+          listHtml += `<div class="flex-1 min-w-[120px]">`;
+          if (header) {
+            listHtml += `<div class="text-xs text-zinc-500 font-medium mb-1">${header.trim()}</div>`;
+          }
+          listHtml += `<div class="text-zinc-800 text-sm">${cell.trim()}</div>`;
+          listHtml += '</div>';
         });
-        tableHtml += '</tr>';
+        listHtml += '</div>';
       }
     }
     
-    tableHtml += '</tbody></table>';
-    return tableHtml;
+    listHtml += '</div>';
+    return listHtml;
   });
 
   // 为每个元素添加 data-id 用于高亮
@@ -890,7 +895,16 @@ export default function PresentationPage() {
 
     const parsed = parts
       .map(p => p.trim())
-      .filter(p => p.length > 0)
+      .filter(p => {
+        // 过滤空白页：长度为0，或只有 | 和空白字符的页面
+        if (p.length === 0) return false;
+        // 只有 | 符号和空白字符的页面也过滤掉
+        const contentWithoutPipes = p.replace(/[\|\s\n]/g, '');
+        if (contentWithoutPipes.length === 0) return false;
+        // 只有表格分隔线的页面也过滤掉（|---|---|）
+        if (/^[\s\|\-:]+$/.test(p)) return false;
+        return true;
+      })
       .map((content, index) => {
         const titleMatch = content.match(/^#\s+(.+)$/m);
         const title = titleMatch ? titleMatch[1] : `第 ${index + 1} 页`;

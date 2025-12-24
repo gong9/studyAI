@@ -3,6 +3,12 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { signOut, useSession } from 'next-auth/react';
+
+// 自定义登出函数，确保跳转到当前环境的登录页
+const handleSignOut = async () => {
+  await signOut({ redirect: false });
+  window.location.href = '/login';
+};
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -185,7 +191,7 @@ export default function DashboardPage() {
               </div>
               <span className="text-sm font-semibold text-zinc-700">{session?.user?.name}</span>
             </div>
-            <button onClick={() => signOut({ callbackUrl: '/login' })} className="text-zinc-400 hover:text-zinc-900 p-1 rounded-lg transition-colors">
+            <button onClick={handleSignOut} className="text-zinc-400 hover:text-zinc-900 p-1 rounded-lg transition-colors">
               <LogOut className="w-4 h-4" />
             </button>
           </div>

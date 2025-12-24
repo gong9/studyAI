@@ -15,6 +15,15 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
+    
+    // 解析请求体，获取 force 参数
+    let force = false;
+    try {
+      const body = await request.json();
+      force = body.force === true;
+    } catch {
+      // 没有请求体，忽略
+    }
 
     const manuscript = await prisma.teachingManuscript.findUnique({
       where: { id },
@@ -27,7 +36,12 @@ export async function POST(
       );
     }
 
-    if (!['confirmed', 'reviewing'].includes(manuscript.status)) {
+    // 允许的状态：confirmed, reviewing；如果 force=true 则也允许 completed, enriching
+    const allowedStatuses = force 
+      ? ['confirmed', 'reviewing', 'completed', 'enriching']
+      : ['confirmed', 'reviewing'];
+    
+    if (!allowedStatuses.includes(manuscript.status)) {
       return NextResponse.json(
         { error: '请先确认手稿' },
         { status: 400 }
