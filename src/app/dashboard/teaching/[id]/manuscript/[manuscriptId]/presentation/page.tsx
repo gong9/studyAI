@@ -1929,12 +1929,16 @@ export default function PresentationPage() {
           return;
         }
         
-        // ====== 绘制骨架调试信息 ======
+        // ====== 骨架调试绘制 ======
+        // 分别控制面部和手部的可视化
+        const showFaceSkeleton = false;  // 面部网格（已关闭）
+        const showHandSkeleton = true;   // 手部骨架（保留）
+        
         if (canvas && ctx && drawingUtils) {
           ctx.clearRect(0, 0, canvas.width, canvas.height);
           
           // 绘制面部网格
-          if (faceResult.faceLandmarks) {
+          if (showFaceSkeleton && faceResult.faceLandmarks) {
             for (const landmarks of faceResult.faceLandmarks) {
               drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_TESSELATION, { color: "#C0C0C070", lineWidth: 1 });
               drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_RIGHT_EYE, { color: "#FF3030" });
@@ -1943,7 +1947,7 @@ export default function PresentationPage() {
           }
           
           // 绘制手部骨架
-          if (handResult.landmarks) {
+          if (showHandSkeleton && handResult.landmarks) {
             for (const landmarks of handResult.landmarks) {
               drawingUtils.drawConnectors(landmarks, HandLandmarker.HAND_CONNECTIONS, { color: "#00FF00", lineWidth: 2 });
               drawingUtils.drawLandmarks(landmarks, { color: "#FF0000", lineWidth: 1 });
@@ -2501,15 +2505,40 @@ export default function PresentationPage() {
           {/* 课程发布按钮 */}
           {hasLectureScript && (
             publishedCourseId ? (
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={viewCourse}
-                className="bg-green-500/20 border-green-400/50 text-green-300 hover:bg-green-500/30"
-              >
-                <Radio className="h-4 w-4 mr-2" />
-                查看课程
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={viewCourse}
+                  className="bg-green-500/20 border-green-400/50 text-green-300 hover:bg-green-500/30"
+                >
+                  <Radio className="h-4 w-4 mr-2" />
+                  查看课程
+                </Button>
+                {/* 如果有精美PPT，显示重新发布按钮 */}
+                {bananaImages.length > 0 && (
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => publishCourse(true)}
+                    disabled={isPublishing}
+                    className="bg-orange-500/20 border-orange-400/50 text-orange-300 hover:bg-orange-500/30"
+                    title="使用最新的精美PPT重新发布课程"
+                  >
+                    {isPublishing ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        发布中...
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                        重新发布
+                      </>
+                    )}
+                  </Button>
+                )}
+              </div>
             ) : (
               <Button 
                 variant="outline" 

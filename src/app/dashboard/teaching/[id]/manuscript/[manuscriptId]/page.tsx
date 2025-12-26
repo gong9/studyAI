@@ -369,7 +369,8 @@ export default function ManuscriptEditorPage() {
             )}
 
 
-            {['enriching', 'completed'].includes(manuscript?.status) && manuscript?.enrichedContent && (
+            {/* 只要有 enrichedContent 或 slidevMd 就显示预览课件按钮 */}
+            {(manuscript?.enrichedContent || manuscript?.slidevMd) && (
               <div className="flex items-center gap-2">
                 <Button 
                   variant="outline"
