@@ -14,11 +14,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from '@/components/ui/input';
 import { 
   LogOut, Plus, Trash2, FileText, ChevronRight, ChevronLeft, 
-  Clock, GraduationCap, Sparkles, Cpu, FileCheck, ArrowRight, Scale
+  Clock, Sparkles, Cpu, FileCheck, ArrowRight, Scale
 } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 
-type ScenarioType = 'k12' | 'tech' | 'policy' | 'legal';
+type ScenarioType = 'tech' | 'policy' | 'legal';
 
 interface ScenarioConfig {
   id: ScenarioType;
@@ -33,17 +33,6 @@ interface ScenarioConfig {
 }
 
 const scenarios: ScenarioConfig[] = [
-  {
-    id: 'k12',
-    name: 'K12 教学',
-    desc: '智能生成教学讲稿与同步课件',
-    icon: GraduationCap,
-    accentColor: 'text-slate-600',
-    accentBg: 'bg-slate-50',
-    accentBorder: 'group-hover:border-slate-400',
-    examples: ['语文课文', '数学公式', '英语语法'],
-    placeholder: '例如：七年级语文上册',
-  },
   {
     id: 'tech',
     name: '技术培训',
@@ -80,7 +69,7 @@ const scenarios: ScenarioConfig[] = [
 ];
 
 const getScenarioConfig = (type: string): ScenarioConfig => {
-  const normalizedType = type === 'teaching' ? 'k12' : type;
+  const normalizedType = type === 'teaching' || type === 'k12' ? 'tech' : type;
   return scenarios.find(s => s.id === normalizedType) || scenarios[0];
 };
 
@@ -106,9 +95,9 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [selectedScenario, setSelectedScenario] = useState<ScenarioType>('k12');
+  const [selectedScenario, setSelectedScenario] = useState<ScenarioType>('tech');
   const [activeFilter, setActiveFilter] = useState<ScenarioType | 'all'>('all');
-  const [newKB, setNewKB] = useState({ name: '', description: '', type: 'k12' as ScenarioType });
+  const [newKB, setNewKB] = useState({ name: '', description: '', type: 'tech' as ScenarioType });
   const [currentPage, setCurrentPage] = useState(1);
 
   // 检测未登录状态，重定向到登录页
@@ -129,7 +118,7 @@ export default function DashboardPage() {
       if (response.ok) {
         const data = await response.json();
         const scenarioKBs = data.filter((kb: any) => 
-          ['k12', 'tech', 'policy', 'legal', 'teaching'].includes(kb.type)
+          ['tech', 'policy', 'legal', 'teaching', 'k12'].includes(kb.type)
         );
         setKnowledgeBases(scenarioKBs);
       }
@@ -164,7 +153,7 @@ export default function DashboardPage() {
       if (response.ok) {
         const kb = await response.json();
         setShowCreateForm(false);
-        setNewKB({ name: '', description: '', type: 'k12' });
+        setNewKB({ name: '', description: '', type: 'tech' });
         router.push(`/dashboard/teaching/${kb.id}`);
       } else {
         const error = await response.json();
@@ -191,7 +180,7 @@ export default function DashboardPage() {
     if (scenarioId === 'legal') {
       return legalManuscripts.length;
     }
-    return knowledgeBases.filter(kb => (kb.type === 'teaching' ? 'k12' : kb.type) === scenarioId).length;
+    return knowledgeBases.filter(kb => (kb.type === 'teaching' || kb.type === 'k12' ? 'tech' : kb.type) === scenarioId).length;
   };
 
   // 将普法讲稿转换为统一的项目格式
@@ -210,7 +199,7 @@ export default function DashboardPage() {
 
   const filteredKBs = activeFilter === 'all' 
     ? allProjects 
-    : allProjects.filter(kb => (kb.type === 'teaching' ? 'k12' : kb.type) === activeFilter);
+    : allProjects.filter(kb => (kb.type === 'teaching' || kb.type === 'k12' ? 'tech' : kb.type) === activeFilter);
 
   const sortedKBs = [...filteredKBs].sort((a, b) => 
     new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -256,7 +245,7 @@ export default function DashboardPage() {
         </div>
 
         {/* 场景入口卡片 */}
-        <div className="flex-none grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="flex-none grid grid-cols-1 md:grid-cols-3 gap-4">
           {scenarios.map((scenario) => {
             const count = getScenarioCount(scenario.id);
             return (

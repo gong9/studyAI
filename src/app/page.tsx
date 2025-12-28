@@ -20,7 +20,6 @@ import {
   Cpu,
   Layers,
   Zap,
-  GraduationCap,
   FileCheck,
   Clock,
   CheckCircle,
@@ -34,14 +33,6 @@ import {
 
 // 三大场景 - 统一采用 Zinc-900 主色调逻辑
 const scenarios = [
-  { 
-    id: 'k12',
-    icon: GraduationCap, 
-    name: 'K12 教学', 
-    desc: '中小学教材备课，AI 智能生成教学课件与私教讲稿',
-    highlight: '教育培训',
-    examples: ['语文课文', '数学公式', '英语语法'],
-  },
   { 
     id: 'tech',
     icon: Cpu, 
@@ -191,7 +182,7 @@ export default function LandingPage() {
             <p className="text-zinc-400 text-lg font-medium max-w-2xl mx-auto">针对不同领域，提供极致的 AI 内容转化方案</p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
             {scenarios.map((scenario, index) => (
               <div key={scenario.id} className="scroll-fade-in bg-white border border-zinc-100 rounded-[2.5rem] p-10 hover:border-zinc-900 hover:shadow-2xl transition-all duration-500 group">
                 <div className="w-16 h-16 bg-zinc-900 rounded-2xl flex items-center justify-center mb-8 shadow-xl group-hover:scale-110 transition-transform">

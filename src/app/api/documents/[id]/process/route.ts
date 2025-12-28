@@ -38,14 +38,37 @@ export async function GET(
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
+        let isClosed = false;
+        
         const sendEvent = (event: string, data: any) => {
-          const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-          controller.enqueue(encoder.encode(message));
+          // 检查 controller 是否已关闭
+          if (isClosed) return;
+          try {
+            const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+            controller.enqueue(encoder.encode(message));
+          } catch (e) {
+            // controller 已关闭，标记并忽略
+            isClosed = true;
+          }
+        };
+        
+        const safeClose = () => {
+          if (isClosed) return;
+          isClosed = true;
+          try {
+            controller.close();
+          } catch (e) {
+            // 已关闭，忽略
+          }
         };
 
         // 心跳定时器，每 5 秒发送一次心跳，防止连接超时
         let lastProgress = 0;
         const heartbeatInterval = setInterval(() => {
+          if (isClosed) {
+            clearInterval(heartbeatInterval);
+            return;
+          }
           sendEvent('heartbeat', { 
             status: 'processing', 
             message: '处理中...',
@@ -115,7 +138,7 @@ export async function GET(
             progress: 100
           });
 
-          controller.close();
+          safeClose();
         } catch (error: any) {
           console.error('[Process] Error:', error);
           
@@ -123,10 +146,14 @@ export async function GET(
           clearInterval(heartbeatInterval);
           
           // 更新状态为失败
-          await prisma.document.update({
-            where: { id: documentId },
-            data: { status: 'failed' },
-          });
+          try {
+            await prisma.document.update({
+              where: { id: documentId },
+              data: { status: 'failed' },
+            });
+          } catch (dbError) {
+            console.error('[Process] Failed to update status:', dbError);
+          }
 
           sendEvent('error', { 
             status: 'failed', 
@@ -134,7 +161,7 @@ export async function GET(
             progress: 0
           });
 
-          controller.close();
+          safeClose();
         }
       },
     });

@@ -24,7 +24,7 @@ model KnowledgeBase {
   id          String     @id @default(uuid())
   name        String
   description String?
-  type        String     @default("k12")  // "k12" | "tech" | "policy" | "legal" (兼容旧值 "teaching" -> k12)
+  type        String     @default("tech")  // "tech" | "policy" | "legal" (兼容旧值 "teaching" | "k12" -> tech)
   isPreset    Boolean    @default(false)  // 是否为系统预置知识库（如法律库）
   userId      String
   user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)

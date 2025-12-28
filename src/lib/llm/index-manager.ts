@@ -260,6 +260,29 @@ export async function loadIndex(knowledgeBaseId: string): Promise<VectorStoreInd
     throw new Error(`Index not found for knowledge base ${knowledgeBaseId}`);
   }
 
+  // 检查索引文件是否真正存在且有效（防止索引创建中途加载）
+  const vectorStoreFile = path.join(storageDir, 'vector_store.json');
+  const indexStoreFile = path.join(storageDir, 'index_store.json');
+  
+  if (!(await fs.pathExists(vectorStoreFile)) || !(await fs.pathExists(indexStoreFile))) {
+    throw new Error(`Index files not ready for knowledge base ${knowledgeBaseId} (index may still be building)`);
+  }
+  
+  // 检查 vector_store.json 是否有实际内容（不是空对象）
+  try {
+    const vectorStoreContent = await fs.readFile(vectorStoreFile, 'utf-8');
+    const vectorStore = JSON.parse(vectorStoreContent);
+    // 检查是否有 embeddingDict 且不为空（注意：llamaindex 使用驼峰命名）
+    if (!vectorStore.embeddingDict || Object.keys(vectorStore.embeddingDict).length === 0) {
+      throw new Error(`Index not ready for knowledge base ${knowledgeBaseId} (no embeddings found, index may still be building)`);
+    }
+  } catch (parseError: any) {
+    if (parseError.message.includes('Index not ready')) {
+      throw parseError;
+    }
+    throw new Error(`Index file corrupted for knowledge base ${knowledgeBaseId}: ${parseError.message}`);
+  }
+
   // 从持久化存储加载
   const storageContext = await storageContextFromDefaults({
     persistDir: storageDir,

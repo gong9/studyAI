@@ -63,7 +63,7 @@ export async function POST(
       question, 
       currentSlide = 0, 
       knowledgeBaseId,  // 知识库 ID，用于 RAG 检索（可选）
-      knowledgeBaseType = 'k12',
+      knowledgeBaseType = 'tech',
       chapterMetadata = null,
       continueExplaining = false,
       explainCount = 1 

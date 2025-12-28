@@ -152,13 +152,14 @@ export async function analyzeChapter(input: ChapterAnalysisInput): Promise<Chapt
 
 /**
  * 通过 RAG 获取章节相关的教材内容
+ * 注意：调用前需确保索引已就绪（由 ensureIndexReady 保证）
  */
 async function fetchChapterMaterial(
   knowledgeBaseId: string, 
   chapterTitle: string
 ): Promise<string> {
   try {
-    // 加载索引
+    // 加载索引（此时索引应该已经就绪）
     const index = await loadIndex(knowledgeBaseId);
     
     // 构造多个查询以获取更全面的内容

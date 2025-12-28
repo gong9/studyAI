@@ -319,15 +319,18 @@ export async function POST(
         audioResults.set(key, result);
         generateCount++;
         
-        // 每次成功后稍微等待一下，避免请求过快
-        await delay(200);
+        // 每次成功后等待 1 秒，避免请求过快触发限流
+        await delay(1000);
       } catch (error: any) {
         console.error(`[Publish] ❌ 语音生成失败:`, error.message);
         
-        // 如果是限速错误，在外层也等待一下再继续
+        // 如果是限速错误，等待更长时间再继续
         if (error.message === 'rate limit') {
-          console.log(`[Publish] 限速未解除，等待 10s 后继续下一条...`);
-          await delay(10000);
+          console.log(`[Publish] 限速未解除，等待 30s 后继续下一条...`);
+          await delay(30000);
+        } else {
+          // 其他错误，短暂等待后继续
+          await delay(2000);
         }
         // 继续处理其他语音，失败的跳过
       }

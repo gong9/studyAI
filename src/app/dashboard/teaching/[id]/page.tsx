@@ -6,14 +6,14 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { 
   ArrowLeft, Upload, FileText, ChevronRight, ChevronDown, 
-  GraduationCap, Sparkles, Loader2, CheckCircle, 
+  Sparkles, Loader2, CheckCircle, 
   BookOpen, ListTree, Play, Eye, Plus, LayoutGrid, Clock,
   Target, Book, Settings2, Zap, Cpu, FileCheck, Scale
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // 根据项目类型配置不同的文案和图标
-type ProjectType = 'k12' | 'tech' | 'policy' | 'legal' | 'teaching';
+type ProjectType = 'tech' | 'policy' | 'legal' | 'teaching' | 'k12';
 
 interface TypeConfig {
   icon: React.ComponentType<{ className?: string }>;
@@ -30,32 +30,6 @@ interface TypeConfig {
 }
 
 const TYPE_CONFIGS: Record<ProjectType, TypeConfig> = {
-  k12: {
-    icon: GraduationCap,
-    docLibTitle: '教材文档库',
-    addDocText: '添加教材',
-    emptyDocText: '暂无教材，请先上传',
-    indexTitle: '课程章节索引',
-    emptyIndexText: '请上传教材后点击"智能扫描"',
-    workbenchTitle: '智能备课台',
-    generateBtnText: '开启智慧备课',
-    generatingText: '正在构思教学手稿...',
-    selectHint: '请在左侧选择章节开始备课',
-    headerSubtitle: '教学项目',
-  },
-  teaching: { // 兼容旧数据
-    icon: GraduationCap,
-    docLibTitle: '教材文档库',
-    addDocText: '添加教材',
-    emptyDocText: '暂无教材，请先上传',
-    indexTitle: '课程章节索引',
-    emptyIndexText: '请上传教材后点击"智能扫描"',
-    workbenchTitle: '智能备课台',
-    generateBtnText: '开启智慧备课',
-    generatingText: '正在构思教学手稿...',
-    selectHint: '请在左侧选择章节开始备课',
-    headerSubtitle: '教学项目',
-  },
   tech: {
     icon: Cpu,
     docLibTitle: '技术文档库',
@@ -95,10 +69,37 @@ const TYPE_CONFIGS: Record<ProjectType, TypeConfig> = {
     selectHint: '请在左侧选择法律条文开始创作',
     headerSubtitle: '普法讲座',
   },
+  // 兼容旧数据 k12 和 teaching，映射到 tech
+  teaching: {
+    icon: Cpu,
+    docLibTitle: '技术文档库',
+    addDocText: '添加文档',
+    emptyDocText: '暂无文档，请先上传',
+    indexTitle: '内容章节索引',
+    emptyIndexText: '请上传文档后点击"智能扫描"',
+    workbenchTitle: '培训工作台',
+    generateBtnText: '生成培训内容',
+    generatingText: '正在生成培训讲稿...',
+    selectHint: '请在左侧选择章节开始创作',
+    headerSubtitle: '技术培训',
+  },
+  k12: {
+    icon: Cpu,
+    docLibTitle: '技术文档库',
+    addDocText: '添加文档',
+    emptyDocText: '暂无文档，请先上传',
+    indexTitle: '内容章节索引',
+    emptyIndexText: '请上传文档后点击"智能扫描"',
+    workbenchTitle: '培训工作台',
+    generateBtnText: '生成培训内容',
+    generatingText: '正在生成培训讲稿...',
+    selectHint: '请在左侧选择章节开始创作',
+    headerSubtitle: '技术培训',
+  },
 };
 
 const getTypeConfig = (type: string): TypeConfig => {
-  return TYPE_CONFIGS[type as ProjectType] || TYPE_CONFIGS.k12;
+  return TYPE_CONFIGS[type as ProjectType] || TYPE_CONFIGS.tech;
 };
 
 interface ChapterNode {
@@ -142,16 +143,15 @@ export default function TeachingDetailPage() {
   const [activeTab, setActiveTab] = useState<'workbench' | 'records'>('workbench');
 
   // 获取当前项目类型的配置
-  const typeConfig = getTypeConfig(kb?.type || 'k12');
+  const typeConfig = getTypeConfig(kb?.type || 'tech');
   const TypeIcon = typeConfig.icon;
 
   // 根据项目类型自动确定场景类型
   const getSceneTypeFromKbType = (kbType: string): string => {
     switch (kbType) {
+      case 'tech':
       case 'k12':
       case 'teaching':
-        return 'k12_teaching';
-      case 'tech':
         return 'tech_training';
       case 'policy':
         return 'company_training';
@@ -162,7 +162,7 @@ export default function TeachingDetailPage() {
     }
   };
 
-  const sceneType = getSceneTypeFromKbType(kb?.type || 'k12');
+  const sceneType = getSceneTypeFromKbType(kb?.type || 'tech');
 
   useEffect(() => {
     fetchKnowledgeBase();
@@ -254,14 +254,13 @@ export default function TeachingDetailPage() {
       fetchDocuments();
       
       // 3. 根据项目类型决定后续操作
-      const currentType = kb?.type || 'k12';
+      const currentType = kb?.type || 'tech';
       if (currentType === 'policy') {
         // 制度培训：直接为每个文档创建一个"章节"条目
         await createChaptersFromDocuments(uploadedDocs);
-      } else {
-        // K12/技术培训：需要智能扫描提取章节
-        handleExtractChapters();
       }
+                      // 技术培训：不自动扫描，等用户手动点击"智能扫描"按钮
+      // 因为索引还在后台创建中，需要等索引完成后才能扫描
     } catch (error) {
       console.error('上传失败:', error);
       alert('上传失败，请重试');
@@ -553,7 +552,7 @@ export default function TeachingDetailPage() {
                       <ListTree className="w-4 h-4 text-zinc-600" />
                       {typeConfig.indexTitle}
                     </h3>
-                    {/* 只有 K12 和技术培训需要智能扫描按钮 */}
+                    {/* 技术培训需要智能扫描按钮 */}
                     {documents.length > 0 && kb?.type !== 'policy' && (
                       <Button 
                         variant="ghost" 

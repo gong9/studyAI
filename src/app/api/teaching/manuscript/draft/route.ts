@@ -20,9 +20,9 @@ import type { KeyPoint } from '@/lib/teaching/agents/chapter-analyzer';
 /** 根据知识库类型推断场景类型 */
 function getSceneTypeFromKbType(kbType: string): SceneType {
   switch (kbType) {
-    case 'k12':
-      return 'k12_teaching';
     case 'tech':
+    case 'k12':
+    case 'teaching':
       return 'tech_training';
     case 'policy':
       return 'company_training';

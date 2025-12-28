@@ -9,6 +9,7 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { extractChapters, extractChaptersByRules, type ChapterNode } from '@/lib/teaching';
 import { analyzeChapter } from '@/lib/teaching/agents/chapter-analyzer';
+import { loadIndex } from '@/lib/llm/index-manager';
 import * as fs from 'fs-extra';
 import * as path from 'path';
 import pdfParse from 'pdf-parse';
@@ -50,6 +51,14 @@ export async function POST(request: Request) {
 
     if (documents.length === 0) {
       return NextResponse.json({ error: '知识库中没有文档' }, { status: 400 });
+    }
+
+    // 检查索引是否就绪（必须先完成文档处理）
+    const indexReady = await isIndexReady(knowledgeBaseId);
+    if (!indexReady) {
+      return NextResponse.json({ 
+        error: '文档正在处理中，请等待处理完成后再进行智能扫描' 
+      }, { status: 400 });
     }
 
     // 解析 PDF 内容（如果还没解析）
@@ -105,7 +114,7 @@ export async function POST(request: Request) {
     }
 
     // 根据知识库类型确定提取方式
-    // k12 -> 教材章节, tech -> 技术文档结构, policy -> 制度条款
+    // tech -> 技术文档结构, policy -> 制度条款
     const kbType = kb.type || 'tech';
     console.log(`[ExtractChapters] KB type: ${kbType}`);
 
@@ -129,13 +138,13 @@ export async function POST(request: Request) {
     // 保存章节到数据库
     await saveChaptersToDb(knowledgeBaseId, result.chapters, result.metadata);
 
-    // 注意：不再强制覆盖类型，保留用户创建时选择的类型（k12/tech/policy）
+    // 注意：不再强制覆盖类型，保留用户创建时选择的类型（tech/policy/legal）
     // 只有当类型是 document 时才更新为对应的场景类型
     const currentType = kb.type;
     if (currentType === 'document') {
       await prisma.knowledgeBase.update({
         where: { id: knowledgeBaseId },
-        data: { type: 'k12' }, // 默认设为 k12
+        data: { type: 'tech' }, // 默认设为 tech
       });
     }
 
@@ -223,6 +232,13 @@ async function saveChaptersToDb(
 async function analyzeAllChapters(knowledgeBaseId: string) {
   console.log(`[ExtractChapters] Starting background analysis for KB: ${knowledgeBaseId}`);
   
+  // 检查索引是否就绪（不创建，只检查）
+  const indexReady = await isIndexReady(knowledgeBaseId);
+  if (!indexReady) {
+    console.log('[ExtractChapters] Index not ready, skipping chapter analysis. Please wait for document processing to complete.');
+    return;
+  }
+  
   // 获取所有未分析的叶子章节（level 最深的章节）
   const chapters = await prisma.teachingChapter.findMany({
     where: {
@@ -278,5 +294,20 @@ async function analyzeAllChapters(knowledgeBaseId: string) {
   }
 
   console.log(`[ExtractChapters] Background analysis completed for KB: ${knowledgeBaseId}`);
+}
+
+/**
+ * 检查索引是否就绪
+ * 不创建，只检查。没就绪就返回 false
+ */
+async function isIndexReady(knowledgeBaseId: string): Promise<boolean> {
+  try {
+    await loadIndex(knowledgeBaseId);
+    console.log(`[ExtractChapters] ✓ Index is ready`);
+    return true;
+  } catch (error: any) {
+    console.log(`[ExtractChapters] Index not ready: ${error.message}`);
+    return false;
+  }
 }
 

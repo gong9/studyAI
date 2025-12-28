@@ -2060,7 +2060,7 @@ export default function PresentationPage() {
           // 传递知识库 ID（用于 RAG 检索）- 直接使用 URL 参数
           knowledgeBaseId: kbId,
           // 传递知识库类型（用于动态角色）
-          knowledgeBaseType: manuscript?.knowledgeBase?.type || 'k12',
+          knowledgeBaseType: manuscript?.knowledgeBase?.type || 'tech',
           // 传递章节元数据（用于确定学科/年级）
           chapterMetadata: manuscript?.chapter?.metadata || null,
         }),

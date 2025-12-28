@@ -16,9 +16,9 @@ import type { SlideInfo, LectureAction } from '@/lib/teaching/lecture/types';
 // 根据知识库类型推断讲解场景类型
 function getSceneTypeFromKbType(kbType: string): LectureSceneType {
   switch (kbType) {
-    case 'k12':
-      return 'k12_teaching';
     case 'tech':
+    case 'k12':
+    case 'teaching':
       return 'tech_training';
     case 'policy':
       return 'company_training';
