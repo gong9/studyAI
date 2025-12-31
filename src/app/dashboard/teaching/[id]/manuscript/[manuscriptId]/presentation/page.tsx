@@ -7,11 +7,12 @@ import {
   ArrowLeft, Loader2, ChevronLeft, ChevronRight, ChevronDown,
   Presentation, Play, Pause, Square, Volume2, Maximize2, Minimize2,
   Mic, MicOff, MessageCircle, Sparkles, Image, Download, Radio, Camera, Hand,
-  FileText, RefreshCw
+  FileText, RefreshCw, Video, Circle
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
+import { HtmlSlideRenderer, type HtmlSlide } from '@/components/teaching/HtmlSlideRenderer';
 import { FaceLandmarker, HandLandmarker, FilesetResolver, DrawingUtils } from '@mediapipe/tasks-vision';
 
 // ====== 定义 PPT 控制 API 类型 ======
@@ -249,11 +250,9 @@ export default function PresentationPage() {
   // 全屏状态
   const [isFullscreen, setIsFullscreen] = useState(false);
   
-  // ====== Banana 精美模式状态 ======
-  const [bananaImages, setBananaImages] = useState<string[]>([]);
-  const [useBananaMode, setUseBananaMode] = useState(false);
-  const [isGeneratingBanana, setIsGeneratingBanana] = useState(false);
-  const [bananaProgress, setBananaProgress] = useState({ current: 0, total: 0, message: '' });
+  
+  // ====== HTML 幻灯片模式状态 ======
+  const [htmlSlides, setHtmlSlides] = useState<HtmlSlide[]>([]);
   
   // ====== 课程发布状态 ======
   const [isPublishing, setIsPublishing] = useState(false);
@@ -267,6 +266,13 @@ export default function PresentationPage() {
   const [exporting, setExporting] = useState<string | null>(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const exportMenuRef = useRef<HTMLDivElement>(null);
+  
+  // ====== 屏幕录制状态 ======
+  const [isScreenRecording, setIsScreenRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const screenRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   // ====== 语音互动状态 ======
   // 互动模式: idle | listening | processing | explaining | confirming
@@ -836,17 +842,16 @@ export default function PresentationPage() {
           setError('没有可预览的内容');
         }
         
-        // 加载 Banana 图片（如果有）
-        if (data.bananaImages) {
+        // 加载 HTML 幻灯片
+        if (data.htmlSlides) {
           try {
-            const images = JSON.parse(data.bananaImages);
-            if (Array.isArray(images) && images.length > 0) {
-              setBananaImages(images);
-              setUseBananaMode(true); // 如果有图片，默认使用精美模式
-              console.log(`[Presentation] Loaded ${images.length} banana images`);
+            const parsedHtmlSlides = JSON.parse(data.htmlSlides);
+            if (Array.isArray(parsedHtmlSlides) && parsedHtmlSlides.length > 0) {
+              setHtmlSlides(parsedHtmlSlides);
+              console.log(`[Presentation] Loaded ${parsedHtmlSlides.length} HTML slides`);
             }
           } catch (e) {
-            console.error('[Presentation] Failed to parse banana images:', e);
+            console.error('[Presentation] Failed to parse HTML slides:', e);
           }
         }
         
@@ -917,51 +922,10 @@ export default function PresentationPage() {
     setSlides(parsed);
   };
 
-  // ====== Banana 精美 PPT 生成 ======
-  const generateBananaPPT = async () => {
-    setIsGeneratingBanana(true);
-    setBananaProgress({ current: 0, total: slides.length, message: '正在初始化...' });
-    
+  // 导出 PPTX (保留基础功能)
+  const exportPPTX = async () => {
     try {
-      const res = await fetch(`/api/teaching/manuscript/${manuscriptId}/banana`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ templateId: 'default' }),
-      });
-      
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || '生成失败');
-      }
-      
-      const result = await res.json();
-      console.log('[Presentation] Banana generation complete:', result);
-      
-      // 重新获取图片
-      const bananaRes = await fetch(`/api/teaching/manuscript/${manuscriptId}/banana`);
-      if (bananaRes.ok) {
-        const bananaData = await bananaRes.json();
-        if (bananaData.images && bananaData.images.length > 0) {
-          setBananaImages(bananaData.images);
-          setUseBananaMode(true);
-        }
-      }
-      
-      setBananaProgress({ current: slides.length, total: slides.length, message: '生成完成！' });
-    } catch (error: any) {
-      console.error('[Presentation] Banana generation error:', error);
-      setBananaProgress({ current: 0, total: 0, message: `错误: ${error.message}` });
-    } finally {
-      setIsGeneratingBanana(false);
-    }
-  };
-
-  // 导出精美 PPTX
-  const exportBananaPPTX = async () => {
-    if (bananaImages.length === 0) return;
-    
-    try {
-      const res = await fetch(`/api/teaching/manuscript/${manuscriptId}/export?format=pptx&style=banana`);
+      const res = await fetch(`/api/teaching/manuscript/${manuscriptId}/export?format=pptx`);
       if (!res.ok) {
         throw new Error('导出失败');
       }
@@ -970,7 +934,7 @@ export default function PresentationPage() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'presentation-banana.pptx';
+      a.download = 'presentation.pptx';
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -1022,6 +986,111 @@ export default function PresentationPage() {
     } finally {
       setExporting(null);
     }
+  };
+
+  // ====== 屏幕录制功能 ======
+  const startScreenRecording = async () => {
+    try {
+      // 请求屏幕共享
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          displaySurface: 'browser',
+          frameRate: 30,
+        },
+        audio: true, // 捕获系统音频
+      });
+
+      recordedChunksRef.current = [];
+      
+      // 检测支持的格式
+      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+        ? 'video/webm;codecs=vp9'
+        : 'video/webm';
+
+      const recorder = new MediaRecorder(stream, {
+        mimeType,
+        videoBitsPerSecond: 5000000, // 5 Mbps
+      });
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          recordedChunksRef.current.push(e.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        // 停止所有轨道
+        stream.getTracks().forEach(track => track.stop());
+        
+        // 创建下载
+        const blob = new Blob(recordedChunksRef.current, { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `课程录制_${new Date().toISOString().slice(0, 10)}.webm`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        // 重置状态
+        setIsScreenRecording(false);
+        setRecordingTime(0);
+        if (recordingTimerRef.current) {
+          clearInterval(recordingTimerRef.current);
+        }
+        
+        console.log('[录制] 录制完成，文件大小:', (blob.size / 1024 / 1024).toFixed(2), 'MB');
+      };
+
+      // 监听用户停止共享
+      stream.getVideoTracks()[0].onended = () => {
+        if (screenRecorderRef.current?.state === 'recording') {
+          stopScreenRecording();
+        }
+      };
+
+      screenRecorderRef.current = recorder;
+      recorder.start(100);
+      setIsScreenRecording(true);
+      
+      // 启动计时器
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingTime(prev => prev + 1);
+      }, 1000);
+
+      console.log('[录制] 开始录制屏幕');
+      
+      // 自动进入全屏
+      if (!document.fullscreenElement) {
+        try {
+          await document.documentElement.requestFullscreen();
+          setIsFullscreen(true);
+        } catch (e) {
+          console.log('[录制] 无法进入全屏');
+        }
+      }
+    } catch (error: any) {
+      console.error('[录制] 启动失败:', error);
+      if (error.name === 'NotAllowedError') {
+        alert('需要允许屏幕共享权限才能录制');
+      } else {
+        alert('录制启动失败: ' + error.message);
+      }
+    }
+  };
+
+  const stopScreenRecording = () => {
+    if (screenRecorderRef.current && screenRecorderRef.current.state === 'recording') {
+      screenRecorderRef.current.stop();
+      console.log('[录制] 停止录制');
+    }
+  };
+
+  const formatRecordingTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
   // 重新生成讲稿（使用正确的场景类型）
@@ -1215,10 +1284,9 @@ export default function PresentationPage() {
   
   // 开始 LLM 驱动的讲解（使用 SSE 获取进度）
   const startLecture = async () => {
-    // 自动启动摄像头（用于举手检测）
-    if (!cameraEnabled) {
-      startCamera();
-    }
+    // 摄像头监控改为手动控制，不再自动启动
+    // 如需自动启动，可取消下面的注释：
+    // if (!cameraEnabled) { startCamera(); }
     
     // 显示全局 loading
     setIsPreparingLecture(true);
@@ -2290,25 +2358,6 @@ export default function PresentationPage() {
         }
       `}</style>
 
-      {/* Banana 生成遮罩 */}
-      {isGeneratingBanana && (
-        <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center">
-          <div className="text-center">
-            <Sparkles className="h-16 w-16 mx-auto mb-6 text-amber-400 animate-pulse" />
-            <h3 className="text-2xl font-light text-white mb-4">正在生成精美 PPT</h3>
-            <p className="text-zinc-400 mb-6">{bananaProgress.message}</p>
-            <div className="w-48 h-1 bg-zinc-800 mx-auto rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-amber-400 transition-all duration-500"
-                style={{ width: bananaProgress.total > 0 ? `${(bananaProgress.current / bananaProgress.total) * 100}%` : '10%' }}
-              />
-            </div>
-            <p className="text-zinc-500 text-sm mt-4">
-              使用 AI 图像生成技术，每页约需 10-15 秒
-            </p>
-          </div>
-        </div>
-      )}
 
       {/* 全局 Loading 遮罩 - 简约风格 */}
       {isPreparingLecture && (
@@ -2356,43 +2405,17 @@ export default function PresentationPage() {
           </h1>
           <div className="h-4 w-px bg-white/20" />
           
-          {/* 生成精美PPT - 放在左边更显眼 */}
-          {bananaImages.length > 0 ? (
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => setUseBananaMode(!useBananaMode)}
-              className={cn(
-                "border-zinc-500/50",
-                useBananaMode 
-                  ? "bg-amber-500/30 border-amber-400/50 text-amber-300 hover:bg-amber-500/40" 
-                  : "bg-zinc-700/50 text-zinc-300 hover:bg-zinc-600/50"
-              )}
-            >
-              <Image className="h-4 w-4 mr-2" />
-              {useBananaMode ? '精美模式' : '经典模式'}
-            </Button>
-          ) : (
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={generateBananaPPT}
-              disabled={isGeneratingBanana || slides.length === 0}
-              className="bg-amber-500/20 border-amber-400/50 text-amber-300 hover:bg-amber-500/30"
-            >
-              {isGeneratingBanana ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  生成中...
-                </>
+          {/* 幻灯片状态 */}
+          <div className="flex items-center gap-2 text-sm">
+            {htmlSlides.length > 0 ? (
+              <span className="text-cyan-400 flex items-center gap-1.5">
+                <Sparkles className="h-4 w-4" />
+                精美课件
+              </span>
               ) : (
-                <>
-                  <Sparkles className="h-4 w-4 mr-2" />
-                  生成精美PPT
-                </>
+              <span className="text-zinc-400">加载中...</span>
               )}
-            </Button>
-          )}
+          </div>
         </div>
 
         <div className="flex items-center gap-4">
@@ -2408,6 +2431,20 @@ export default function PresentationPage() {
               <Mic className="h-4 w-4 animate-pulse" />
               {interactionStatus || interactionMode}
             </span>
+          )}
+          
+          {/* 录制状态指示 */}
+          {isScreenRecording && (
+            <div className="flex items-center gap-2 px-3 py-1 bg-red-500/20 rounded-full border border-red-400/50">
+              <Circle className="h-3 w-3 text-red-500 fill-red-500 animate-pulse" />
+              <span className="text-red-400 text-sm font-mono">{formatRecordingTime(recordingTime)}</span>
+              <button
+                onClick={stopScreenRecording}
+                className="ml-1 px-2 py-0.5 bg-red-500 text-white text-xs rounded hover:bg-red-600 transition-colors"
+              >
+                停止
+              </button>
+            </div>
           )}
           
           {/* 讲解状态 */}
@@ -2515,29 +2552,6 @@ export default function PresentationPage() {
                   <Radio className="h-4 w-4 mr-2" />
                   查看课程
                 </Button>
-                {/* 如果有精美PPT，显示重新发布按钮 */}
-                {bananaImages.length > 0 && (
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => publishCourse(true)}
-                    disabled={isPublishing}
-                    className="bg-orange-500/20 border-orange-400/50 text-orange-300 hover:bg-orange-500/30"
-                    title="使用最新的精美PPT重新发布课程"
-                  >
-                    {isPublishing ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        发布中...
-                      </>
-                    ) : (
-                      <>
-                        <RefreshCw className="h-4 w-4 mr-2" />
-                        重新发布
-                      </>
-                    )}
-                  </Button>
-                )}
               </div>
             ) : (
               <Button 
@@ -2583,7 +2597,16 @@ export default function PresentationPage() {
             </Button>
             
             {showExportMenu && (
-              <div className="absolute top-full mt-2 right-0 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl overflow-hidden z-[9999] min-w-[160px] py-1">
+              <div className="absolute top-full mt-2 right-0 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl overflow-hidden z-[9999] min-w-[180px] py-1">
+                <button
+                  onClick={() => { startScreenRecording(); setShowExportMenu(false); }}
+                  className="w-full px-4 py-2.5 text-left text-sm text-white hover:bg-zinc-700/80 flex items-center gap-3 transition-colors"
+                >
+                  <Video className="h-4 w-4 text-red-400" />
+                  录制视频
+                  <span className="text-[10px] text-zinc-500 ml-auto">推荐</span>
+                </button>
+                <div className="border-t border-zinc-700 my-1" />
                 <button
                   onClick={() => { handleExport('pdf'); setShowExportMenu(false); }}
                   className="w-full px-4 py-2.5 text-left text-sm text-white hover:bg-zinc-700/80 flex items-center gap-3 transition-colors"
@@ -2598,23 +2621,28 @@ export default function PresentationPage() {
                   <Presentation className="h-4 w-4 text-zinc-400" />
                   导出 PPTX
                 </button>
-                {bananaImages.length > 0 && useBananaMode && (
-                  <>
-                    <div className="h-px bg-zinc-700 my-1" />
-                    <button
-                      onClick={() => { exportBananaPPTX(); setShowExportMenu(false); }}
-                      className="w-full px-4 py-2.5 text-left text-sm text-amber-400 hover:bg-zinc-700/80 flex items-center gap-3 transition-colors"
-                    >
-                      <Sparkles className="h-4 w-4" />
-                      导出精美PPT
-                    </button>
-                  </>
-                )}
               </div>
             )}
           </div>
           
-          {/* 4. 全屏 - 辅助功能 */}
+          {/* 4. 摄像头监控开关 */}
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={cameraEnabled ? stopCamera : startCamera}
+            className={cn(
+              "h-8",
+              cameraEnabled 
+                ? "bg-green-500/20 border-green-400/50 text-green-400 hover:bg-green-500/30" 
+                : "bg-zinc-700/50 border-zinc-500/50 text-zinc-300 hover:bg-zinc-600/50"
+            )}
+            title={cameraEnabled ? "关闭摄像头监控" : "开启摄像头监控"}
+          >
+            <Camera className={cn("h-4 w-4", cameraEnabled ? "mr-2" : "")} />
+            {cameraEnabled && <span className="text-xs">监控中</span>}
+          </Button>
+          
+          {/* 5. 全屏 - 辅助功能 */}
           <Button 
             variant="outline" 
             size="icon"
@@ -2641,34 +2669,37 @@ export default function PresentationPage() {
           }}
         >
           <div className="p-2 space-y-1.5">
-            {slides.map((slide, i) => (
+            {slides.map((slide, i) => {
+              // 获取显示的标题
+              const displayTitle = htmlSlides[i]?.title || slide.title.replace(/^#+ /, '');
+              
+              return (
               <div
                 key={i}
                 onClick={() => goToSlide(i)}
                 className={cn(
-                  "cursor-pointer rounded-lg overflow-hidden transition-all duration-200 group border bg-white",
+                    "cursor-pointer rounded-lg overflow-hidden transition-all duration-200 group border bg-zinc-900",
                   currentSlide === i 
-                    ? "ring-2 ring-zinc-400 shadow-lg shadow-zinc-500/20 scale-105 border-zinc-400" 
-                    : "opacity-80 hover:opacity-100 hover:scale-102 border-zinc-300"
+                      ? "ring-2 ring-cyan-400 shadow-lg shadow-cyan-500/20 scale-105 border-cyan-400" 
+                      : "opacity-80 hover:opacity-100 hover:scale-102 border-zinc-700"
                 )}
               >
-                <div 
-                  className="aspect-[16/9] p-2 relative flex items-center justify-center bg-white"
-                >
-                  <div className="text-[8px] text-zinc-600 line-clamp-2 leading-tight text-center px-1 font-medium">
-                    {slide.title.replace(/^#+ /, '')}
+                  <div className="aspect-[16/9] p-2 relative flex items-center justify-center bg-gradient-to-br from-zinc-900 to-zinc-800">
+                    <div className="text-[8px] line-clamp-2 leading-tight text-center px-1 font-medium text-zinc-200">
+                      {displayTitle}
                   </div>
                   <div className={cn(
                     "absolute bottom-1 right-1 w-5 h-5 flex items-center justify-center rounded-full text-[9px] font-bold",
                     currentSlide === i 
-                      ? "bg-gradient-to-r from-zinc-700 to-zinc-800 text-white"
-                      : "bg-zinc-200 text-zinc-600"
+                        ? "bg-gradient-to-r from-cyan-500 to-cyan-600 text-white"
+                        : "bg-zinc-700 text-zinc-300"
                   )}>
                     {i + 1}
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </aside>
 
@@ -2695,29 +2726,27 @@ export default function PresentationPage() {
                       : "aspect-[16/9] rounded-2xl shadow-2xl shadow-black/20 border border-zinc-200"
                   )}
                 >
-                  {/* Banana 模式：显示精美图片 */}
-                  {useBananaMode && bananaImages[currentSlide] ? (
-                    <img 
-                      src={`data:image/png;base64,${bananaImages[currentSlide]}`}
-                      alt={slides[currentSlide]?.title || `Slide ${currentSlide + 1}`}
-                      className="w-full h-full object-contain bg-black"
+                  {/* HTML 幻灯片渲染 */}
+                  {htmlSlides[currentSlide] ? (
+                    <HtmlSlideRenderer 
+                      slide={htmlSlides[currentSlide]}
+                      isFullscreen={isFullscreen}
                     />
                   ) : (
-                    /* 经典模式：HTML 渲染 */
+                    /* 加载中或无内容 */
                     <div 
-                      ref={slideContentRef}
-                      className={cn(
-                        "h-full bg-gradient-to-b from-white to-slate-50",
-                        isFullscreen ? "p-12" : "p-8"
-                      )}
+                      className="h-full w-full flex items-center justify-center"
                       style={{
-                        transform: `scale(${slideScale})`,
-                        transformOrigin: 'top left',
-                        width: `${100 / slideScale}%`,
-                        minHeight: '100%',
+                        background: 'linear-gradient(135deg, #0f0f23 0%, #1a1a3e 100%)',
                       }}
-                      dangerouslySetInnerHTML={{ __html: parseMarkdown(slides[currentSlide].content, currentSlide) }}
-                    />
+                    >
+                      <div className="text-center">
+                        <h2 className="text-3xl font-bold text-white mb-4">
+                          {slides[currentSlide]?.title || `第 ${currentSlide + 1} 页`}
+                        </h2>
+                        <p className="text-zinc-400">正在生成精美课件...</p>
+                      </div>
+                    </div>
                   )}
                 </div>
 

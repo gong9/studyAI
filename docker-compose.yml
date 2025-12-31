@@ -1,0 +1,71 @@
+# Docker Compose 配置
+# 
+# 用于部署完整的教学系统，包括：
+# - 主应用 (Next.js)
+# - Remotion Studio 服务 (视频编辑器)
+# - PostgreSQL 数据库 (可选，使用外部数据库时注释掉)
+#
+# 使用方法:
+#   docker-compose up -d              # 启动所有服务
+#   docker-compose up -d app studio   # 只启动应用和编辑器
+#   docker-compose logs -f            # 查看日志
+#   docker-compose down               # 停止所有服务
+
+version: '3.8'
+
+services:
+  # 主应用服务
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - NEXT_PUBLIC_REMOTION_STUDIO_URL=http://studio:3002
+      - NODE_ENV=production
+    depends_on:
+      - studio
+    networks:
+      - app-network
+    volumes:
+      - ./public:/app/public  # 共享 public 目录，用于课程数据
+
+  # Remotion Studio 服务
+  studio:
+    build:
+      context: .
+      dockerfile: docker/remotion-studio/Dockerfile
+    ports:
+      - "3002:3002"
+    environment:
+      - NODE_ENV=production
+      - REMOTION_PORT=3002
+    networks:
+      - app-network
+    volumes:
+      - ./public:/app/public  # 共享 public 目录，读取课程数据
+
+  # PostgreSQL 数据库 (可选)
+  # 如果使用外部数据库，可以注释掉这部分
+  # db:
+  #   image: postgres:15-alpine
+  #   ports:
+  #     - "5432:5432"
+  #   environment:
+  #     - POSTGRES_USER=postgres
+  #     - POSTGRES_PASSWORD=postgres
+  #     - POSTGRES_DB=studyai
+  #   volumes:
+  #     - postgres-data:/var/lib/postgresql/data
+  #   networks:
+  #     - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+# volumes:
+#   postgres-data:
+

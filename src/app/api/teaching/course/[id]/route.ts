@@ -48,6 +48,7 @@ export async function GET(
       duration: course.duration,
       status: course.status,
       viewCount: course.viewCount + 1,
+      slideFormat: course.slideFormat || 'image', // 默认兼容旧数据
       chapter: {
         id: course.manuscript.chapter.id,
         title: course.manuscript.chapter.title,

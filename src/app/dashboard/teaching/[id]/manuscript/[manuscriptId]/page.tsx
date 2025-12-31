@@ -55,6 +55,7 @@ export default function ManuscriptEditorPage() {
   const [reviewing, setReviewing] = useState(false);
   const [enriching, setEnriching] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
+  const [rendering, setRendering] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [error, setError] = useState('');
   const [aiSidebarOpen, setAiSidebarOpen] = useState(true);  // 默认打开 AI 助手
@@ -196,8 +197,9 @@ export default function ManuscriptEditorPage() {
   };
 
   const handleRender = async () => {
-    // 如果还没有生成 slidevMd，先调用渲染 API
-    if (!manuscript?.slidevMd) {
+    // 检查是否有 HTML 幻灯片（课件的关键数据）
+    if (!manuscript?.htmlSlides) {
+      setRendering(true);
       try {
         const res = await fetch(`/api/teaching/manuscript/${manuscriptId}/render`, {
           method: 'POST',
@@ -207,11 +209,13 @@ export default function ManuscriptEditorPage() {
           alert(err.error || '渲染失败');
           return;
         }
-        // 刷新手稿数据
+        // 刷新手稿数据，等待 HTML 幻灯片生成完成
         await fetchManuscript();
       } catch (error: any) {
         alert(error.message || '渲染失败');
         return;
+      } finally {
+        setRendering(false);
       }
     }
     router.push(`/dashboard/teaching/${kbId}/manuscript/${manuscriptId}/presentation`);
@@ -376,7 +380,7 @@ export default function ManuscriptEditorPage() {
                   variant="outline"
                   size="sm" 
                   onClick={handleRegenerate}
-                  disabled={regenerating}
+                  disabled={regenerating || rendering}
                   className="h-8 border-slate-200 text-slate-600 hover:bg-slate-50 rounded-lg text-xs"
                 >
                   {regenerating ? <Loader2 className="h-3 w-3 animate-spin mr-1.5" /> : <RefreshCw className="h-3 w-3 mr-1.5" />}
@@ -385,10 +389,11 @@ export default function ManuscriptEditorPage() {
                 <Button 
                   size="sm" 
                   onClick={handleRender}
+                  disabled={rendering}
                   className="h-8 bg-zinc-800 hover:bg-zinc-700 text-white shadow-sm rounded-lg text-xs font-semibold px-4"
                 >
-                  <Eye className="h-3 w-3 mr-1.5" />
-                  预览课件
+                  {rendering ? <Loader2 className="h-3 w-3 animate-spin mr-1.5" /> : <Eye className="h-3 w-3 mr-1.5" />}
+                  {rendering ? '生成课件中...' : (manuscript?.htmlSlides ? '预览课件' : '生成课件')}
                 </Button>
               </div>
             )}

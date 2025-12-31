@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { 
-  LogOut, Plus, Trash2, FileText, ChevronRight, ChevronLeft, 
+  LogOut, Plus, Trash2, FileText, 
   Clock, Sparkles, Cpu, FileCheck, ArrowRight, Scale
 } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
@@ -85,7 +85,7 @@ interface KnowledgeBase {
   };
 }
 
-const PAGE_SIZE = 6;
+// 分页已移除，显示所有项目
 
 export default function DashboardPage() {
   const { data: session, status } = useSession();
@@ -98,7 +98,6 @@ export default function DashboardPage() {
   const [selectedScenario, setSelectedScenario] = useState<ScenarioType>('tech');
   const [activeFilter, setActiveFilter] = useState<ScenarioType | 'all'>('all');
   const [newKB, setNewKB] = useState({ name: '', description: '', type: 'tech' as ScenarioType });
-  const [currentPage, setCurrentPage] = useState(1);
 
   // 检测未登录状态，重定向到登录页
   useEffect(() => {
@@ -205,9 +204,6 @@ export default function DashboardPage() {
     new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
 
-  const currentKBs = sortedKBs.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
-
-  useEffect(() => { setCurrentPage(1); }, [activeFilter]);
 
   return (
     <div className="h-screen bg-[#fafafa] text-zinc-900 flex flex-col overflow-hidden font-sans">
@@ -310,7 +306,7 @@ export default function DashboardPage() {
         </div>
 
         {/* 最近项目区域 - 可滚动列表区 */}
-        <div className="flex-1 flex flex-col min-h-0 space-y-4">
+        <div className="flex-1 flex flex-col space-y-4" style={{ minHeight: 0, overflow: 'hidden' }}>
           <div className="flex-none flex items-center justify-between border-b border-zinc-100 pb-2">
             <div className="flex items-center gap-2">
               <Clock className="w-4 h-4 text-zinc-900" />
@@ -338,7 +334,7 @@ export default function DashboardPage() {
           </div>
 
           {/* 滚动网格列表 */}
-          <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+          <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar" style={{ minHeight: 0 }}>
             {loading ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                 {[1, 2, 3, 4, 5, 6].map(i => <div key={i} className="h-32 bg-zinc-100 animate-pulse rounded-xl" />)}
@@ -349,7 +345,7 @@ export default function DashboardPage() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 pb-6">
-                {currentKBs.map((kb) => {
+                {sortedKBs.map((kb) => {
                   const config = getScenarioConfig(kb.type);
                   return (
                     <div 

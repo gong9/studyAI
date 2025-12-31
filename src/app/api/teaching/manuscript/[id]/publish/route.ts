@@ -183,12 +183,17 @@ export async function POST(
     console.log('[Publish] 开始发布课程:', manuscriptId, forceRegenerate ? '(强制重新生成)' : '');
 
     // 1. 获取手稿数据（包括缓存的音频）
-    const manuscript = await prisma.teachingManuscript.findUnique({
+    const manuscriptRaw = await prisma.teachingManuscript.findUnique({
       where: { id: manuscriptId },
       include: {
         chapter: true,
       },
     });
+    
+    // 类型扩展：htmlSlides 是新添加的字段
+    const manuscript = manuscriptRaw as (typeof manuscriptRaw & {
+      htmlSlides?: string | null;
+    }) | null;
 
     if (!manuscript) {
       return NextResponse.json({ error: '手稿不存在' }, { status: 404 });
@@ -222,15 +227,25 @@ export async function POST(
     }
 
     // 2. 解析数据
-    // 优先使用精美PPT，如果没有则使用普通的 slidevMd
-    let slides: string[] = [];
-    const hasBananaImages = !!manuscript.bananaImages;
+    // 优先级：htmlSlides (Remotion) > bananaImages (旧图片模式) > slidevMd (Markdown)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let slides: any[] = [];
+    let slideFormat: 'html' | 'image' | 'markdown' = 'markdown';
     
-    if (hasBananaImages) {
+    // 优先使用新的 HTML 幻灯片数据
+    if (manuscript.htmlSlides) {
+      slides = JSON.parse(manuscript.htmlSlides);
+      slideFormat = 'html';
+      console.log('[Publish] 使用 Remotion HTML 模式');
+    } 
+    // 回退到旧的图片模式
+    else if (manuscript.bananaImages) {
       slides = JSON.parse(manuscript.bananaImages);
-      console.log('[Publish] 使用精美PPT模式');
-    } else {
-      // 从 slidevMd 解析普通幻灯片
+      slideFormat = 'image';
+      console.log('[Publish] 使用精美PPT图片模式（旧）');
+    } 
+    // 最后使用 Markdown 模式
+    else {
       const slidevContent = manuscript.slidevMd || manuscript.enrichedContent || '';
       if (slidevContent) {
         let parts = slidevContent.split(/\n---\n/);
@@ -238,14 +253,14 @@ export async function POST(
         if (parts[0].trim().startsWith('---') || parts[0].includes('theme:')) {
           parts = parts.slice(1);
         }
-        // 普通模式下，slides 存储的是 markdown 内容（不是图片URL）
         slides = parts.filter((p: string) => p.trim().length > 0);
-        console.log('[Publish] 使用普通PPT模式');
+        slideFormat = 'markdown';
+        console.log('[Publish] 使用 Markdown 模式');
       }
     }
     
     if (slides.length === 0) {
-      return NextResponse.json({ error: '没有可发布的PPT内容' }, { status: 400 });
+      return NextResponse.json({ error: '没有可发布的课件内容' }, { status: 400 });
     }
     
     const lectureScript = JSON.parse(manuscript.lectureScript);
@@ -398,19 +413,29 @@ export async function POST(
     console.log(`[Publish] 帧序列构建完成: ${frames.length} 帧, 总时长 ${Math.round(totalDuration / 1000)}秒`);
 
     // 5. 创建课程记录
-    // 封面图：精美模式用第一张图，普通模式暂无封面
-    const coverImage = hasBananaImages ? slides[0] : null;
+    // 封面图：仅旧的图片模式有封面，新的 HTML 模式由前端渲染生成
+    const coverImage = slideFormat === 'image' ? slides[0] : null;
     
+    // 描述文本
+    const formatLabel = {
+      html: 'Remotion 动态课程',
+      image: '精美图片课程',
+      markdown: '基础课程',
+    }[slideFormat];
+    
+    // 使用 $executeRaw 或直接创建（slideFormat 是新字段，运行时会正常工作）
     const course = await prisma.course.create({
       data: {
         manuscriptId,
         title: manuscript.chapter.title,
-        description: `${manuscript.chapter.title} - AI 智能课程${hasBananaImages ? '' : '（普通模式）'}`,
+        description: `${manuscript.chapter.title} - ${formatLabel}`,
         coverImage,
         duration: totalDuration,
         slides: JSON.stringify(slides),
         frames: JSON.stringify(frames),
         audioData: JSON.stringify(audioData),
+        // slideFormat 字段：运行时数据库已支持，TypeScript 类型稍后会同步
+        ...({ slideFormat: slideFormat === 'html' ? 'html' : 'image' } as Record<string, string>),
         status: 'published',
       },
     });
@@ -424,6 +449,7 @@ export async function POST(
       duration: course.duration,
       frameCount: frames.length,
       audioCount: Object.keys(audioData).length,
+      slideFormat,
       message: '课程发布成功',
     });
 

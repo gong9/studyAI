@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, lazy, Suspense } from 'react';
 import { useParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { 
@@ -8,28 +8,25 @@ import {
   Volume2, VolumeX, Maximize2, Minimize2, Lock, Eye, EyeOff
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import type { SlideData, CourseFrame } from '@/lib/teaching/remotion/types';
 
-// 课程帧类型
-interface CourseFrame {
-  slideIndex: number;
-  action: 'speak' | 'highlight' | 'next_slide' | 'end';
-  text?: string;
-  audioIndex?: number;
-  audioDuration?: number;
-  highlightTarget?: string;
-  timestamp: number;
-}
+// 动态导入 Remotion 播放器（避免 SSR 问题）
+const RemotionPlayer = lazy(() => 
+  import('@/components/remotion/RemotionPlayer').then(mod => ({ default: mod.RemotionPlayer }))
+);
 
 interface CourseData {
   id: string;
   title: string;
   description?: string;
   duration: number;
-  slides: string[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  slides: any[]; // SlideData[] 或 string[]（base64 图片）
   frames: CourseFrame[];
   audioData: { [key: number]: string };
   slideCount: number;
   frameCount: number;
+  slideFormat?: 'html' | 'image'; // 新增格式标识
 }
 
 interface ShareInfo {
@@ -492,6 +489,29 @@ export default function SharePlayerPage() {
     return null;
   }
 
+  // 如果是 HTML 格式（Remotion），使用新播放器
+  if (course.slideFormat === 'html') {
+    return (
+      <div className="min-h-screen bg-zinc-950">
+        <Suspense fallback={
+          <div className="min-h-screen flex items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-zinc-400" />
+          </div>
+        }>
+          <RemotionPlayer
+            slides={course.slides as SlideData[]}
+            frames={course.frames}
+            audioData={course.audioData}
+            totalDuration={course.duration}
+            title={course.title}
+            className="min-h-screen"
+          />
+        </Suspense>
+      </div>
+    );
+  }
+
+  // 旧版图片/Markdown 格式播放器
   return (
     <div 
       ref={containerRef}

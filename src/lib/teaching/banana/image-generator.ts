@@ -1,7 +1,13 @@
 /**
- * Banana PPT 图片生成器
+ * @deprecated 此模块已废弃，请使用 @/lib/teaching/remotion/slide-generator 代替
+ * 
+ * Banana PPT 图片生成器（旧版）
  * 
  * 使用 Gemini 图像模型根据 Slidev Markdown 内容生成精美的 PPT 页面图片
+ * 此方案成本较高且灵活性有限，已被 Remotion HTML 方案替代。
+ * 
+ * 保留此文件是为了兼容已使用旧方案发布的课程。
+ * 新课程请使用 Remotion HTML 方案（通过 /api/teaching/manuscript/[id]/banana 自动使用新方案）
  * 
  * 环境变量配置（独立于主项目的 OpenAI 配置）：
  * - BANANA_API_KEY: API 密钥（默认使用 NANO_BANANA_KEY）

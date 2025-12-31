@@ -1,15 +1,15 @@
 /**
  * POST /api/teaching/manuscript/[id]/banana
  * 
- * 使用 Banana 模式生成精美 PPT 图片
+ * 生成精美 HTML 幻灯片
  * - 读取现有 slidevMd 内容
- * - 调用 Gemini 图像模型生成每页精美图片
- * - 保存到 bananaImages 字段
+ * - 使用 Gemini 直接生成 HTML
+ * - 保存到 htmlSlides 字段
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { generateAllSlideImages } from '@/lib/teaching/banana/image-generator';
+import { generateHtmlSlides } from '@/lib/teaching/remotion/html-slide-generator';
 
 export async function POST(
   request: NextRequest,
@@ -18,7 +18,7 @@ export async function POST(
   try {
     const { id } = await params;
     const body = await request.json().catch(() => ({}));
-    const { templateId = "default" } = body;
+    const theme = body.theme || 'dark';
 
     // 获取手稿
     const manuscript = await prisma.teachingManuscript.findUnique({
@@ -52,37 +52,38 @@ export async function POST(
       );
     }
 
-    console.log('[Banana API] Starting generation for manuscript:', id);
+    console.log('[HTML Slide API] 开始生成精美课件:', id);
 
-    // 生成精美 PPT 图片
-    const images = await generateAllSlideImages(
-      content,
-      templateId,
-      (progress) => {
-        console.log(`[Banana API] Progress: ${progress.current}/${progress.total} - ${progress.message}`);
-      }
-    );
+    // 使用 Gemini 生成 HTML 幻灯片
+    const result = await generateHtmlSlides({
+      slidevMd: content,
+      theme: theme as 'dark' | 'light' | 'gradient',
+    });
 
-    console.log(`[Banana API] Generated ${images.length} images`);
+    console.log(`[HTML Slide API] 生成完成: ${result.totalCount} 页`);
 
-    // 保存到数据库（JSON 格式）
+    // 保存到数据库
     await prisma.teachingManuscript.update({
       where: { id },
       data: {
-        bananaImages: JSON.stringify(images),
+        htmlSlides: JSON.stringify(result.slides),
       },
     });
 
-    console.log('[Banana API] Saved to database');
+    console.log('[HTML Slide API] 保存成功');
 
     return NextResponse.json({
       success: true,
-      imageCount: images.length,
-      message: `成功生成 ${images.length} 页精美 PPT`,
+      slideCount: result.totalCount,
+      message: `成功生成 ${result.totalCount} 页精美课件`,
+      slides: result.slides.map((slide) => ({
+        index: slide.index,
+        title: slide.title,
+      })),
     });
 
   } catch (error: any) {
-    console.error('[Banana API] Error:', error);
+    console.error('[HTML Slide API] 生成失败:', error);
     return NextResponse.json(
       { error: error.message || '生成失败' },
       { status: 500 }
@@ -93,7 +94,7 @@ export async function POST(
 /**
  * GET /api/teaching/manuscript/[id]/banana
  * 
- * 获取已生成的 Banana 图片
+ * 获取已生成的 HTML 幻灯片数据
  */
 export async function GET(
   request: NextRequest,
@@ -105,7 +106,7 @@ export async function GET(
     const manuscript = await prisma.teachingManuscript.findUnique({
       where: { id },
       select: {
-        bananaImages: true,
+        htmlSlides: true,
       },
     });
 
@@ -116,29 +117,27 @@ export async function GET(
       );
     }
 
-    if (!manuscript.bananaImages) {
+    if (manuscript.htmlSlides) {
+      const slides = JSON.parse(manuscript.htmlSlides);
       return NextResponse.json({
         success: true,
-        hasImages: false,
-        images: [],
+        hasSlides: true,
+        slideCount: slides.length,
+        slides,
       });
     }
 
-    const images = JSON.parse(manuscript.bananaImages);
-
     return NextResponse.json({
       success: true,
-      hasImages: true,
-      imageCount: images.length,
-      images,
+      hasSlides: false,
+      slides: [],
     });
 
   } catch (error: any) {
-    console.error('[Banana API] Error:', error);
+    console.error('[HTML Slide API] 获取失败:', error);
     return NextResponse.json(
       { error: error.message || '获取失败' },
       { status: 500 }
     );
   }
 }
-

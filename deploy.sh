@@ -9,9 +9,11 @@ set -e
 SERVER="root@39.96.203.251"
 APP_NAME="rag-knowledge-base"
 LIGHTRAG_NAME="lightrag-service"
+REMOTION_NAME="remotion-studio"
 REMOTE_DIR="/root/rag-knowledge-base"
 PORT=8004
 LIGHTRAG_PORT=8005
+REMOTION_PORT=8008
 
 echo ""
 echo "🚀 RAG 知识库系统 - 部署到阿里云"
@@ -61,9 +63,11 @@ set -e
 
 APP_NAME="rag-knowledge-base"
 LIGHTRAG_NAME="lightrag-service"
+REMOTION_NAME="remotion-studio"
 REMOTE_DIR="/root/rag-knowledge-base"
 PORT=8004
 LIGHTRAG_PORT=8005
+REMOTION_PORT=8008
 
 echo "🖥️  服务器端部署开始"
 
@@ -162,11 +166,25 @@ pm2 start "nice -n 15 venv/bin/python main.py" --name $LIGHTRAG_NAME --cwd $REMO
 # 返回主目录
 cd $REMOTE_DIR
 
+# ========== 部署 Remotion Studio 服务 ==========
+echo "🎬 部署 Remotion Studio 服务..."
+cd $REMOTE_DIR
+
+# 停止旧服务
+pm2 stop $REMOTION_NAME 2>/dev/null || true
+pm2 delete $REMOTION_NAME 2>/dev/null || true
+
+# 启动 Remotion Studio 服务（使用安全脚本，不暴露敏感环境变量）
+echo "🚀 启动 Remotion Studio 服务（安全模式）..."
+chmod +x scripts/remotion-safe.sh
+REMOTION_PORT=$REMOTION_PORT pm2 start "bash scripts/remotion-safe.sh" --name $REMOTION_NAME --cwd $REMOTE_DIR --interpreter none
+
 # ========== 部署 Next.js 主服务 ==========
 echo "🚀 启动 Next.js 服务..."
 pm2 stop $APP_NAME 2>/dev/null || true
 pm2 delete $APP_NAME 2>/dev/null || true
-PORT=$PORT LIGHTRAG_URL=http://localhost:$LIGHTRAG_PORT pm2 start npm --name $APP_NAME -- start
+# Remotion Studio URL 需要使用公网地址，前端 iframe 才能访问
+PORT=$PORT LIGHTRAG_URL=http://localhost:$LIGHTRAG_PORT NEXT_PUBLIC_REMOTION_STUDIO_URL=http://39.96.203.251:$REMOTION_PORT pm2 start npm --name $APP_NAME -- start
 pm2 save
 
 echo "✅ 部署完成！"
@@ -178,7 +196,8 @@ rm deploy.tar.gz
 
 echo ""
 echo "✅ 部署成功！"
-echo "🌐 访问: http://39.96.203.251:$PORT"
+echo "🌐 主应用: http://39.96.203.251:$PORT"
 echo "🕸️ LightRAG: http://39.96.203.251:$LIGHTRAG_PORT/health"
-echo "💡 记得开放安全组端口: $PORT, $LIGHTRAG_PORT"
+echo "🎬 Remotion Studio: http://39.96.203.251:$REMOTION_PORT"
+echo "💡 记得开放安全组端口: $PORT, $LIGHTRAG_PORT, $REMOTION_PORT"
 
