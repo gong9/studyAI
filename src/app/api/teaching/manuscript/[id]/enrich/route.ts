@@ -1,13 +1,12 @@
 /**
  * POST /api/teaching/manuscript/[id]/enrich
  * 
- * 阶段5：润色 + 绘图意图补全 + 图片生成
+ * 阶段5：润色手稿内容
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { enrichManuscript } from '@/lib/teaching/agents/enrich-agent';
-import { processVisualMarkers } from '@/lib/teaching/image-generator';
 
 export async function POST(
   request: NextRequest,
@@ -91,33 +90,23 @@ export async function POST(
       );
     }
 
-    console.log('[API] Enrichment completed, generating images...');
-
-    // 处理 visual 标记，生成图片
-    let finalContent = result.enrichedContent;
-    try {
-      finalContent = await processVisualMarkers(result.enrichedContent);
-      console.log('[API] Image generation completed');
-    } catch (imgError: any) {
-      console.error('[API] Image generation error:', imgError);
-      // 图片生成失败不影响整体流程
-    }
+    console.log('[API] Enrichment completed');
 
     // 保存润色结果
     await prisma.teachingManuscript.update({
       where: { id },
       data: {
-        enrichedContent: finalContent,
+        enrichedContent: result.enrichedContent,
         status: 'completed',  // 润色完成后状态为 completed
       },
     });
 
-    console.log('[API] Final content saved, length:', finalContent.length);
+    console.log('[API] Final content saved, length:', result.enrichedContent.length);
 
     return NextResponse.json({
       success: true,
       manuscriptId: id,
-      enrichedContent: finalContent,
+      enrichedContent: result.enrichedContent,
     });
 
   } catch (error: any) {
@@ -128,4 +117,3 @@ export async function POST(
     );
   }
 }
-

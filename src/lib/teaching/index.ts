@@ -9,15 +9,11 @@ export * from './chapter-extractor';
 // 语义切分
 export * from './semantic-chunker';
 
-// 新 Agents
+// Agents
 export { generateTeachingPlan } from './agents/teaching-planner';
 export { generateManuscript } from './agents/manuscript-generator';
 export { reviewManuscript } from './agents/review-agent';
 export { enrichManuscript } from './agents/enrich-agent';
-
-// Slidev
-export { preprocessToSlidev, extractSlides } from './slidev/preprocessor';
-export { renderSlidev, cleanupSlidevTemp, getSlidevPreviewHtml } from './slidev/renderer';
 
 // 类型重导出
 export type { 
@@ -41,12 +37,3 @@ export type {
   EnrichInput,
   EnrichResult 
 } from './agents/enrich-agent';
-
-export type {
-  PreprocessResult
-} from './slidev/preprocessor';
-
-export type {
-  RenderOptions,
-  RenderResult
-} from './slidev/renderer';

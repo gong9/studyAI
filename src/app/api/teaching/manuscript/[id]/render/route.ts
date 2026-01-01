@@ -2,13 +2,12 @@
  * POST /api/teaching/manuscript/[id]/render
  * 
  * 阶段6：课件渲染
- * 将润色后的手稿转换为 Slidev 格式，并使用 Gemini 生成精美 HTML 幻灯片
+ * 使用 Gemini 生成精美 HTML 幻灯片
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { preprocessToSlidev } from '@/lib/teaching/slidev/preprocessor';
-import { generateHtmlSlides } from '@/lib/teaching/remotion/html-slide-generator';
+import { generateHtmlSlides } from '@/lib/skills/slide-generation';
 
 export async function POST(
   request: NextRequest,
@@ -16,8 +15,6 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    const body = await request.json().catch(() => ({}));
-    const { title, author } = body;
 
     const manuscript = await prisma.teachingManuscript.findUnique({
       where: { id },
@@ -48,37 +45,33 @@ export async function POST(
 
     console.log('[API] Rendering slides:', id);
 
-    // 预处理为 Slidev 格式
-    const result = preprocessToSlidev(content, {
-      title: title || manuscript.chapter.title,
-      author,
-    });
-
-    console.log('[API] Slidev MD generated, slides:', result.slideCount);
-
     // 使用 Gemini 生成精美 HTML 幻灯片
     // 根据知识库类型自动选择主题风格
     const kbType = manuscript.knowledgeBase?.type || 'tech';
     console.log(`[API] Generating HTML slides with Gemini, KB type: ${kbType}`);
     
     let htmlSlidesData = null;
+    let slideCount = 0;
     try {
       const slideResult = await generateHtmlSlides({
-        slidevMd: result.slidevMd,
-        knowledgeBaseType: kbType, // 传递知识库类型，自动选择主题
+        slidevMd: content, // 直接使用内容，skill 内部会解析
+        knowledgeBaseType: kbType,
       });
       htmlSlidesData = JSON.stringify(slideResult.slides);
+      slideCount = slideResult.totalCount;
       console.log('[API] HTML slides generated:', slideResult.totalCount);
     } catch (slideError: any) {
       console.error('[API] Failed to generate HTML slides:', slideError);
-      // 如果 HTML 生成失败，继续保存 Slidev 格式
+      return NextResponse.json(
+        { error: slideError.message || '幻灯片生成失败' },
+        { status: 500 }
+      );
     }
 
     // 更新手稿记录
     await prisma.teachingManuscript.update({
       where: { id },
       data: {
-        slidevMd: result.slidevMd,
         htmlSlides: htmlSlidesData,
         status: 'completed',
       },
@@ -87,8 +80,7 @@ export async function POST(
     return NextResponse.json({
       success: true,
       manuscriptId: id,
-      slidevMd: result.slidevMd,
-      slideCount: result.slideCount,
+      slideCount,
       htmlSlidesGenerated: !!htmlSlidesData,
     });
 
@@ -100,4 +92,3 @@ export async function POST(
     );
   }
 }
-

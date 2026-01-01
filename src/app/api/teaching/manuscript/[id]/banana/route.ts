@@ -2,14 +2,14 @@
  * POST /api/teaching/manuscript/[id]/banana
  * 
  * 生成精美 HTML 幻灯片
- * - 读取现有 slidevMd 内容
+ * - 读取手稿内容
  * - 使用 Gemini 直接生成 HTML
  * - 保存到 htmlSlides 字段
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { generateHtmlSlides } from '@/lib/teaching/remotion/html-slide-generator';
+import { generateHtmlSlides } from '@/lib/skills/slide-generation';
 
 export async function POST(
   request: NextRequest,
@@ -54,10 +54,10 @@ export async function POST(
 
     console.log('[HTML Slide API] 开始生成精美课件:', id);
 
-    // 使用 Gemini 生成 HTML 幻灯片
+    // 使用 Skill 生成 HTML 幻灯片
     const result = await generateHtmlSlides({
       slidevMd: content,
-      theme: theme as 'dark' | 'light' | 'gradient',
+      theme: theme as 'dark' | 'light' | 'auto',
     });
 
     console.log(`[HTML Slide API] 生成完成: ${result.totalCount} 页`);
