@@ -115,3 +115,36 @@ export function getEmbedModel(): OpenAIEmbedding {
   });
 }
 
+/**
+ * 多模态模型配置
+ */
+export interface VisionModelConfig {
+  apiKey: string;
+  baseURL: string;
+  model: string;
+}
+
+/**
+ * 获取多模态模型配置（用于图片识别等）
+ * 使用 aihubmix 或 openai 兼容接口
+ */
+export function getVisionModelConfig(): VisionModelConfig {
+  return {
+    apiKey: process.env.AIHUBMIX_API_KEY || process.env.OPENAI_API_KEY || '',
+    baseURL: process.env.AIHUBMIX_BASE_URL || 'https://aihubmix.com/v1',
+    model: process.env.VISION_MODEL || 'gpt-4o',
+  };
+}
+
+/**
+ * 获取多模态 OpenAI 实例
+ */
+export function getVisionModel(): OpenAI {
+  const config = getVisionModelConfig();
+  return new OpenAI({
+    apiKey: config.apiKey,
+    model: config.model,
+    baseURL: config.baseURL,
+  });
+}
+

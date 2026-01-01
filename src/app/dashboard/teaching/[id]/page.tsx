@@ -8,8 +8,12 @@ import {
   ArrowLeft, Upload, FileText, ChevronRight, ChevronDown, 
   Sparkles, Loader2, CheckCircle, 
   BookOpen, ListTree, Play, Eye, Plus, LayoutGrid, Clock,
-  Target, Book, Settings2, Zap, Cpu, FileCheck, Scale
+  Target, Book, Settings2, Zap, Cpu, FileCheck, Scale, X, Network, Edit3
 } from 'lucide-react';
+// BookUnderstandingPanel 已简化，使用左侧智能扫描按钮
+import BookKnowledgeGraph from '@/components/teaching/BookKnowledgeGraph';
+import { OutlineAdjustModal } from '@/components/teaching/OutlineAdjustModal';
+import type { ChapterDAG, BookThesis } from '@/lib/book-understanding/types';
 import { cn } from '@/lib/utils';
 
 // 根据项目类型配置不同的文案和图标
@@ -141,6 +145,14 @@ export default function TeachingDetailPage() {
   const [manuscripts, setManuscripts] = useState<Manuscript[]>([]);
   const [progress, setProgress] = useState({ status: '', message: '', percent: 0 });
   const [activeTab, setActiveTab] = useState<'workbench' | 'records'>('workbench');
+  
+  // 知识图谱相关状态
+  const [chapterDAG, setChapterDAG] = useState<ChapterDAG | null>(null);
+  const [bookThesis, setBookThesis] = useState<BookThesis | null>(null);
+  const [showKnowledgeGraph, setShowKnowledgeGraph] = useState(false);
+  
+  // 大纲调整弹窗
+  const [showOutlineAdjust, setShowOutlineAdjust] = useState(false);
 
   // 获取当前项目类型的配置
   const typeConfig = getTypeConfig(kb?.type || 'tech');
@@ -188,9 +200,13 @@ export default function TeachingDetailPage() {
       const res = await fetch(`/api/teaching/chapters/${kbId}`);
       if (res.ok) {
         const data = await res.json();
-        setChapters(data.chapters || []);
-        if (data.chapters && data.chapters.length > 0) {
+        const chaptersData = data.chapters || [];
+        setChapters(chaptersData);
+        
+        // 如果有章节且包含角色信息，自动构建 DAG 用于知识图谱展示
+        if (chaptersData.length > 0) {
           fetchDocuments();
+          buildDAGFromChapters(chaptersData);
         }
       }
     } catch (error) {
@@ -198,6 +214,72 @@ export default function TeachingDetailPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // 从章节数据构建知识图谱 DAG
+  const buildDAGFromChapters = (chaptersData: ChapterNode[]) => {
+    // 展平章节树
+    const flattenChapters = (nodes: ChapterNode[]): ChapterNode[] => {
+      const result: ChapterNode[] = [];
+      for (const node of nodes) {
+        result.push(node);
+        if (node.children && node.children.length > 0) {
+          result.push(...flattenChapters(node.children));
+        }
+      }
+      return result;
+    };
+
+    const allChapters = flattenChapters(chaptersData);
+    
+    if (allChapters.length === 0) return;
+    
+    // 构建 DAG nodes（即使没有角色信息也构建，使用默认值）
+    const nodes = allChapters.map((ch, idx) => ({
+      id: ch.id,
+      title: ch.title,
+      role: (ch.metadata?.role || 'core') as 'core' | 'foundation' | 'extension' | 'reference',
+      weight: ch.metadata?.role === 'core' ? 1 : 
+              ch.metadata?.role === 'foundation' ? 0.8 : 
+              ch.metadata?.role === 'extension' ? 0.6 : 0.5,
+    }));
+
+    // 构建 DAG edges（从 dependencies，或按顺序连接）
+    const edges: Array<{ from: string; to: string; type: 'prerequisite' | 'parallel' | 'supplement' }> = [];
+    
+    // 先检查是否有任何依赖信息
+    const hasDependencyInfo = allChapters.some(ch => 
+      ch.metadata?.dependencies && ch.metadata.dependencies.length > 0
+    );
+    
+    if (hasDependencyInfo) {
+      // 使用显式的依赖关系
+      for (const ch of allChapters) {
+        const deps = ch.metadata?.dependencies || [];
+        for (const depId of deps) {
+          if (allChapters.some(c => c.id === depId)) {
+            edges.push({
+              from: depId,
+              to: ch.id,
+              type: 'prerequisite',
+            });
+          }
+        }
+      }
+    } else {
+      // 没有依赖信息时，按阅读顺序连接（前后章节相连）
+      for (let i = 1; i < allChapters.length; i++) {
+        const prevCh = allChapters[i - 1];
+        const currCh = allChapters[i];
+        edges.push({
+          from: prevCh.id,
+          to: currCh.id,
+          type: 'prerequisite',
+        });
+      }
+    }
+
+    setChapterDAG({ nodes, edges });
   };
 
   const fetchDocuments = async () => {
@@ -343,24 +425,32 @@ export default function TeachingDetailPage() {
   
   const handleExtractChapters = async () => {
     setExtracting(true);
-    setExtractProgress('正在解析文件...');
+    setExtractProgress('正在智能扫描...');
     try {
-      const res = await fetch('/api/teaching/extract-chapters', {
+      // 使用新的全书理解 skim API
+      const res = await fetch('/api/book-understanding/skim', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ knowledgeBaseId: kbId, useLLM: true }),
+        body: JSON.stringify({ knowledgeBaseId: kbId }),
       });
-      if (res.ok) {
-        // 提取成功后，重新从数据库获取章节（带有正确的 ID）
+      const data = await res.json();
+      if (res.ok && data.success) {
+        // 保存知识图谱数据
+        if (data.chapterDAG) {
+          setChapterDAG(data.chapterDAG);
+        }
+        if (data.thesis) {
+          setBookThesis(data.thesis);
+        }
+        // 提取成功后，重新从数据库获取章节
         await fetchChapters();
         await fetchDocuments();
       } else {
-        const error = await res.json();
-        throw new Error(error.error || '提取失败');
+        throw new Error(data.error || '智能扫描失败');
       }
     } catch (error: any) {
-      console.error('提取章节失败:', error);
-      alert(error.message || '提取章节失败');
+      console.error('智能扫描失败:', error);
+      alert(error.message || '智能扫描失败');
     } finally {
       setExtracting(false);
       setExtractProgress('');
@@ -552,17 +642,43 @@ export default function TeachingDetailPage() {
                       <ListTree className="w-4 h-4 text-zinc-600" />
                       {typeConfig.indexTitle}
                     </h3>
-                    {/* 技术培训需要智能扫描按钮 */}
+                    {/* 技术培训需要智能扫描按钮 + 知识图谱按钮 */}
                     {documents.length > 0 && kb?.type !== 'policy' && (
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        onClick={handleExtractChapters} 
-                        disabled={extracting} 
-                        className="h-7 text-xs font-bold text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100"
-                      >
-                        {extracting ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : '智能扫描'}
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={handleExtractChapters} 
+                          disabled={extracting} 
+                          className="h-7 text-xs font-bold text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100"
+                        >
+                          {extracting ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : '智能扫描'}
+                        </Button>
+                        {/* 知识图谱按钮 - 扫描后可用 */}
+                        {chapterDAG && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowKnowledgeGraph(true)}
+                            className="h-7 w-7 p-0 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100"
+                            title="查看知识图谱"
+                          >
+                            <Network className="w-4 h-4" />
+                          </Button>
+                        )}
+                        {/* 大纲调整按钮 - 扫描后可用 */}
+                        {chapters.length > 0 && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowOutlineAdjust(true)}
+                            className="h-7 w-7 p-0 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100"
+                            title="调整大纲"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
                     )}
                   </div>
                   <div className="flex-1 overflow-y-auto p-2 bg-white custom-scrollbar">
@@ -797,6 +913,87 @@ export default function TeachingDetailPage() {
           </div>
         </div>
       </main>
+      
+      {/* 知识图谱弹窗 */}
+      {showKnowledgeGraph && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-[90vw] max-w-4xl max-h-[85vh] flex flex-col overflow-hidden">
+            {/* 弹窗头部 */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-100 bg-zinc-50/50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-gradient-to-br from-amber-400 to-orange-500 rounded-xl flex items-center justify-center shadow-sm">
+                  <Network className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-zinc-900">全书知识图谱</h2>
+                  {bookThesis && (
+                    <p className="text-xs text-zinc-500 mt-0.5">{bookThesis.title || bookThesis.topic}</p>
+                  )}
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowKnowledgeGraph(false)}
+                className="h-8 w-8 p-0 text-zinc-400 hover:text-zinc-900"
+              >
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
+            
+            {/* 弹窗内容 */}
+            <div className="flex-1 p-6 overflow-auto">
+              {chapterDAG ? (
+                <BookKnowledgeGraph
+                  chapterDAG={chapterDAG}
+                  viewMode="chapters"
+                  height={500}
+                  onNodeClick={(node) => {
+                    // 点击章节节点，选中对应章节
+                    if (node.type === 'chapter') {
+                      const chapterId = node.id.replace('ch_', '');
+                      const chapter = chapters.find(c => c.id === chapterId);
+                      if (chapter) {
+                        setSelectedChapter(chapter);
+                        setShowKnowledgeGraph(false);
+                      }
+                    }
+                  }}
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-64 text-zinc-400">
+                  <Network className="w-12 h-12 mb-4 opacity-20" />
+                  <p className="text-sm">请先进行智能扫描</p>
+                </div>
+              )}
+            </div>
+            
+            {/* 弹窗底部信息 */}
+            {bookThesis && (
+              <div className="px-6 py-3 border-t border-zinc-100 bg-zinc-50/50">
+                <div className="flex items-center gap-4 text-xs text-zinc-500">
+                  <span>📚 {bookThesis.knowledgeType || '知识型'}</span>
+                  <span>🎯 {bookThesis.audience || '通用读者'}</span>
+                  {chapterDAG && (
+                    <span>📖 {chapterDAG.nodes.length} 个章节</span>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 大纲调整弹窗 */}
+      <OutlineAdjustModal
+        open={showOutlineAdjust}
+        onOpenChange={setShowOutlineAdjust}
+        knowledgeBaseId={params.id as string}
+        onSuccess={() => {
+          // 重新获取章节列表（会自动重建 DAG）
+          fetchChapters();
+        }}
+      />
     </div>
   );
 }

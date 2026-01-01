@@ -1,0 +1,512 @@
+'use client';
+
+import React, { useState, useCallback } from 'react';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { 
+  Type, 
+  Image as ImageIcon, 
+  Upload, 
+  Loader2, 
+  Check, 
+  Plus, 
+  Minus, 
+  Edit3,
+  ChevronRight,
+  ChevronDown,
+  AlertCircle,
+  X,
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+interface ChapterBoundary {
+  title: string;
+  level: number;
+  startPage: number;
+  endPage: number;
+  sections?: ChapterBoundary[];
+}
+
+interface OutlineDiff {
+  added: ChapterBoundary[];
+  removed: { id: string; title: string }[];
+  modified: ChapterBoundary[];
+  unchanged: ChapterBoundary[];
+}
+
+interface OutlineAdjustModalProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  knowledgeBaseId: string;
+  onSuccess?: () => void;
+}
+
+export function OutlineAdjustModal({
+  open,
+  onOpenChange,
+  knowledgeBaseId,
+  onSuccess,
+}: OutlineAdjustModalProps) {
+  const [inputMode, setInputMode] = useState<'text' | 'image'>('text');
+  const [textInput, setTextInput] = useState('');
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageBase64, setImageBase64] = useState<string | null>(null);
+  
+  const [loading, setLoading] = useState(false);
+  const [previewResult, setPreviewResult] = useState<{
+    newChapters: ChapterBoundary[];
+    diff: OutlineDiff;
+  } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [applying, setApplying] = useState(false);
+
+  // 处理图片上传
+  const handleImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      setImagePreview(result);
+      // 提取 base64 部分
+      const base64 = result.split(',')[1];
+      setImageBase64(base64);
+    };
+    reader.readAsDataURL(file);
+  }, []);
+
+  // 处理拖拽上传
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (!file || !file.type.startsWith('image/')) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      setImagePreview(result);
+      const base64 = result.split(',')[1];
+      setImageBase64(base64);
+    };
+    reader.readAsDataURL(file);
+  }, []);
+
+  // 识别并预览
+  const handleRecognize = async () => {
+    if (inputMode === 'text' && !textInput.trim()) {
+      setError('请输入目录文本');
+      return;
+    }
+    if (inputMode === 'image' && !imageBase64) {
+      setError('请上传目录图片');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setPreviewResult(null);
+
+    try {
+      const response = await fetch('/api/book-understanding/adjust-outline', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          knowledgeBaseId,
+          text: inputMode === 'text' ? textInput : undefined,
+          image: inputMode === 'image' ? imageBase64 : undefined,
+          applyChanges: false,
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || '识别失败');
+      }
+
+      setPreviewResult({
+        newChapters: data.newChapters,
+        diff: data.diff,
+      });
+    } catch (err: any) {
+      setError(err.message || '识别失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 应用变更
+  const handleApply = async () => {
+    setApplying(true);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/book-understanding/adjust-outline', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          knowledgeBaseId,
+          text: inputMode === 'text' ? textInput : undefined,
+          image: inputMode === 'image' ? imageBase64 : undefined,
+          applyChanges: true,
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || '应用失败');
+      }
+
+      onSuccess?.();
+      onOpenChange(false);
+      resetState();
+    } catch (err: any) {
+      setError(err.message || '应用失败');
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  // 重置状态
+  const resetState = () => {
+    setTextInput('');
+    setImagePreview(null);
+    setImageBase64(null);
+    setPreviewResult(null);
+    setError(null);
+  };
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl w-[90vw] max-w-4xl max-h-[85vh] flex flex-col overflow-hidden">
+        {/* 弹窗头部 */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-100 bg-zinc-50/50">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-blue-400 to-indigo-500 rounded-xl flex items-center justify-center shadow-sm">
+              <Edit3 className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-zinc-900">调整大纲结构</h2>
+              <p className="text-xs text-zinc-500 mt-0.5">通过文字或图片调整章节大纲</p>
+            </div>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              resetState();
+              onOpenChange(false);
+            }}
+            className="h-8 w-8 p-0 text-zinc-400 hover:text-zinc-900"
+          >
+            <X className="w-5 h-5" />
+          </Button>
+        </div>
+
+        {/* 弹窗内容 */}
+        <div className="flex-1 p-6 overflow-auto">
+          {!previewResult ? (
+            // 输入阶段
+            <div className="space-y-4">
+              {/* Tab 切换 */}
+              <div className="flex gap-2 border-b border-zinc-200 pb-2">
+                <button
+                  className={cn(
+                    "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors",
+                    inputMode === 'text' 
+                      ? "bg-zinc-900 text-white" 
+                      : "text-zinc-600 hover:bg-zinc-100"
+                  )}
+                  onClick={() => setInputMode('text')}
+                >
+                  <Type className="w-4 h-4" />
+                  文字输入
+                </button>
+                <button
+                  className={cn(
+                    "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors",
+                    inputMode === 'image' 
+                      ? "bg-zinc-900 text-white" 
+                      : "text-zinc-600 hover:bg-zinc-100"
+                  )}
+                  onClick={() => setInputMode('image')}
+                >
+                  <ImageIcon className="w-4 h-4" />
+                  图片识别
+                </button>
+              </div>
+
+              {inputMode === 'text' ? (
+                <div>
+                  <Textarea
+                    placeholder={`粘贴目录内容，例如：
+
+Introduction    4
+What is an agent?    5
+  The model    6
+  The tools    7
+Tools: Our keys    12
+  Extensions    13
+    Sample Extensions    15
+Summary    40`}
+                    className="min-h-[300px] font-mono text-sm"
+                    value={textInput}
+                    onChange={(e) => setTextInput(e.target.value)}
+                  />
+                  <p className="text-xs text-zinc-500 mt-2">
+                    提示：使用缩进（空格或Tab）表示层级关系
+                  </p>
+                </div>
+              ) : (
+                <div
+                  className={cn(
+                    "border-2 border-dashed rounded-lg p-8 text-center transition-colors",
+                    imagePreview 
+                      ? "border-blue-300 bg-blue-50" 
+                      : "border-zinc-300 hover:border-blue-300"
+                  )}
+                  onDrop={handleDrop}
+                  onDragOver={(e) => e.preventDefault()}
+                >
+                  {imagePreview ? (
+                    <div className="space-y-4">
+                      <img 
+                        src={imagePreview} 
+                        alt="目录截图" 
+                        className="max-h-[300px] mx-auto rounded-lg shadow-md"
+                      />
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => {
+                          setImagePreview(null);
+                          setImageBase64(null);
+                        }}
+                      >
+                        重新上传
+                      </Button>
+                    </div>
+                  ) : (
+                    <label className="cursor-pointer block">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleImageUpload}
+                      />
+                      <Upload className="w-12 h-12 mx-auto text-zinc-400 mb-4" />
+                      <p className="text-zinc-600">
+                        点击上传或拖拽目录截图到此处
+                      </p>
+                      <p className="text-xs text-zinc-400 mt-2">
+                        支持 PNG、JPG 格式
+                      </p>
+                    </label>
+                  )}
+                </div>
+              )}
+
+              {error && (
+                <div className="flex items-center gap-2 text-red-600 text-sm p-3 bg-red-50 rounded-lg">
+                  <AlertCircle className="w-4 h-4" />
+                  {error}
+                </div>
+              )}
+            </div>
+          ) : (
+            // 预览阶段
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                {/* 新大纲结构 */}
+                <div className="border rounded-lg p-4">
+                  <h3 className="font-medium mb-3 flex items-center gap-2">
+                    <Check className="w-4 h-4 text-green-500" />
+                    识别结果
+                  </h3>
+                  <div className="max-h-[300px] overflow-auto">
+                    <ChapterTree chapters={previewResult.newChapters} />
+                  </div>
+                </div>
+
+                {/* 变更摘要 */}
+                <div className="border rounded-lg p-4">
+                  <h3 className="font-medium mb-3">变更摘要</h3>
+                  <div className="space-y-3 text-sm">
+                    {previewResult.diff.added.length > 0 && (
+                      <div>
+                        <div className="flex items-center gap-2 text-green-600 font-medium mb-1">
+                          <Plus className="w-4 h-4" />
+                          新增 {previewResult.diff.added.length} 个章节
+                        </div>
+                        <ul className="pl-6 text-zinc-500">
+                          {previewResult.diff.added.slice(0, 5).map((ch, i) => (
+                            <li key={i}>{ch.title}</li>
+                          ))}
+                          {previewResult.diff.added.length > 5 && (
+                            <li>...还有 {previewResult.diff.added.length - 5} 个</li>
+                          )}
+                        </ul>
+                      </div>
+                    )}
+
+                    {previewResult.diff.removed.length > 0 && (
+                      <div>
+                        <div className="flex items-center gap-2 text-red-600 font-medium mb-1">
+                          <Minus className="w-4 h-4" />
+                          移除 {previewResult.diff.removed.length} 个章节
+                        </div>
+                        <ul className="pl-6 text-zinc-500">
+                          {previewResult.diff.removed.slice(0, 5).map((ch, i) => (
+                            <li key={i}>{ch.title}</li>
+                          ))}
+                          {previewResult.diff.removed.length > 5 && (
+                            <li>...还有 {previewResult.diff.removed.length - 5} 个</li>
+                          )}
+                        </ul>
+                      </div>
+                    )}
+
+                    {previewResult.diff.modified.length > 0 && (
+                      <div>
+                        <div className="flex items-center gap-2 text-yellow-600 font-medium mb-1">
+                          <Edit3 className="w-4 h-4" />
+                          修改 {previewResult.diff.modified.length} 个章节
+                        </div>
+                        <ul className="pl-6 text-zinc-500">
+                          {previewResult.diff.modified.slice(0, 5).map((ch, i) => (
+                            <li key={i}>{ch.title}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {previewResult.diff.unchanged.length > 0 && (
+                      <div className="text-zinc-500">
+                        {previewResult.diff.unchanged.length} 个章节保持不变
+                      </div>
+                    )}
+
+                    {previewResult.diff.added.length === 0 && 
+                     previewResult.diff.removed.length === 0 && 
+                     previewResult.diff.modified.length === 0 && (
+                      <div className="text-zinc-500">
+                        没有检测到变更
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {error && (
+                <div className="flex items-center gap-2 text-red-600 text-sm p-3 bg-red-50 rounded-lg">
+                  <AlertCircle className="w-4 h-4" />
+                  {error}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* 弹窗底部 */}
+        <div className="px-6 py-4 border-t border-zinc-100 bg-zinc-50/50 flex justify-end gap-3">
+          {!previewResult ? (
+            <>
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  resetState();
+                  onOpenChange(false);
+                }}
+              >
+                取消
+              </Button>
+              <Button onClick={handleRecognize} disabled={loading}>
+                {loading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    识别中...
+                  </>
+                ) : (
+                  '识别并预览'
+                )}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" onClick={() => setPreviewResult(null)}>
+                返回修改
+              </Button>
+              <Button onClick={handleApply} disabled={applying}>
+                {applying ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    应用中...
+                  </>
+                ) : (
+                  '确认应用'
+                )}
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 章节树组件
+function ChapterTree({ chapters }: { chapters: ChapterBoundary[] }) {
+  return (
+    <div className="space-y-1">
+      {chapters.map((ch, i) => (
+        <ChapterNode key={i} chapter={ch} />
+      ))}
+    </div>
+  );
+}
+
+function ChapterNode({ chapter }: { chapter: ChapterBoundary }) {
+  const [expanded, setExpanded] = useState(true);
+  const hasChildren = chapter.sections && chapter.sections.length > 0;
+
+  return (
+    <div>
+      <div 
+        className={cn(
+          "flex items-center gap-1 py-1 px-2 rounded hover:bg-zinc-100 cursor-default",
+          chapter.level === 1 && "font-medium",
+          chapter.level === 2 && "pl-6 text-sm",
+          chapter.level === 3 && "pl-10 text-sm text-zinc-500",
+        )}
+        onClick={() => hasChildren && setExpanded(!expanded)}
+      >
+        {hasChildren ? (
+          expanded ? (
+            <ChevronDown className="w-4 h-4 text-zinc-400 shrink-0" />
+          ) : (
+            <ChevronRight className="w-4 h-4 text-zinc-400 shrink-0" />
+          )
+        ) : (
+          <span className="w-4" />
+        )}
+        <span className="truncate">{chapter.title}</span>
+        {chapter.startPage > 0 && (
+          <span className="text-xs text-zinc-400 ml-auto shrink-0">
+            p.{chapter.startPage}
+          </span>
+        )}
+      </div>
+      {hasChildren && expanded && (
+        <div className="ml-2">
+          {chapter.sections!.map((sub, i) => (
+            <ChapterNode key={i} chapter={sub} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
