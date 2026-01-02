@@ -153,6 +153,21 @@ export default function TeachingDetailPage() {
   
   // 大纲调整弹窗
   const [showOutlineAdjust, setShowOutlineAdjust] = useState(false);
+  
+  // 章节大小检查状态
+  const [chapterSizeInfo, setChapterSizeInfo] = useState<{
+    hasChildren: boolean;
+    childCount: number;
+    isTooLarge: boolean;
+    suggestion?: string;
+  } | null>(null);
+  
+  // 合并结果警告信息
+  const [mergeWarning, setMergeWarning] = useState<{
+    warning: string;
+    suggestion: string;
+    childTitles: string[];
+  } | null>(null);
 
   // 获取当前项目类型的配置
   const typeConfig = getTypeConfig(kb?.type || 'tech');
@@ -457,13 +472,49 @@ export default function TeachingDetailPage() {
     }
   };
 
+  // 检查章节大小
+  const checkChapterSize = async (chapterId: string) => {
+    try {
+      const res = await fetch(`/api/teaching/chapter/check-size?chapterId=${chapterId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setChapterSizeInfo({
+          hasChildren: data.hasChildren,
+          childCount: data.childCount,
+          isTooLarge: data.isTooLarge,
+          suggestion: data.suggestion,
+        });
+      }
+    } catch (error) {
+      console.error('检查章节大小失败:', error);
+    }
+  };
+
+  // 选择章节时检查大小
+  const handleSelectChapter = (chapter: ChapterNode) => {
+    setSelectedChapter(chapter);
+    setChapterSizeInfo(null);
+    setMergeWarning(null);
+    // 异步检查章节大小
+    checkChapterSize(chapter.id);
+  };
+
   const handleGenerate = async () => {
     if (!selectedChapter) {
       alert('请先选择章节');
       return;
     }
     setGenerating(true);
-    setProgress({ status: 'starting', message: '正在规划教学方案...', percent: 10 });
+    setMergeWarning(null);
+    
+    // 根据是否有子章节显示不同的进度提示
+    const hasChildren = chapterSizeInfo?.hasChildren || selectedChapter.children?.length > 0;
+    setProgress({ 
+      status: 'starting', 
+      message: hasChildren ? '正在合并子章节内容...' : '正在规划教学方案...', 
+      percent: 10 
+    });
+    
     try {
       const planRes = await fetch('/api/teaching/manuscript/plan', {
         method: 'POST',
@@ -473,6 +524,26 @@ export default function TeachingDetailPage() {
       if (!planRes.ok) throw new Error('规划失败');
       const planData = await planRes.json();
       const manuscriptId = planData.manuscriptId;
+      
+      // 检查是否有警告信息
+      if (planData.warning) {
+        setMergeWarning({
+          warning: planData.warning,
+          suggestion: planData.suggestion || '',
+          childTitles: planData.mergeStats?.childTitles || [],
+        });
+      }
+      
+      // 显示合并统计信息
+      if (planData.mergeStats?.chapterCount > 1) {
+        setProgress({ 
+          status: 'merged', 
+          message: `已合并 ${planData.mergeStats.chapterCount} 个章节（${planData.mergeStats.totalLength} 字）`, 
+          percent: 30 
+        });
+        await new Promise(resolve => setTimeout(resolve, 800));
+      }
+      
       setProgress({ status: 'draft', message: '正在编写教学手稿...', percent: 50 });
       const draftRes = await fetch('/api/teaching/manuscript/draft', {
         method: 'POST',
@@ -519,7 +590,7 @@ export default function TeachingDetailPage() {
               node.level === 1 && "font-medium"
             )}
             onClick={() => {
-              setSelectedChapter(node);
+              handleSelectChapter(node);
               if (hasChildren) toggleChapter(node.id);
             }}
             style={{ paddingLeft: `${depth * 16 + 12}px` }}
@@ -775,6 +846,47 @@ export default function TeachingDetailPage() {
                               )}
                             </div>
 
+                            {/* 章节大小提示 */}
+                            {chapterSizeInfo?.hasChildren && (
+                              <div className={cn(
+                                "mb-6 p-4 rounded-lg border",
+                                chapterSizeInfo.isTooLarge
+                                  ? "bg-amber-50 border-amber-200"
+                                  : "bg-blue-50 border-blue-200"
+                              )}>
+                                <div className="flex items-start gap-3">
+                                  <div className={cn(
+                                    "w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5",
+                                    chapterSizeInfo.isTooLarge
+                                      ? "bg-amber-100 text-amber-600"
+                                      : "bg-blue-100 text-blue-600"
+                                  )}>
+                                    <ListTree className="w-3.5 h-3.5" />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className={cn(
+                                      "text-sm font-medium",
+                                      chapterSizeInfo.isTooLarge ? "text-amber-800" : "text-blue-800"
+                                    )}>
+                                      {chapterSizeInfo.isTooLarge 
+                                        ? `该章节包含 ${chapterSizeInfo.childCount} 个子章节，内容较多`
+                                        : `该章节包含 ${chapterSizeInfo.childCount} 个子章节，将自动合并`}
+                                    </div>
+                                    {chapterSizeInfo.isTooLarge && chapterSizeInfo.suggestion && (
+                                      <div className="mt-2 text-xs text-amber-700 whitespace-pre-line">
+                                        {chapterSizeInfo.suggestion}
+                                      </div>
+                                    )}
+                                    {!chapterSizeInfo.isTooLarge && (
+                                      <div className="mt-1 text-xs text-blue-600">
+                                        生成时将自动包含所有子章节的知识点
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
                             {/* 参数信息 - 模块化极简 */}
                             <div className="grid grid-cols-3 gap-12 py-10 border-t border-zinc-100">
                               <div>
@@ -787,7 +899,11 @@ export default function TeachingDetailPage() {
                               </div>
                               <div>
                                 <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">预估耗时</div>
-                                <div className="text-base font-bold text-zinc-800 tracking-tight">约 45 - 60 秒</div>
+                                <div className="text-base font-bold text-zinc-800 tracking-tight">
+                                  {chapterSizeInfo?.hasChildren 
+                                    ? `约 ${Math.max(45, 45 + (chapterSizeInfo.childCount || 0) * 5)} - ${Math.max(60, 60 + (chapterSizeInfo.childCount || 0) * 8)} 秒`
+                                    : '约 45 - 60 秒'}
+                                </div>
                               </div>
                             </div>
 
@@ -954,7 +1070,7 @@ export default function TeachingDetailPage() {
                       const chapterId = node.id.replace('ch_', '');
                       const chapter = chapters.find(c => c.id === chapterId);
                       if (chapter) {
-                        setSelectedChapter(chapter);
+                        handleSelectChapter(chapter);
                         setShowKnowledgeGraph(false);
                       }
                     }

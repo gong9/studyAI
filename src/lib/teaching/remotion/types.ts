@@ -139,6 +139,16 @@ export interface CourseFrame {
   timestamp: number;       // 帧开始时间(ms)
 }
 
+// ==================== 背景音乐配置 ====================
+
+export interface BackgroundMusicConfig {
+  trackId: string;         // 音乐 ID
+  trackName: string;       // 音乐名称
+  src?: string;            // 音乐 CDN URL（运行时填充）
+  volume: number;          // 音量 0-1
+  enabled: boolean;        // 是否启用
+}
+
 // ==================== 课程数据 ====================
 
 export interface CourseData {
@@ -151,6 +161,9 @@ export interface CourseData {
   slides: SlideData[];
   frames: CourseFrame[];
   audioData: { [key: number]: string };  // index -> base64 音频
+  
+  // 背景音乐
+  backgroundMusic?: BackgroundMusicConfig;
   
   // 统计
   slideCount: number;

@@ -33,6 +33,7 @@ export async function POST(request: NextRequest) {
         frames: true,
         audioData: true,
         slideFormat: true,
+        backgroundMusic: true,
       },
     });
 
@@ -47,11 +48,13 @@ export async function POST(request: NextRequest) {
     let slides = [];
     let frames = [];
     let audioData = {};
+    let backgroundMusic = null;
 
     try {
       slides = course.slides ? JSON.parse(course.slides) : [];
       frames = course.frames ? JSON.parse(course.frames) : [];
       audioData = course.audioData ? JSON.parse(course.audioData) : {};
+      backgroundMusic = course.backgroundMusic ? JSON.parse(course.backgroundMusic) : null;
     } catch (e) {
       console.error('[Prepare Data] Failed to parse course data:', e);
     }
@@ -72,6 +75,42 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // 处理背景音乐 - 转换为 base64（和 TTS 一样）
+    let backgroundMusicForRemotion = null;
+    if (backgroundMusic && backgroundMusic.enabled) {
+      let musicSrc = backgroundMusic.src;
+      
+      if (!musicSrc && backgroundMusic.trackId) {
+        musicSrc = `/audio/bgm/${backgroundMusic.trackId}.mp3`;
+      }
+      
+      if (musicSrc) {
+        try {
+          // 从 public 目录读取音频文件并转换为 base64
+          const publicDir = path.join(process.cwd(), 'public');
+          const musicFilePath = path.join(publicDir, musicSrc);
+          
+          const musicBuffer = await fs.readFile(musicFilePath);
+          const base64Music = musicBuffer.toString('base64');
+          
+          backgroundMusicForRemotion = {
+            src: `data:audio/mp3;base64,${base64Music}`,
+            volume: backgroundMusic.volume || 0.2,
+            enabled: true,
+          };
+          console.log('[Prepare Data] Background music converted to base64, size:', Math.round(musicBuffer.length / 1024), 'KB');
+        } catch (e) {
+          console.error('[Prepare Data] Failed to read background music file:', e);
+          // 回退到原始路径
+          backgroundMusicForRemotion = {
+            src: musicSrc,
+            volume: backgroundMusic.volume || 0.2,
+            enabled: true,
+          };
+        }
+      }
+    }
+
     // 构建完整数据
     const courseData = {
       id: course.id,
@@ -81,6 +120,7 @@ export async function POST(request: NextRequest) {
       slides,
       frames,
       audioData,
+      backgroundMusic: backgroundMusicForRemotion,
       slideCount: slides.length,
       frameCount: frames.length,
       slideFormat: course.slideFormat,

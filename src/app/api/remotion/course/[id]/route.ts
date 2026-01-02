@@ -25,6 +25,7 @@ export async function GET(
         frames: true,
         audioData: true,
         slideFormat: true,
+        backgroundMusic: true,
       },
     });
 
@@ -39,11 +40,13 @@ export async function GET(
     let slides = [];
     let frames = [];
     let audioData = {};
+    let backgroundMusic = null;
 
     try {
       slides = course.slides ? JSON.parse(course.slides) : [];
       frames = course.frames ? JSON.parse(course.frames) : [];
       audioData = course.audioData ? JSON.parse(course.audioData) : {};
+      backgroundMusic = course.backgroundMusic ? JSON.parse(course.backgroundMusic) : null;
     } catch (e) {
       console.error('[Remotion API] Failed to parse course data:', e);
     }
@@ -72,6 +75,7 @@ export async function GET(
       slides,
       frames,
       audioData,
+      backgroundMusic,
       slideCount: slides.length,
       frameCount: frames.length,
       slideFormat: course.slideFormat,

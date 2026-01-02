@@ -1,0 +1,126 @@
+{
+  "version": "1.0.0",
+  "updatedAt": "2026-01-02",
+  "tracks": [
+    {
+      "id": "calm-piano-01",
+      "name": "晨光微熹",
+      "duration": 180,
+      "filename": "calm-piano-01.mp3",
+      "mood": ["calm", "focused"],
+      "tempo": "slow",
+      "genre": "piano",
+      "scenes": ["teaching", "intro"],
+      "color": "#64B5F6"
+    }
+,
+    {
+      "id": "calm-piano-02",
+      "name": "宁静时光",
+      "duration": 180,
+      "filename": "calm-piano-02.mp3",
+      "mood": ["calm", "relaxed"],
+      "tempo": "slow",
+      "genre": "piano",
+      "scenes": ["teaching"],
+      "color": "#64B5F6"
+    }
+,
+    {
+      "id": "uplifting-ambient-01",
+      "name": "启程",
+      "duration": 180,
+      "filename": "uplifting-ambient-01.mp3",
+      "mood": ["uplifting", "inspiring"],
+      "tempo": "medium",
+      "genre": "ambient",
+      "scenes": ["teaching", "tech"],
+      "color": "#81C784"
+    }
+,
+    {
+      "id": "uplifting-ambient-02",
+      "name": "追光者",
+      "duration": 180,
+      "filename": "uplifting-ambient-02.mp3",
+      "mood": ["uplifting", "focused"],
+      "tempo": "medium",
+      "genre": "ambient",
+      "scenes": ["teaching"],
+      "color": "#81C784"
+    }
+,
+    {
+      "id": "focused-lofi-01",
+      "name": "深夜咖啡",
+      "duration": 180,
+      "filename": "focused-lofi-01.mp3",
+      "mood": ["focused", "relaxed"],
+      "tempo": "slow",
+      "genre": "lofi",
+      "scenes": ["teaching", "tech"],
+      "color": "#BA68C8"
+    }
+,
+    {
+      "id": "focused-lofi-02",
+      "name": "代码时光",
+      "duration": 180,
+      "filename": "focused-lofi-02.mp3",
+      "mood": ["focused", "calm"],
+      "tempo": "slow",
+      "genre": "lofi",
+      "scenes": ["tech"],
+      "color": "#BA68C8"
+    }
+,
+    {
+      "id": "tech-electronic-01",
+      "name": "数字世界",
+      "duration": 180,
+      "filename": "tech-electronic-01.mp3",
+      "mood": ["focused", "uplifting"],
+      "tempo": "medium",
+      "genre": "electronic",
+      "scenes": ["tech", "business"],
+      "color": "#4DD0E1"
+    }
+,
+    {
+      "id": "tech-electronic-02",
+      "name": "未来视界",
+      "duration": 180,
+      "filename": "tech-electronic-02.mp3",
+      "mood": ["inspiring", "focused"],
+      "tempo": "medium",
+      "genre": "electronic",
+      "scenes": ["tech"],
+      "color": "#4DD0E1"
+    }
+,
+    {
+      "id": "serious-orchestral-01",
+      "name": "庄严时刻",
+      "duration": 180,
+      "filename": "serious-orchestral-01.mp3",
+      "mood": ["serious", "inspiring"],
+      "tempo": "slow",
+      "genre": "orchestral",
+      "scenes": ["law", "business"],
+      "color": "#FFB74D"
+    }
+,
+    {
+      "id": "serious-orchestral-02",
+      "name": "正义之光",
+      "duration": 180,
+      "filename": "serious-orchestral-02.mp3",
+      "mood": ["serious", "dramatic"],
+      "tempo": "slow",
+      "genre": "orchestral",
+      "scenes": ["law"],
+      "color": "#FFB74D"
+    }
+
+  ]
+}

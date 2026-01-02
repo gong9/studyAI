@@ -9,6 +9,7 @@
  * - 传入章节重点（keyPoints）和摘要（summary）
  * - 使用 RAG 检索教材内容
  * - 根据知识库类型自动推断场景类型
+ * - 递归合并子章节内容，覆盖更多知识点
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -16,6 +17,7 @@ import { prisma } from '@/lib/prisma';
 import { generateManuscript } from '@/lib/teaching/agents/manuscript-generator';
 import type { TeachingPlan, SceneType } from '@/lib/teaching/agents/teaching-planner';
 import type { KeyPoint } from '@/lib/teaching/agents/chapter-analyzer';
+import { getMergedChapterContent } from '@/lib/teaching/utils/chapter-content-merger';
 
 /** 根据知识库类型推断场景类型 */
 function getSceneTypeFromKbType(kbType: string): SceneType {
@@ -106,13 +108,31 @@ export async function POST(request: NextRequest) {
     console.log('[API] Key points count:', keyPoints.length);
     console.log('[API] Summary length:', chapterSummary?.length || 0);
 
+    // 获取合并后的章节内容（包含子章节）
+    const mergedResult = await getMergedChapterContent(manuscript.chapterId);
+    
+    if (!mergedResult.success) {
+      console.warn('[API] Failed to merge chapter content:', mergedResult.warning);
+      // 回退到原来的逻辑
+    }
+
+    console.log(`[API] Merged content: ${mergedResult.chapterCount} chapters, ${mergedResult.totalLength} chars`);
+    if (mergedResult.warning) {
+      console.log(`[API] Warning: ${mergedResult.warning}`);
+    }
+
+    // 使用合并后的内容（如果成功），否则回退到原内容
+    const chapterContent = mergedResult.success && mergedResult.content
+      ? mergedResult.content
+      : (manuscript.chapter.contentFull || manuscript.chapter.contentPreview || '');
+
     // 生成手稿（带 RAG 检索）
     const result = await generateManuscript({
       plan,
       knowledgeBaseId: manuscript.knowledgeBaseId,
       chapterKeyPoints: keyPoints,
       chapterSummary,
-      chapterContent: manuscript.chapter.contentFull || manuscript.chapter.contentPreview || '',
+      chapterContent,
     });
 
     if (!result.success || !result.markdown) {

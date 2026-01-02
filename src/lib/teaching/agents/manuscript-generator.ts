@@ -394,7 +394,7 @@ export async function generateManuscript(input: ManuscriptInput): Promise<Manusc
 
     // 如果 RAG 内容不足，使用传入的 chapterContent 作为备选
     if (ragContent.length < 500 && chapterContent) {
-      ragContent = truncateContent(chapterContent, 6000);
+      ragContent = chapterContent; // 不再截断，保留完整内容
     }
 
     // 3. 根据场景类型获取对应的 Prompt 模板
@@ -503,9 +503,9 @@ async function fetchSectionMaterials(
       }
     }
 
-    // 拼接并限制长度
+    // 拼接所有内容（不再截断）
     const combined = allContent.join('\n\n---\n\n');
-    return truncateContent(combined, 10000);  // 给更多内容
+    return combined;
 
   } catch (error: any) {
     console.error('[ManuscriptGenerator] RAG fetch error:', error);

@@ -5,12 +5,16 @@
  * 输入：chapterId
  * 输出：创建 TeachingManuscript 记录，返回教学规划
  * 
- * 优化：根据知识库类型自动推断场景类型
+ * 优化：
+ * - 根据知识库类型自动推断场景类型
+ * - 递归合并子章节内容，覆盖更多知识点
+ * - 章节过大时给出警告和建议
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { generateTeachingPlan, SceneType } from '@/lib/teaching/agents/teaching-planner';
+import { getMergedChapterContent, checkChapterSize } from '@/lib/teaching/utils/chapter-content-merger';
 
 /** 根据知识库类型推断场景类型 */
 function getSceneTypeFromKbType(kbType: string): SceneType {
@@ -72,10 +76,25 @@ export async function POST(request: NextRequest) {
     const finalSceneType = sceneType || inferredSceneType;
     console.log(`[API] Scene type: requested=${sceneType}, inferred=${inferredSceneType}, final=${finalSceneType}`);
 
-    // 生成教学规划
+    // 获取合并后的章节内容（包含子章节）
+    const mergedResult = await getMergedChapterContent(chapterId);
+    
+    if (!mergedResult.success) {
+      return NextResponse.json(
+        { error: mergedResult.warning || '获取章节内容失败' },
+        { status: 500 }
+      );
+    }
+
+    console.log(`[API] Merged content: ${mergedResult.chapterCount} chapters, ${mergedResult.totalLength} chars`);
+    if (mergedResult.warning) {
+      console.log(`[API] Warning: ${mergedResult.warning}`);
+    }
+
+    // 使用合并后的内容生成教学规划
     const result = await generateTeachingPlan({
       chapterTitle: chapter.title,
-      chapterContent: chapter.contentFull || chapter.contentPreview || '',
+      chapterContent: mergedResult.content,
       sceneType: finalSceneType,
       metadata,
     });
@@ -99,11 +118,27 @@ export async function POST(request: NextRequest) {
 
     console.log('[API] Manuscript created:', manuscript.id);
 
-    return NextResponse.json({
+    // 构建响应，包含警告信息
+    const response: any = {
       success: true,
       manuscriptId: manuscript.id,
       plan: result.plan,
-    });
+      // 合并统计信息
+      mergeStats: {
+        chapterCount: mergedResult.chapterCount,
+        totalLength: mergedResult.totalLength,
+        truncated: mergedResult.truncated,
+        childTitles: mergedResult.childTitles,
+      },
+    };
+
+    // 如果有警告，添加到响应中
+    if (mergedResult.warning) {
+      response.warning = mergedResult.warning;
+      response.suggestion = mergedResult.suggestion;
+    }
+
+    return NextResponse.json(response);
 
   } catch (error: any) {
     console.error('[API] Error generating teaching plan:', error);

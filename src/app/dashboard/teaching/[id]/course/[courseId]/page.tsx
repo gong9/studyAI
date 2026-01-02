@@ -12,8 +12,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { 
-  ArrowLeft, Loader2, RefreshCw, AlertCircle, Film
+  ArrowLeft, Loader2, RefreshCw, AlertCircle, Film, Music, Volume2
 } from 'lucide-react';
+import { MusicSelectorModal } from '@/components/teaching/MusicSelectorModal';
+import type { BackgroundMusicConfig } from '@/lib/teaching/music/types';
 
 // Remotion Studio 服务地址（可通过环境变量配置）
 const REMOTION_STUDIO_URL = process.env.NEXT_PUBLIC_REMOTION_STUDIO_URL || 'http://localhost:3002';
@@ -23,6 +25,9 @@ interface CourseInfo {
   title: string;
   slideCount: number;
   duration: number;
+  content?: string;           // 课程内容（用于音乐推荐）
+  sceneType?: string;         // 场景类型
+  backgroundMusic?: BackgroundMusicConfig;
 }
 
 export default function CourseEditorPage() {
@@ -35,6 +40,8 @@ export default function CourseEditorPage() {
   const [loading, setLoading] = useState(true);
   const [studioReady, setStudioReady] = useState(false);
   const [courseInfo, setCourseInfo] = useState<CourseInfo | null>(null);
+  const [musicModalOpen, setMusicModalOpen] = useState(false);
+  const [backgroundMusic, setBackgroundMusic] = useState<BackgroundMusicConfig | null>(null);
   
   // 检查 Remotion Studio 服务状态
   const checkStudioStatus = useCallback(async () => {
@@ -67,7 +74,15 @@ export default function CourseEditorPage() {
         title: data.title,
         slideCount: data.slideCount,
         duration: data.duration,
+        content: data.content,
+        sceneType: data.sceneType,
+        backgroundMusic: data.backgroundMusic,
       });
+
+      // 恢复背景音乐配置
+      if (data.backgroundMusic) {
+        setBackgroundMusic(data.backgroundMusic);
+      }
 
       // 将数据保存到 public 目录供 Remotion Studio 读取
       await fetch('/api/remotion/prepare-data', {
@@ -80,6 +95,37 @@ export default function CourseEditorPage() {
       console.error('准备课程数据失败:', err);
     }
   }, [courseId]);
+
+  // 处理音乐选择
+  const handleMusicSelect = async (config: BackgroundMusicConfig) => {
+    setBackgroundMusic(config);
+    
+    // 保存到后端
+    try {
+      await fetch(`/api/teaching/course/${courseId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ backgroundMusic: config }),
+      });
+      
+      // 重新准备数据供 Remotion 读取
+      await fetch('/api/remotion/prepare-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ courseId }),
+      });
+      
+      console.log('Background music updated:', config);
+      
+      // 刷新 Remotion Studio iframe 以加载新数据
+      const iframe = document.getElementById('remotion-studio-iframe') as HTMLIFrameElement;
+      if (iframe) {
+        iframe.src = iframe.src; // 刷新 iframe
+      }
+    } catch (err) {
+      console.error('Failed to save music config:', err);
+    }
+  };
 
   // 初始化
   useEffect(() => {
@@ -146,6 +192,29 @@ export default function CourseEditorPage() {
             )}
                 </div>
               </div>
+        
+        {/* 背景音乐按钮 */}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setMusicModalOpen(true)}
+          className={backgroundMusic?.enabled 
+            ? 'text-purple-400 hover:text-purple-300' 
+            : 'text-zinc-400 hover:text-white'
+          }
+        >
+          {backgroundMusic?.enabled ? (
+            <>
+              <Volume2 className="h-4 w-4 mr-2" />
+              {backgroundMusic.trackName}
+            </>
+          ) : (
+            <>
+              <Music className="h-4 w-4 mr-2" />
+              添加音乐
+            </>
+          )}
+        </Button>
       </header>
               
       {/* Remotion Studio iframe */}
@@ -178,6 +247,15 @@ export default function CourseEditorPage() {
           )}
         </div>
         
+      {/* 背景音乐选择弹窗 */}
+      <MusicSelectorModal
+        isOpen={musicModalOpen}
+        onClose={() => setMusicModalOpen(false)}
+        onSelect={handleMusicSelect}
+        courseContent={courseInfo?.content || courseInfo?.title || ''}
+        sceneType={courseInfo?.sceneType}
+        currentConfig={backgroundMusic}
+      />
     </div>
   );
 }

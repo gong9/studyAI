@@ -198,7 +198,7 @@ export async function generateTeachingPlan(input: PlanningInput): Promise<Planni
       .replace('{sceneDescription}', sceneConfig.description)
       .replace('{audience}', sceneConfig.audience)
       .replace('{style}', sceneConfig.style)
-      .replace('{chapterContent}', truncateContent(input.chapterContent, 12000));
+      .replace('{chapterContent}', input.chapterContent); // 不再截断，保留完整内容
 
     console.log('[TeachingPlanner] Generating flexible plan for:', input.chapterTitle, 'scene:', sceneType);
 

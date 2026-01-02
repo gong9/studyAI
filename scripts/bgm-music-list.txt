@@ -1,0 +1,41 @@
+# 背景音乐列表配置
+#
+# 格式: 文件名|音乐名称|情绪标签|节奏|类型|场景|下载链接
+#
+# 情绪标签(mood): calm, uplifting, inspiring, focused, relaxed, serious, cheerful, dramatic, mysterious
+# 节奏(tempo): slow, medium, fast
+# 类型(genre): piano, ambient, electronic, orchestral, acoustic, lofi
+# 场景(scenes): teaching, tech, business, law, storytelling, intro, ending
+#
+# 从 Pixabay 获取下载链接的方法:
+# 1. 访问 https://pixabay.com/music/
+# 2. 搜索并选择一首音乐
+# 3. 点击 "Free Download" 按钮
+# 4. 右键复制链接地址
+#
+# 注意: 以 # 开头的行会被忽略
+
+# ==================== 平静钢琴类 ====================
+calm-piano-01|晨光微熹|calm,focused|slow|piano|teaching,intro|https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3
+calm-piano-02|宁静时光|calm,relaxed|slow|piano|teaching|https://cdn.pixabay.com/download/audio/2022/10/25/audio_946b0939c8.mp3
+
+# ==================== 励志环境音 ====================
+uplifting-ambient-01|启程|uplifting,inspiring|medium|ambient|teaching,tech|https://cdn.pixabay.com/download/audio/2022/03/15/audio_c8c8a73467.mp3
+uplifting-ambient-02|追光者|uplifting,focused|medium|ambient|teaching|https://cdn.pixabay.com/download/audio/2023/07/30/audio_e58dc0e4f6.mp3
+
+# ==================== Lo-Fi 专注类 ====================
+focused-lofi-01|深夜咖啡|focused,relaxed|slow|lofi|teaching,tech|https://cdn.pixabay.com/download/audio/2022/05/16/audio_a69d80dc5e.mp3
+focused-lofi-02|代码时光|focused,calm|slow|lofi|tech|https://cdn.pixabay.com/download/audio/2024/01/08/audio_8db60c76fc.mp3
+
+# ==================== 科技电子类 ====================
+tech-electronic-01|数字世界|focused,uplifting|medium|electronic|tech,business|https://cdn.pixabay.com/download/audio/2022/03/10/audio_6f5c244814.mp3
+tech-electronic-02|未来视界|inspiring,focused|medium|electronic|tech|https://cdn.pixabay.com/download/audio/2023/10/10/audio_2f08b3e6b7.mp3
+
+# ==================== 庄重管弦类 ====================
+serious-orchestral-01|庄严时刻|serious,inspiring|slow|orchestral|law,business|https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0c6ea0c50.mp3
+serious-orchestral-02|正义之光|serious,dramatic|slow|orchestral|law|https://cdn.pixabay.com/download/audio/2022/08/02/audio_bd9bfaeb00.mp3
+
+# ==================== 添加更多音乐 ====================
+# 你可以在下面添加更多音乐，格式同上
+# example-music|示例音乐|calm,focused|slow|piano|teaching|https://example.com/music.mp3
+

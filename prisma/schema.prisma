@@ -387,6 +387,7 @@ model Course {
   frames          String                             // JSON: CourseFrame[] 动画帧序列
   audioData       String                             // JSON: { [index]: base64Audio } 音频数据
   slideFormat     String        @default("html")     // "html" | "image" - 标识幻灯片格式
+  backgroundMusic String?                            // JSON: BackgroundMusicConfig 背景音乐配置
   
   status          String        @default("draft")    // draft | published
   viewCount       Int           @default(0)          // 观看次数

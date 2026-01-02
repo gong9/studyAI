@@ -23,11 +23,21 @@ export interface CourseFrame {
   timestamp: number;
 }
 
+/**
+ * 背景音乐配置
+ */
+export interface BackgroundMusicConfig {
+  src: string;           // 音乐 URL（CDN 地址）
+  volume: number;        // 音量 0-1
+  enabled: boolean;      // 是否启用
+}
+
 export interface HtmlSlideVideoProps {
   slides: HtmlSlide[];
   frames: CourseFrame[];
   audioData: { [key: number]: string };
   totalDuration: number;
+  backgroundMusic?: BackgroundMusicConfig;  // 背景音乐
 }
 
 // 单个幻灯片渲染组件 - 支持 Remotion 帧同步动画
@@ -138,6 +148,7 @@ export const HtmlSlideVideo: React.FC<HtmlSlideVideoProps> = ({
   frames,
   audioData,
   totalDuration,
+  backgroundMusic,
 }) => {
   const { fps } = useVideoConfig();
 
@@ -154,6 +165,23 @@ export const HtmlSlideVideo: React.FC<HtmlSlideVideoProps> = ({
 
   return (
     <AbsoluteFill style={{ backgroundColor: '#0f0f23' }}>
+      {/* 背景音乐 - 贯穿整个视频 */}
+      {(() => {
+        console.log('[HtmlSlideVideo] backgroundMusic:', backgroundMusic ? {
+          enabled: backgroundMusic.enabled,
+          volume: backgroundMusic.volume,
+          srcLength: backgroundMusic.src?.length,
+        } : 'undefined');
+        return null;
+      })()}
+      {backgroundMusic?.enabled && backgroundMusic.src && (
+        <Audio 
+          src={backgroundMusic.src} 
+          volume={Math.min(backgroundMusic.volume || 0.05, 0.1)}  // 限制最大 10%，默认 5%
+          loop
+        />
+      )}
+
       {slides.map((slide, index) => {
         const timing = slideTimings[index];
         if (!timing) return null;

@@ -73,6 +73,7 @@ async function loadCourseData(): Promise<{
             frames: data.frames || [],
             audioData: data.audioData || {},
             totalDuration: duration,
+            backgroundMusic: data.backgroundMusic || undefined,
           },
           durationInFrames,
         };
