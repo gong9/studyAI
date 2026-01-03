@@ -50,3 +50,15 @@ lightrag-service/__pycache__/
 *.pyc
 lightrag-service/lightrag-data/
 /lightrag-data/
+
+# Generated audio/video files
+*.mp3
+*.mp4
+*.wav
+*.webm
+/public/audio/bgm/*.mp3
+/public/video/
+
+# Keep the music library JSON (configuration)
+!/public/audio/bgm/music-library.json
+!/bgm-resources/music-library.json
