@@ -41,6 +41,11 @@ interface OutlineAdjustModalProps {
   onSuccess?: () => void;
 }
 
+interface ImageItem {
+  preview: string;
+  base64: string;
+}
+
 export function OutlineAdjustModal({
   open,
   onOpenChange,
@@ -49,8 +54,7 @@ export function OutlineAdjustModal({
 }: OutlineAdjustModalProps) {
   const [inputMode, setInputMode] = useState<'text' | 'image'>('text');
   const [textInput, setTextInput] = useState('');
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [imageBase64, setImageBase64] = useState<string | null>(null);
+  const [images, setImages] = useState<ImageItem[]>([]);
   
   const [loading, setLoading] = useState(false);
   const [previewResult, setPreviewResult] = useState<{
@@ -60,36 +64,45 @@ export function OutlineAdjustModal({
   const [error, setError] = useState<string | null>(null);
   const [applying, setApplying] = useState(false);
 
-  // 处理图片上传
+  // 处理图片上传（支持多张）
   const handleImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const result = event.target?.result as string;
-      setImagePreview(result);
-      // 提取 base64 部分
-      const base64 = result.split(',')[1];
-      setImageBase64(base64);
-    };
-    reader.readAsDataURL(file);
+    Array.from(files).forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const result = event.target?.result as string;
+        const base64 = result.split(',')[1];
+        setImages(prev => [...prev, { preview: result, base64 }]);
+      };
+      reader.readAsDataURL(file);
+    });
+    // 重置 input 以允许重复上传相同文件
+    e.target.value = '';
   }, []);
 
-  // 处理拖拽上传
+  // 处理拖拽上传（支持多张）
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
-    const file = e.dataTransfer.files?.[0];
-    if (!file || !file.type.startsWith('image/')) return;
+    const files = e.dataTransfer.files;
+    if (!files || files.length === 0) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const result = event.target?.result as string;
-      setImagePreview(result);
-      const base64 = result.split(',')[1];
-      setImageBase64(base64);
-    };
-    reader.readAsDataURL(file);
+    Array.from(files).forEach(file => {
+      if (!file.type.startsWith('image/')) return;
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const result = event.target?.result as string;
+        const base64 = result.split(',')[1];
+        setImages(prev => [...prev, { preview: result, base64 }]);
+      };
+      reader.readAsDataURL(file);
+    });
+  }, []);
+
+  // 删除单张图片
+  const removeImage = useCallback((index: number) => {
+    setImages(prev => prev.filter((_, i) => i !== index));
   }, []);
 
   // 识别并预览
@@ -98,7 +111,7 @@ export function OutlineAdjustModal({
       setError('请输入目录文本');
       return;
     }
-    if (inputMode === 'image' && !imageBase64) {
+    if (inputMode === 'image' && images.length === 0) {
       setError('请上传目录图片');
       return;
     }
@@ -114,7 +127,8 @@ export function OutlineAdjustModal({
         body: JSON.stringify({
           knowledgeBaseId,
           text: inputMode === 'text' ? textInput : undefined,
-          image: inputMode === 'image' ? imageBase64 : undefined,
+          // 支持多张图片
+          images: inputMode === 'image' ? images.map(img => img.base64) : undefined,
           applyChanges: false,
         }),
       });
@@ -148,7 +162,7 @@ export function OutlineAdjustModal({
         body: JSON.stringify({
           knowledgeBaseId,
           text: inputMode === 'text' ? textInput : undefined,
-          image: inputMode === 'image' ? imageBase64 : undefined,
+          images: inputMode === 'image' ? images.map(img => img.base64) : undefined,
           applyChanges: true,
         }),
       });
@@ -172,8 +186,7 @@ export function OutlineAdjustModal({
   // 重置状态
   const resetState = () => {
     setTextInput('');
-    setImagePreview(null);
-    setImageBase64(null);
+    setImages([]);
     setPreviewResult(null);
     setError(null);
   };
@@ -262,50 +275,82 @@ Summary    40`}
                   </p>
                 </div>
               ) : (
-                <div
-                  className={cn(
-                    "border-2 border-dashed rounded-lg p-8 text-center transition-colors",
-                    imagePreview 
-                      ? "border-blue-300 bg-blue-50" 
-                      : "border-zinc-300 hover:border-blue-300"
-                  )}
-                  onDrop={handleDrop}
-                  onDragOver={(e) => e.preventDefault()}
-                >
-                  {imagePreview ? (
-                    <div className="space-y-4">
-                      <img 
-                        src={imagePreview} 
-                        alt="目录截图" 
-                        className="max-h-[300px] mx-auto rounded-lg shadow-md"
-                      />
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => {
-                          setImagePreview(null);
-                          setImageBase64(null);
-                        }}
-                      >
-                        重新上传
-                      </Button>
-                    </div>
-                  ) : (
+                <div className="space-y-4">
+                  {/* 上传区域 */}
+                  <div
+                    className={cn(
+                      "border-2 border-dashed rounded-lg p-6 text-center transition-colors",
+                      images.length > 0 
+                        ? "border-blue-300 bg-blue-50/50" 
+                        : "border-zinc-300 hover:border-blue-300"
+                    )}
+                    onDrop={handleDrop}
+                    onDragOver={(e) => e.preventDefault()}
+                  >
                     <label className="cursor-pointer block">
                       <input
                         type="file"
                         accept="image/*"
+                        multiple
                         className="hidden"
                         onChange={handleImageUpload}
                       />
-                      <Upload className="w-12 h-12 mx-auto text-zinc-400 mb-4" />
-                      <p className="text-zinc-600">
-                        点击上传或拖拽目录截图到此处
-                      </p>
-                      <p className="text-xs text-zinc-400 mt-2">
-                        支持 PNG、JPG 格式
-                      </p>
+                      <div className="flex items-center justify-center gap-3">
+                        <Upload className="w-8 h-8 text-zinc-400" />
+                        <div className="text-left">
+                          <p className="text-zinc-600 font-medium">
+                            {images.length > 0 ? '继续添加图片' : '点击上传或拖拽目录截图到此处'}
+                          </p>
+                          <p className="text-xs text-zinc-400 mt-0.5">
+                            支持上传多张图片，按页码顺序上传 • PNG、JPG 格式
+                          </p>
+                        </div>
+                      </div>
                     </label>
+                  </div>
+
+                  {/* 图片预览网格 */}
+                  {images.length > 0 && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-medium text-zinc-700">
+                          已上传 {images.length} 张图片
+                        </p>
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          className="text-xs text-zinc-500 hover:text-red-600"
+                          onClick={() => setImages([])}
+                        >
+                          清空全部
+                        </Button>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 max-h-[280px] overflow-auto p-1">
+                        {images.map((img, index) => (
+                          <div 
+                            key={index} 
+                            className="relative group rounded-lg overflow-hidden border border-zinc-200 bg-white shadow-sm"
+                          >
+                            <img 
+                              src={img.preview} 
+                              alt={`目录截图 ${index + 1}`} 
+                              className="w-full h-32 object-cover"
+                            />
+                            {/* 序号标签 */}
+                            <div className="absolute top-2 left-2 w-6 h-6 bg-zinc-900/80 text-white text-xs font-bold rounded-full flex items-center justify-center">
+                              {index + 1}
+                            </div>
+                            {/* 删除按钮 */}
+                            <button
+                              onClick={() => removeImage(index)}
+                              className="absolute top-2 right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   )}
                 </div>
               )}

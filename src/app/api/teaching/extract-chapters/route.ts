@@ -10,6 +10,7 @@ import { prisma } from '@/lib/prisma';
 import { extractChapters, extractChaptersByRules, type ChapterNode } from '@/lib/teaching';
 import { analyzeChapter } from '@/lib/teaching/agents/chapter-analyzer';
 import { loadIndex } from '@/lib/llm/index-manager';
+import { clusterDocumentsToTopics, topicsToChapterNodes } from '@/lib/teaching/topic-clustering';
 import * as fs from 'fs-extra';
 import * as path from 'path';
 import pdfParse from 'pdf-parse';
@@ -116,19 +117,70 @@ export async function POST(request: Request) {
     // 根据知识库类型确定提取方式
     // tech -> 技术文档结构, policy -> 制度条款
     const kbType = kb.type || 'tech';
-    console.log(`[ExtractChapters] KB type: ${kbType}`);
+    const sourceMode = kb.sourceMode || 'book';
+    console.log(`[ExtractChapters] KB type: ${kbType}, sourceMode: ${sourceMode}`);
 
-    // 提取章节结构
+    // 根据 sourceMode 选择不同的处理逻辑
     let result;
-    if (useLLM) {
-      result = await extractChapters(fullContent, kbType);
-    } else {
-      const chapters = extractChaptersByRules(fullContent);
+    
+    if (sourceMode === 'docs') {
+      // docs 模式：每个文档直接作为一个章节，跳过 LLM 提取
+      console.log(`[ExtractChapters] Using docs mode: ${documents.length} documents -> chapters`);
+      const chapters: ChapterNode[] = documents.map((doc, index) => ({
+        title: doc.name.replace(/\.(pdf|docx|txt|md)$/i, ''),
+        level: 1,
+        orderIndex: index + 1,
+        contentPreview: (doc.content || '').substring(0, 500),
+        contentFull: doc.content || '',
+        children: [],
+      }));
       result = {
         success: true,
         chapters,
-        metadata: { totalChapters: chapters.length },
+        metadata: { totalChapters: chapters.length, sourceMode: 'docs' },
       };
+    } else if (sourceMode === 'fragments') {
+      // fragments 模式：使用 AI 主题聚类
+      console.log(`[ExtractChapters] Using fragments mode with topic clustering`);
+      const clusterResult = await clusterDocumentsToTopics(
+        documents.map(d => ({
+          id: d.id,
+          name: d.name,
+          content: d.content || '',
+        }))
+      );
+      
+      if (clusterResult.success) {
+        const chapterNodes = topicsToChapterNodes(
+          clusterResult.topics,
+          documents.map(d => ({ id: d.id, name: d.name, content: d.content || '' }))
+        );
+        result = {
+          success: true,
+          chapters: chapterNodes,
+          metadata: { 
+            totalChapters: chapterNodes.length, 
+            sourceMode: 'fragments',
+            ...clusterResult.metadata 
+          },
+        };
+      } else {
+        // 聚类失败时回退到普通 LLM 提取
+        console.log(`[ExtractChapters] Clustering failed, falling back to LLM extraction`);
+        result = await extractChapters(fullContent, kbType);
+      }
+    } else {
+      // book 模式（默认）：使用现有的 LLM 智能提取
+      if (useLLM) {
+        result = await extractChapters(fullContent, kbType);
+      } else {
+        const chapters = extractChaptersByRules(fullContent);
+        result = {
+          success: true,
+          chapters,
+          metadata: { totalChapters: chapters.length },
+        };
+      }
     }
 
     if (!result.success) {

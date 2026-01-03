@@ -8,6 +8,7 @@ const createKBSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().max(500).optional(),
   type: z.enum(['document', 'teaching', 'k12', 'tech', 'policy', 'legal']).optional().default('tech'),
+  sourceMode: z.enum(['book', 'docs', 'fragments']).optional().default('book'),
 });
 
 export async function GET(request: Request) {
@@ -48,13 +49,14 @@ export async function POST(request: Request) {
 
     const userId = (session.user as any).id;
     const body = await request.json();
-    const { name, description, type } = createKBSchema.parse(body);
+    const { name, description, type, sourceMode } = createKBSchema.parse(body);
 
     const knowledgeBase = await prisma.knowledgeBase.create({
       data: {
         name,
         description,
         type,
+        sourceMode,
         userId,
       },
     });

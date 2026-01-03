@@ -19,6 +19,35 @@ import {
 import { formatDate } from '@/lib/utils';
 
 type ScenarioType = 'tech' | 'policy' | 'legal';
+type SourceModeType = 'book' | 'docs' | 'fragments';
+
+interface SourceModeConfig {
+  id: SourceModeType;
+  name: string;
+  desc: string;
+  icon: React.ComponentType<{ className?: string }>;
+}
+
+const sourceModes: SourceModeConfig[] = [
+  {
+    id: 'book',
+    name: '书籍',
+    desc: '一本完整的书籍或教材',
+    icon: FileText,
+  },
+  {
+    id: 'docs',
+    name: '文档集',
+    desc: '多个独立的技术文档',
+    icon: FileCheck,
+  },
+  {
+    id: 'fragments',
+    name: '碎片资料',
+    desc: '零散的笔记、文章等',
+    icon: Sparkles,
+  },
+];
 
 interface ScenarioConfig {
   id: ScenarioType;
@@ -78,6 +107,7 @@ interface KnowledgeBase {
   name: string;
   description: string;
   type: string;
+  sourceMode?: string;
   createdAt: string;
   _count: {
     documents: number;
@@ -97,7 +127,7 @@ export default function DashboardPage() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [selectedScenario, setSelectedScenario] = useState<ScenarioType>('tech');
   const [activeFilter, setActiveFilter] = useState<ScenarioType | 'all'>('all');
-  const [newKB, setNewKB] = useState({ name: '', description: '', type: 'tech' as ScenarioType });
+  const [newKB, setNewKB] = useState({ name: '', description: '', type: 'tech' as ScenarioType, sourceMode: 'book' as SourceModeType });
 
   // 检测未登录状态，重定向到登录页
   useEffect(() => {
@@ -152,7 +182,7 @@ export default function DashboardPage() {
       if (response.ok) {
         const kb = await response.json();
         setShowCreateForm(false);
-        setNewKB({ name: '', description: '', type: 'tech' });
+        setNewKB({ name: '', description: '', type: 'tech', sourceMode: 'book' });
         router.push(`/dashboard/teaching/${kb.id}`);
       } else {
         const error = await response.json();
@@ -254,7 +284,7 @@ export default function DashboardPage() {
                     return;
                   }
                   setSelectedScenario(scenario.id);
-                  setNewKB({ ...newKB, type: scenario.id });
+                  setNewKB({ ...newKB, type: scenario.id, sourceMode: 'book' });
                   setShowCreateForm(true);
                 }}
                 className={`group relative bg-white border border-zinc-200 rounded-xl px-5 py-5 transition-all duration-300 cursor-pointer hover:shadow-lg ${scenario.accentBorder}`}
@@ -401,36 +431,70 @@ export default function DashboardPage() {
       {/* 创建项目弹窗 */}
       {showCreateForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-900/30 backdrop-blur-sm p-4">
-          <Card className="w-full max-w-sm shadow-2xl border-0 bg-white rounded-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+          <Card className="w-full max-w-xl shadow-2xl border-0 bg-white rounded-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="p-8">
-              <div className="flex flex-col items-center text-center mb-8">
-                <div className="w-14 h-14 bg-zinc-900 rounded-2xl flex items-center justify-center shadow-xl mb-4">
-                  {React.createElement(scenarios.find(s => s.id === selectedScenario)?.icon || Plus, { className: "w-7 h-7 text-white" })}
+              <div className="flex items-center gap-4 mb-8">
+                <div className="w-12 h-12 bg-zinc-900 rounded-xl flex items-center justify-center shadow-lg flex-shrink-0">
+                  {React.createElement(scenarios.find(s => s.id === selectedScenario)?.icon || Plus, { className: "w-6 h-6 text-white" })}
                 </div>
-                <h3 className="text-xl font-bold tracking-tight">新建{scenarios.find(s => s.id === selectedScenario)?.name}项目</h3>
+                <div>
+                  <h3 className="text-xl font-bold tracking-tight text-zinc-900">新建{scenarios.find(s => s.id === selectedScenario)?.name}项目</h3>
+                  <p className="text-sm text-zinc-400 mt-0.5">填写项目信息，选择内容来源类型</p>
+                </div>
               </div>
-              <form onSubmit={handleCreate} className="space-y-5">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1">项目名称</label>
-                  <Input
-                    value={newKB.name}
-                    onChange={(e) => setNewKB({ ...newKB, name: e.target.value })}
-                    placeholder={scenarios.find(s => s.id === selectedScenario)?.placeholder || '输入项目名称'}
-                    required
-                    className="h-11 bg-zinc-50 border-transparent rounded-xl font-bold focus:bg-white focus:ring-2 focus:ring-zinc-900/5 transition-all text-sm px-4"
-                  />
+              <form onSubmit={handleCreate} className="space-y-6">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1">项目名称</label>
+                    <Input
+                      value={newKB.name}
+                      onChange={(e) => setNewKB({ ...newKB, name: e.target.value })}
+                      placeholder={scenarios.find(s => s.id === selectedScenario)?.placeholder || '输入项目名称'}
+                      required
+                      className="h-11 bg-zinc-50 border-zinc-200 rounded-xl font-medium focus:bg-white focus:ring-2 focus:ring-zinc-900/5 focus:border-zinc-400 transition-all text-sm px-4"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1">简短描述</label>
+                    <Input
+                      value={newKB.description}
+                      onChange={(e) => setNewKB({ ...newKB, description: e.target.value })}
+                      placeholder="描述一下这个项目..."
+                      className="h-11 bg-zinc-50 border-zinc-200 rounded-xl font-medium focus:bg-white focus:ring-2 focus:ring-zinc-900/5 focus:border-zinc-400 transition-all text-sm px-4"
+                    />
+                  </div>
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1">简短描述</label>
-                  <Input
-                    value={newKB.description}
-                    onChange={(e) => setNewKB({ ...newKB, description: e.target.value })}
-                    placeholder="描述一下这个项目..."
-                    className="h-11 bg-zinc-50 border-transparent rounded-xl font-bold focus:bg-white focus:ring-2 focus:ring-zinc-900/5 transition-all text-sm px-4"
-                  />
+                <div className="space-y-3">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1">内容来源</label>
+                  <div className="grid grid-cols-3 gap-3">
+                    {sourceModes.map((mode) => (
+                      <button
+                        key={mode.id}
+                        type="button"
+                        onClick={() => setNewKB({ ...newKB, sourceMode: mode.id })}
+                        className={`flex flex-col items-center p-4 rounded-xl border-2 transition-all hover:shadow-md ${
+                          newKB.sourceMode === mode.id 
+                            ? 'border-zinc-900 bg-zinc-50 shadow-sm' 
+                            : 'border-zinc-200 hover:border-zinc-400 bg-white'
+                        }`}
+                      >
+                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-2 ${
+                          newKB.sourceMode === mode.id ? 'bg-zinc-900' : 'bg-zinc-100'
+                        }`}>
+                          <mode.icon className={`w-5 h-5 ${newKB.sourceMode === mode.id ? 'text-white' : 'text-zinc-500'}`} />
+                        </div>
+                        <span className={`text-sm font-bold ${newKB.sourceMode === mode.id ? 'text-zinc-900' : 'text-zinc-600'}`}>
+                          {mode.name}
+                        </span>
+                        <span className="text-[11px] text-zinc-400 text-center mt-1 leading-snug">
+                          {mode.desc}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div className="flex gap-3 pt-4">
-                  <Button type="button" variant="ghost" className="flex-1 h-12 font-bold rounded-xl" onClick={() => setShowCreateForm(false)}>取消</Button>
+                <div className="flex gap-3 pt-4 border-t border-zinc-100">
+                  <Button type="button" variant="ghost" className="flex-1 h-12 font-bold rounded-xl text-zinc-600 hover:bg-zinc-100" onClick={() => setShowCreateForm(false)}>取消</Button>
                   <Button type="submit" className="flex-[2] h-12 bg-zinc-900 hover:bg-zinc-800 text-white font-bold rounded-xl shadow-lg transition-all" disabled={creating}>
                     {creating ? '稍等...' : '开始创作'}
                   </Button>

@@ -25,6 +25,7 @@ model KnowledgeBase {
   name        String
   description String?
   type        String     @default("tech")  // "tech" | "policy" | "legal" (兼容旧值 "teaching" | "k12" -> tech)
+  sourceMode  String     @default("book")  // "book" | "docs" | "fragments" - 内容来源模式
   isPreset    Boolean    @default(false)  // 是否为系统预置知识库（如法律库）
   userId      String
   user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -39,6 +40,7 @@ model KnowledgeBase {
 
   @@index([userId])
   @@index([type])
+  @@index([sourceMode])
   @@index([isPreset])
 }
 

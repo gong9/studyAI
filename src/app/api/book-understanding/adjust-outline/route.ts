@@ -68,10 +68,10 @@ const OUTLINE_RECOGNITION_PROMPT = `你是一位文档结构分析专家。请�
 
 请直接输出 JSON，不要包含其他文字。`;
 
-const IMAGE_OUTLINE_PROMPT = `你是一位文档结构分析专家。请分析这张目录截图，识别其章节结构。
+const IMAGE_OUTLINE_PROMPT = `你是一位文档结构分析专家。请分析这些目录截图，识别其章节结构。
 
 ## 任务
-1. 识别图片中的所有章节标题
+1. 识别所有图片中的章节标题（多张图片按顺序为连续的目录页）
 2. 根据视觉上的缩进、格式判断层级关系
 3. 提取页码信息（如果可见）
 
@@ -98,6 +98,10 @@ const IMAGE_OUTLINE_PROMPT = `你是一位文档结构分析专家。请分析�
   ]
 }
 
+## 重要
+- 如果有多张图片，请将所有图片中的章节合并成一个完整的目录结构
+- 按页码顺序排列，保持层级关系正确
+
 请直接输出 JSON，不要包含其他文字。`;
 
 // ==================== 主处理函数 ====================
@@ -110,13 +114,14 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { knowledgeBaseId, text, image, applyChanges = false } = body;
+    const { knowledgeBaseId, text, images, applyChanges = false } = body;
 
     if (!knowledgeBaseId) {
       return NextResponse.json({ error: '缺少 knowledgeBaseId' }, { status: 400 });
     }
 
-    if (!text && !image) {
+    const hasImages = Array.isArray(images) && images.length > 0;
+    if (!text && !hasImages) {
       return NextResponse.json({ error: '请提供文字或图片输入' }, { status: 400 });
     }
 
@@ -132,10 +137,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '知识库不存在' }, { status: 404 });
     }
 
-    console.log(`[AdjustOutline] Starting for KB: ${knowledgeBaseId}, input type: ${image ? 'image' : 'text'}`);
+    console.log(`[AdjustOutline] Starting for KB: ${knowledgeBaseId}, input type: ${hasImages ? `${images.length} images` : 'text'}`);
 
     // ========== 步骤1：识别新大纲结构 ==========
-    const newChapters = await recognizeOutline({ text, image });
+    const newChapters = await recognizeOutline({ text, images });
     
     if (newChapters.length === 0) {
       return NextResponse.json({ error: '无法识别目录结构' }, { status: 400 });
@@ -226,9 +231,9 @@ export async function POST(request: NextRequest) {
 // ==================== 辅助函数 ====================
 
 /**
- * 识别大纲结构（支持文字和图片）
+ * 识别大纲结构（支持文字和多张图片）
  */
-async function recognizeOutline(input: { text?: string; image?: string }): Promise<ChapterBoundary[]> {
+async function recognizeOutline(input: { text?: string; images?: string[] }): Promise<ChapterBoundary[]> {
   const config = getVisionModelConfig();
   
   const llm = new OpenAI({
@@ -239,24 +244,24 @@ async function recognizeOutline(input: { text?: string; image?: string }): Promi
 
   let response;
 
-  if (input.image) {
-    // 图片输入 - 使用多模态
-    console.log('[AdjustOutline] Using vision model for image input');
+  if (input.images && input.images.length > 0) {
+    // 多图片输入 - 使用多模态
+    console.log(`[AdjustOutline] Using vision model for ${input.images.length} image(s)`);
     
-    // 构建多模态消息
+    // 构建多模态消息，包含所有图片
+    const imageContents = input.images.map((img, index) => ({
+      type: 'image_url' as const,
+      image_url: {
+        url: img.startsWith('data:') ? img : `data:image/png;base64,${img}`,
+      },
+    }));
+
     const messages = [
       {
         role: 'user' as const,
         content: [
           { type: 'text' as const, text: IMAGE_OUTLINE_PROMPT },
-          { 
-            type: 'image_url' as const, 
-            image_url: { 
-              url: input.image.startsWith('data:') 
-                ? input.image 
-                : `data:image/png;base64,${input.image}` 
-            } 
-          },
+          ...imageContents,
         ],
       },
     ];

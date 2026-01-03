@@ -325,6 +325,22 @@ export default function TeachingDetailPage() {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
+    const sourceMode = kb?.sourceMode || 'book';
+
+    // book 模式：只允许上传一本书
+    if (sourceMode === 'book') {
+      if (documents.length > 0) {
+        alert('书籍模式只支持一本书，请先删除现有文档后再上传新书');
+        e.target.value = '';
+        return;
+      }
+      if (files.length > 1) {
+        alert('书籍模式只支持上传一个文件');
+        e.target.value = '';
+        return;
+      }
+    }
+
     setUploading(true);
     try {
       const uploadedDocs: any[] = [];
@@ -356,13 +372,14 @@ export default function TeachingDetailPage() {
         // 制度培训：直接为每个文档创建一个"章节"条目
         await createChaptersFromDocuments(uploadedDocs);
       }
-                      // 技术培训：不自动扫描，等用户手动点击"智能扫描"按钮
+      // 技术培训：不自动扫描，等用户手动点击"智能扫描"按钮
       // 因为索引还在后台创建中，需要等索引完成后才能扫描
     } catch (error) {
       console.error('上传失败:', error);
       alert('上传失败，请重试');
     } finally {
       setUploading(false);
+      e.target.value = ''; // 重置 input，允许重复上传相同文件
     }
   };
 
@@ -440,6 +457,62 @@ export default function TeachingDetailPage() {
   
   const handleExtractChapters = async () => {
     setExtracting(true);
+    const sourceMode = kb?.sourceMode || 'book';
+    
+    // 根据 sourceMode 选择不同的扫描方式
+    if (sourceMode === 'docs') {
+      // docs 模式：使用简化的章节提取（每个文件=一个章节）
+      setExtractProgress('正在处理文档...');
+      try {
+        const res = await fetch('/api/teaching/extract-chapters', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ knowledgeBaseId: kbId, useLLM: false }),
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          await fetchChapters();
+          await fetchDocuments();
+        } else {
+          throw new Error(data.error || '处理文档失败');
+        }
+      } catch (error: any) {
+        console.error('处理文档失败:', error);
+        alert(error.message || '处理文档失败');
+      } finally {
+        setExtracting(false);
+        setExtractProgress('');
+      }
+      return;
+    }
+    
+    // fragments 模式：使用主题聚类
+    if (sourceMode === 'fragments') {
+      setExtractProgress('正在进行主题聚类...');
+      try {
+        const res = await fetch('/api/teaching/extract-chapters', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ knowledgeBaseId: kbId, useLLM: true }),
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          await fetchChapters();
+          await fetchDocuments();
+        } else {
+          throw new Error(data.error || '主题聚类失败');
+        }
+      } catch (error: any) {
+        console.error('主题聚类失败:', error);
+        alert(error.message || '主题聚类失败');
+      } finally {
+        setExtracting(false);
+        setExtractProgress('');
+      }
+      return;
+    }
+    
+    // book 模式：使用智能扫描
     setExtractProgress('正在智能扫描...');
     try {
       // 使用新的全书理解 skim API
@@ -673,10 +746,23 @@ export default function TeachingDetailPage() {
                       <FileText className="w-4 h-4 text-zinc-600" />
                       {typeConfig.docLibTitle}
                     </h3>
-                    <label className="text-xs font-semibold text-zinc-700 hover:text-zinc-900 cursor-pointer flex items-center gap-1 bg-zinc-100 px-2 py-1 rounded border border-zinc-200 transition-colors hover:bg-zinc-200">
+                    <label className={cn(
+                      "text-xs font-semibold cursor-pointer flex items-center gap-1 px-2 py-1 rounded border transition-colors",
+                      // book 模式已有文档时禁用上传
+                      kb?.sourceMode === 'book' && documents.length > 0
+                        ? "text-zinc-400 bg-zinc-50 border-zinc-100 cursor-not-allowed"
+                        : "text-zinc-700 hover:text-zinc-900 bg-zinc-100 border-zinc-200 hover:bg-zinc-200"
+                    )}>
                       <Plus className="w-3.5 h-3.5" />
-                      {typeConfig.addDocText}
-                      <input type="file" className="hidden" accept=".pdf,.docx,.txt" onChange={handleFileUpload} disabled={uploading} />
+                      {kb?.sourceMode === 'book' && documents.length > 0 ? '已上传书籍' : typeConfig.addDocText}
+                      <input 
+                        type="file" 
+                        className="hidden" 
+                        accept=".pdf,.docx,.txt" 
+                        onChange={handleFileUpload} 
+                        disabled={uploading || (kb?.sourceMode === 'book' && documents.length > 0)}
+                        multiple={kb?.sourceMode !== 'book'}
+                      />
                     </label>
                   </div>
                   
@@ -723,7 +809,12 @@ export default function TeachingDetailPage() {
                           disabled={extracting} 
                           className="h-7 text-xs font-bold text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100"
                         >
-                          {extracting ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : '智能扫描'}
+                          {extracting ? (
+                            <><Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />{extractProgress || '处理中...'}</>
+                          ) : (
+                            kb?.sourceMode === 'docs' ? '处理文档' : 
+                            kb?.sourceMode === 'fragments' ? '主题聚类' : '智能扫描'
+                          )}
                         </Button>
                         {/* 知识图谱按钮 - 扫描后可用 */}
                         {chapterDAG && (
@@ -765,6 +856,10 @@ export default function TeachingDetailPage() {
                           暂无目录数据<br/>
                           {kb?.type === 'policy' 
                             ? '请上传制度文档，系统将自动创建条目' 
+                            : kb?.sourceMode === 'docs'
+                            ? '请上传文档后点击"处理文档"'
+                            : kb?.sourceMode === 'fragments'
+                            ? '请上传资料后点击"智能扫描"进行主题聚类'
                             : typeConfig.emptyIndexText}
                         </p>
                       </div>
