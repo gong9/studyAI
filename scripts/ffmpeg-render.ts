@@ -50,6 +50,7 @@ interface CourseData {
   slides: Array<{ index: number; title: string; html: string }>;
   frames: Frame[];
   audioData?: { [key: string]: string };
+  language?: string;  // 'zh' | 'en' - 课程语言
 }
 
 // 精确计算后的时间数据
@@ -73,7 +74,10 @@ async function main() {
     process.exit(1);
   }
   const data: CourseData = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'));
-  console.log(`📖 加载了 ${data.slides.length} 个幻灯片, ${data.frames.length} 个帧`);
+  
+  // 设置课程语言（用于字幕样式调整）
+  courseLanguage = data.language || 'zh';
+  console.log(`📖 加载了 ${data.slides.length} 个幻灯片, ${data.frames.length} 个帧, 语言: ${courseLanguage}`);
 
   // 2. 准备目录
   if (fs.existsSync(OUTPUT_DIR)) fs.rmSync(OUTPUT_DIR, { recursive: true });
@@ -403,16 +407,45 @@ function generateVideo(timingData: TimingData[], totalDurationMs: number, output
 /**
  * 字幕自动换行：每行最多 maxChars 个字符，直接按字符数切分
  */
-function wrapSubtitleText(text: string, maxChars: number = 80): string {
+// 全局语言变量，在 main 中设置
+let courseLanguage: string = 'zh';
+
+function wrapSubtitleText(text: string): string {
+  // 英文需要更长的行长度，因为英文单词比中文字符宽
+  const maxChars = courseLanguage === 'en' ? 100 : 80;
+  
   if (text.length <= maxChars) return text;
   
-  const lines: string[] = [];
+  // 英文按单词边界换行，中文按字符换行
+  if (courseLanguage === 'en') {
+    return wrapEnglishText(text, maxChars);
+  }
   
+  const lines: string[] = [];
   for (let i = 0; i < text.length; i += maxChars) {
     lines.push(text.slice(i, i + maxChars));
   }
   
   // 用 \N 连接（ASS 格式换行符）
+  return lines.join('\\N');
+}
+
+// 英文按单词边界换行
+function wrapEnglishText(text: string, maxChars: number): string {
+  const words = text.split(' ');
+  const lines: string[] = [];
+  let currentLine = '';
+  
+  for (const word of words) {
+    if (currentLine.length + word.length + 1 <= maxChars) {
+      currentLine = currentLine ? `${currentLine} ${word}` : word;
+    } else {
+      if (currentLine) lines.push(currentLine);
+      currentLine = word;
+    }
+  }
+  if (currentLine) lines.push(currentLine);
+  
   return lines.join('\\N');
 }
 
@@ -430,6 +463,14 @@ function generateSubtitles(timingData: TimingData[]): string | null {
 
   const assPath = path.join(OUTPUT_DIR, 'subtitles.ass');
   
+  // 根据语言调整字幕样式
+  // 英文需要更小的边距（更宽的字幕区域），更大的字号
+  const isEnglish = courseLanguage === 'en';
+  const fontName = isEnglish ? 'Arial' : 'PingFang SC';
+  const fontSize = isEnglish ? 26 : 28;
+  const marginLR = isEnglish ? 100 : 300;  // 英文边距更小，给更多空间
+  const marginV = 50;
+
   const header = `[Script Info]
 Title: Subtitles
 ScriptType: v4.00+
@@ -439,7 +480,7 @@ WrapStyle: 2
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,PingFang SC,28,&H00FFFFFF,&H000000FF,&H00000000,&HC0000000,-1,0,0,0,100,100,0,0,3,4,2,2,300,300,50,1
+Style: Default,${fontName},${fontSize},&H00FFFFFF,&H000000FF,&H00000000,&HC0000000,-1,0,0,0,100,100,0,0,3,4,2,2,${marginLR},${marginLR},${marginV},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

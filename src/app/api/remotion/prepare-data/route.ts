@@ -34,6 +34,7 @@ export async function POST(request: NextRequest) {
         audioData: true,
         slideFormat: true,
         backgroundMusic: true,
+        language: true,
       },
     });
 
@@ -117,6 +118,7 @@ export async function POST(request: NextRequest) {
       title: course.title,
       description: course.description,
       duration: course.duration,
+      language: course.language || 'zh',  // 添加语言字段
       slides,
       frames,
       audioData,

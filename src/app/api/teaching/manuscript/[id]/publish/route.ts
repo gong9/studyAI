@@ -199,9 +199,14 @@ export async function POST(
       return NextResponse.json({ error: '手稿不存在' }, { status: 404 });
     }
 
-    // 检查是否已有课程
+    // 检查是否已有中文课程（使用联合唯一约束）
     const existingCourse = await prisma.course.findUnique({
-      where: { manuscriptId },
+      where: { 
+        manuscriptId_language: {
+          manuscriptId,
+          language: 'zh',
+        }
+      },
     });
     
     if (existingCourse) {
@@ -423,10 +428,11 @@ export async function POST(
       markdown: '基础课程',
     }[slideFormat];
     
-    // 使用 $executeRaw 或直接创建（slideFormat 是新字段，运行时会正常工作）
+    // 创建中文课程
     const course = await prisma.course.create({
       data: {
         manuscriptId,
+        language: 'zh',  // 默认为中文
         title: manuscript.chapter.title,
         description: `${manuscript.chapter.title} - ${formatLabel}`,
         coverImage,
@@ -434,8 +440,7 @@ export async function POST(
         slides: JSON.stringify(slides),
         frames: JSON.stringify(frames),
         audioData: JSON.stringify(audioData),
-        // slideFormat 字段：运行时数据库已支持，TypeScript 类型稍后会同步
-        ...({ slideFormat: slideFormat === 'html' ? 'html' : 'image' } as Record<string, string>),
+        slideFormat: slideFormat === 'html' ? 'html' : 'image',
         status: 'published',
       },
     });
@@ -470,8 +475,14 @@ export async function GET(
   try {
     const { id: manuscriptId } = await params;
 
+    // 查找中文课程（使用联合唯一约束）
     const course = await prisma.course.findUnique({
-      where: { manuscriptId },
+      where: { 
+        manuscriptId_language: {
+          manuscriptId,
+          language: 'zh',
+        }
+      },
       select: {
         id: true,
         title: true,
@@ -479,12 +490,29 @@ export async function GET(
         status: true,
         viewCount: true,
         createdAt: true,
+        language: true,
+      },
+    });
+
+    // 同时检查是否有英文版
+    const englishCourse = await prisma.course.findUnique({
+      where: { 
+        manuscriptId_language: {
+          manuscriptId,
+          language: 'en',
+        }
+      },
+      select: {
+        id: true,
+        title: true,
       },
     });
 
     return NextResponse.json({
       hasPublished: !!course,
       course,
+      hasEnglishVersion: !!englishCourse,
+      englishCourse,
     });
 
   } catch (error: any) {

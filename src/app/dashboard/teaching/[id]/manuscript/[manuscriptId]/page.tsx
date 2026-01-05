@@ -77,6 +77,11 @@ export default function ManuscriptEditorPage() {
         setContent(initialContent);
         setOriginalContent(initialContent);
         setHasChanges(false); // 重置变更状态
+        
+        // 如果内容为空，自动切换到编辑模式
+        if (!initialContent.trim()) {
+          setEditorMode('edit');
+        }
       } else {
         const err = await res.json();
         setError(err.error || '获取手稿失败');

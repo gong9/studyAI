@@ -262,11 +262,6 @@ export default function PresentationPage() {
   // ====== 重新生成状态 ======
   const [isRegenerating, setIsRegenerating] = useState(false);
   
-  // ====== 导出状态 ======
-  const [exporting, setExporting] = useState<string | null>(null);
-  const [showExportMenu, setShowExportMenu] = useState(false);
-  const exportMenuRef = useRef<HTMLDivElement>(null);
-  
   // ====== 屏幕录制状态 ======
   const [isScreenRecording, setIsScreenRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -334,19 +329,6 @@ export default function PresentationPage() {
   useEffect(() => {
     isLecturingRef2.current = isLecturing;
   }, [isLecturing]);
-  
-  // 点击外部关闭导出菜单
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
-        setShowExportMenu(false);
-      }
-    };
-    if (showExportMenu) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showExportMenu]);
   
   // refs
   const slideContainerRef = useRef<HTMLDivElement>(null);
@@ -944,50 +926,6 @@ export default function PresentationPage() {
     }
   };
 
-  // 导出 PDF/PPTX（经典模式）
-  const handleExport = async (format: 'pdf' | 'pptx') => {
-    setExporting(format);
-    try {
-      // 如果还没有 slidevMd，先渲染生成
-      if (!manuscript?.slidevMd) {
-        const renderRes = await fetch(`/api/teaching/manuscript/${manuscriptId}/render`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({}),
-        });
-        
-        if (!renderRes.ok) {
-          const err = await renderRes.json();
-          alert(err.error || '渲染失败，无法导出');
-          setExporting(null);
-          return;
-        }
-        
-        const renderData = await renderRes.json();
-        setManuscript((prev: any) => ({ ...prev, slidevMd: renderData.slidevMd }));
-      }
-      
-      const res = await fetch(`/api/teaching/manuscript/${manuscriptId}/export?format=${format}`);
-      
-      if (res.ok) {
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `courseware.${format}`;
-        a.click();
-        URL.revokeObjectURL(url);
-      } else {
-        const err = await res.json();
-        alert(err.error || '导出失败');
-      }
-    } catch (error: any) {
-      alert(error.message || '导出失败');
-    } finally {
-      setExporting(null);
-    }
-  };
-
   // ====== 屏幕录制功能 ======
   const startScreenRecording = async () => {
     try {
@@ -1138,15 +1076,86 @@ export default function PresentationPage() {
     }
   };
 
-  // 发布为课程
+  // 发布为课程（支持自动生成讲解稿）
   const publishCourse = async (force: boolean = false) => {
-    if (!hasLectureScript) {
-      alert('请先生成讲解稿');
-      return;
-    }
-    
     setIsPublishing(true);
+    
     try {
+      // 如果没有讲解稿，先自动生成
+      if (!hasLectureScript) {
+        console.log('[Presentation] 没有讲解稿，先自动生成...');
+        setIsPreparingLecture(true);
+        setPrepareProgress(0);
+        setPrepareMessage('正在生成讲解稿...');
+        
+        // 启动平滑进度动画
+        let fakeProgress = 0;
+        const progressInterval = setInterval(() => {
+          fakeProgress += Math.random() * 2;
+          if (fakeProgress > 85) fakeProgress = 85;
+          setPrepareProgress(Math.round(fakeProgress));
+        }, 200);
+        
+        try {
+          // 调用讲解稿生成 SSE API
+          const response = await fetch(`/api/teaching/lecture/${manuscriptId}/stream?startSlide=0`);
+          const reader = response.body?.getReader();
+          const decoder = new TextDecoder();
+          
+          if (reader) {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              
+              const text = decoder.decode(value);
+              
+              // 解析进度
+              const progressMatch = text.match(/"percent":(\d+)/);
+              if (progressMatch) {
+                const percent = parseInt(progressMatch[1]);
+                if (percent > fakeProgress) {
+                  fakeProgress = percent;
+                  setPrepareProgress(percent);
+                }
+              }
+              
+              const messageMatch = text.match(/"message":"([^"]+)"/);
+              if (messageMatch) {
+                setPrepareMessage(messageMatch[1]);
+              }
+              
+              // 检查是否完成
+              if (text.includes('event: complete')) {
+                console.log('[Presentation] 讲解稿生成完成');
+                break;
+              }
+              
+              // 检查是否有错误
+              if (text.includes('event: error')) {
+                throw new Error('讲解稿生成失败');
+              }
+            }
+          }
+          
+          clearInterval(progressInterval);
+          setPrepareProgress(100);
+          setPrepareMessage('讲解稿生成完成，正在发布...');
+          setHasLectureScript(true);
+          
+          // 短暂延迟让用户看到完成状态
+          await new Promise(r => setTimeout(r, 500));
+          
+        } catch (lectureError: any) {
+          clearInterval(progressInterval);
+          setIsPreparingLecture(false);
+          throw new Error('生成讲解稿失败: ' + lectureError.message);
+        }
+        
+        setIsPreparingLecture(false);
+      }
+      
+      // 发布课程
+      setPrepareMessage('正在发布课程...');
       const res = await fetch(`/api/teaching/manuscript/${manuscriptId}/publish`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1168,6 +1177,7 @@ export default function PresentationPage() {
       alert('发布失败: ' + error.message);
     } finally {
       setIsPublishing(false);
+      setIsPreparingLecture(false);
     }
   };
 
@@ -2527,93 +2537,42 @@ export default function PresentationPage() {
             </>
           )}
           
-          {/* 课程发布按钮 */}
-          {hasLectureScript && (
-            publishedCourseId ? (
-              <div className="flex items-center gap-2">
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={viewCourse}
-                  className="bg-green-500/20 border-green-400/50 text-green-300 hover:bg-green-500/30"
-                >
+          {/* 课程发布按钮 - 始终显示 */}
+          {publishedCourseId ? (
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={viewCourse}
+              className="bg-green-500/20 border-green-400/50 text-green-300 hover:bg-green-500/30"
+            >
+              <Radio className="h-4 w-4 mr-2" />
+              查看课程
+            </Button>
+          ) : (
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => publishCourse(false)}
+              disabled={isPublishing || isPreparingLecture}
+              className="bg-purple-500/20 border-purple-400/50 text-purple-300 hover:bg-purple-500/30"
+            >
+              {isPublishing || isPreparingLecture ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  {isPreparingLecture ? '生成中...' : '发布中...'}
+                </>
+              ) : (
+                <>
                   <Radio className="h-4 w-4 mr-2" />
-                  查看课程
-                </Button>
-              </div>
-            ) : (
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => publishCourse(false)}
-                disabled={isPublishing}
-                className="bg-purple-500/20 border-purple-400/50 text-purple-300 hover:bg-purple-500/30"
-              >
-                {isPublishing ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    发布中...
-                  </>
-                ) : (
-                  <>
-                    <Radio className="h-4 w-4 mr-2" />
-                    发布课程
-                  </>
-                )}
-              </Button>
-            )
+                  {hasLectureScript ? '发布课程' : '生成并发布'}
+                </>
+              )}
+            </Button>
           )}
           
           <div className="h-4 w-px bg-white/20" />
           
-          {/* 3. 导出 - 次要操作 */}
-          <div className="relative" ref={exportMenuRef}>
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => setShowExportMenu(!showExportMenu)}
-              disabled={!!exporting || slides.length === 0}
-              className="bg-zinc-700/50 border-zinc-500/50 text-zinc-300 hover:bg-zinc-600/50"
-            >
-              {exporting ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              ) : (
-                <Download className="h-4 w-4 mr-2" />
-              )}
-              导出
-              <ChevronDown className={cn("h-3 w-3 ml-1 transition-transform", showExportMenu && "rotate-180")} />
-            </Button>
-            
-            {showExportMenu && (
-              <div className="absolute top-full mt-2 right-0 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl overflow-hidden z-[9999] min-w-[180px] py-1">
-                <button
-                  onClick={() => { startScreenRecording(); setShowExportMenu(false); }}
-                  className="w-full px-4 py-2.5 text-left text-sm text-white hover:bg-zinc-700/80 flex items-center gap-3 transition-colors"
-                >
-                  <Video className="h-4 w-4 text-red-400" />
-                  录制视频
-                  <span className="text-[10px] text-zinc-500 ml-auto">推荐</span>
-                </button>
-                <div className="border-t border-zinc-700 my-1" />
-                <button
-                  onClick={() => { handleExport('pdf'); setShowExportMenu(false); }}
-                  className="w-full px-4 py-2.5 text-left text-sm text-white hover:bg-zinc-700/80 flex items-center gap-3 transition-colors"
-                >
-                  <FileText className="h-4 w-4 text-zinc-400" />
-                  导出 PDF
-                </button>
-                <button
-                  onClick={() => { handleExport('pptx'); setShowExportMenu(false); }}
-                  className="w-full px-4 py-2.5 text-left text-sm text-white hover:bg-zinc-700/80 flex items-center gap-3 transition-colors"
-                >
-                  <Presentation className="h-4 w-4 text-zinc-400" />
-                  导出 PPTX
-                </button>
-              </div>
-            )}
-          </div>
-          
-          {/* 4. 摄像头监控开关 */}
+          {/* 摄像头监控开关 */}
           <Button 
             variant="outline" 
             size="sm"

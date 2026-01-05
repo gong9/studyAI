@@ -8,7 +8,7 @@ import {
   ArrowLeft, Upload, FileText, ChevronRight, ChevronDown, 
   Sparkles, Loader2, CheckCircle, 
   BookOpen, ListTree, Play, Eye, Plus, LayoutGrid, Clock,
-  Target, Book, Settings2, Zap, Cpu, FileCheck, Scale, X, Network, Edit3, ClipboardPaste
+  Target, Book, Settings2, Zap, Cpu, FileCheck, Scale, X, Network, Edit3, ClipboardPaste, PenLine
 } from 'lucide-react';
 // BookUnderstandingPanel 已简化，使用左侧智能扫描按钮
 import BookKnowledgeGraph from '@/components/teaching/BookKnowledgeGraph';
@@ -159,6 +159,9 @@ export default function TeachingDetailPage() {
   const [pasteTitle, setPasteTitle] = useState('');
   const [pasteContent, setPasteContent] = useState('');
   const [pasting, setPasting] = useState(false);
+  
+  // 创建空白手稿
+  const [creatingBlank, setCreatingBlank] = useState(false);
   
   // 章节大小检查状态
   const [chapterSizeInfo, setChapterSizeInfo] = useState<{
@@ -408,6 +411,39 @@ export default function TeachingDetailPage() {
     }
   };
 
+  // 直接创作（创建空白手稿）
+  const handleCreateBlank = async () => {
+    setCreatingBlank(true);
+    try {
+      const res = await fetch('/api/teaching/manuscript/create-blank', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          knowledgeBaseId: kbId,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || '创建失败');
+      }
+      
+      const data = await res.json();
+      
+      // 刷新章节和手稿列表
+      await fetchChapters();
+      await fetchManuscripts();
+      
+      // 跳转到手稿编辑页面
+      router.push(`/dashboard/teaching/${kbId}/manuscript/${data.manuscriptId}`);
+    } catch (error: any) {
+      console.error('创建空白手稿失败:', error);
+      alert(error.message || '创建失败');
+    } finally {
+      setCreatingBlank(false);
+    }
+  };
+
   // 处理粘贴手稿
   const handlePasteSubmit = async () => {
     if (!pasteContent.trim()) {
@@ -622,6 +658,28 @@ export default function TeachingDetailPage() {
     checkChapterSize(chapter.id);
   };
 
+  // 查找章节对应的手稿
+  const getChapterManuscript = (chapterId: string) => {
+    return manuscripts.find(m => m.chapterId === chapterId);
+  };
+
+  // 过滤掉空白手稿创建的虚拟章节（递归处理）
+  const filterBlankChapters = (nodes: ChapterNode[]): ChapterNode[] => {
+    return nodes
+      .filter(ch => {
+        try {
+          const meta = ch.metadata ? (typeof ch.metadata === 'string' ? JSON.parse(ch.metadata) : ch.metadata) : {};
+          return !meta.isBlank;
+        } catch {
+          return true;
+        }
+      })
+      .map(ch => ({
+        ...ch,
+        children: ch.children ? filterBlankChapters(ch.children) : [],
+      }));
+  };
+
   const handleGenerate = async () => {
     if (!selectedChapter) {
       alert('请先选择章节');
@@ -797,6 +855,21 @@ export default function TeachingDetailPage() {
                       {typeConfig.docLibTitle}
                     </h3>
                     <div className="flex items-center gap-1.5">
+                      {/* 直接创作按钮 - 碎片模式下显示 */}
+                      {kb?.sourceMode === 'fragments' && (
+                        <button
+                          onClick={handleCreateBlank}
+                          disabled={creatingBlank}
+                          className="text-xs font-semibold flex items-center gap-1 px-2.5 py-1.5 rounded-md border transition-colors text-white bg-zinc-900 border-zinc-900 hover:bg-zinc-800 hover:border-zinc-800 shadow-sm"
+                        >
+                          {creatingBlank ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <PenLine className="w-3.5 h-3.5" />
+                          )}
+                          直接创作
+                        </button>
+                      )}
                       {/* 粘贴文本按钮 */}
                       <button
                         onClick={() => setShowPasteModal(true)}
@@ -925,7 +998,7 @@ export default function TeachingDetailPage() {
                       </div>
                     ) : (
                       <div className="space-y-0.5">
-                        {renderChapterTree(chapters)}
+                        {renderChapterTree(filterBlankChapters(chapters))}
                       </div>
                     )}
                   </div>
@@ -1064,55 +1137,94 @@ export default function TeachingDetailPage() {
 
                             {/* 核心操作区 - 灵魂按钮 */}
                             <div className="mt-12 flex flex-col items-center pt-10 border-t border-zinc-50/50">
-                              <div className="relative group">
-                                {/* 按钮背后的柔光层 */}
-                                <div className="absolute -inset-1 bg-zinc-900 rounded blur-md opacity-20 group-hover:opacity-30 transition duration-500" />
+                              {/* 检查是否已有手稿 */}
+                              {(() => {
+                                const existingManuscript = getChapterManuscript(selectedChapter.id);
+                                if (existingManuscript) {
+                                  // 已有手稿，显示进入编辑按钮
+                                  return (
+                                    <>
+                                      <div className="mb-6 text-center">
+                                        <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-green-50 text-green-700 rounded-full text-sm font-medium border border-green-200">
+                                          <CheckCircle className="w-4 h-4" />
+                                          已创建手稿
+                                        </div>
+                                      </div>
+                                      <div className="relative group">
+                                        <div className="absolute -inset-1 bg-zinc-900 rounded blur-md opacity-20 group-hover:opacity-30 transition duration-500" />
+                                        <Button
+                                          className="relative min-w-[320px] h-14 text-base font-bold rounded transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-3 shadow-lg shadow-zinc-200 bg-zinc-900 hover:bg-zinc-800 text-white"
+                                          onClick={() => router.push(`/dashboard/teaching/${kbId}/manuscript/${existingManuscript.id}`)}
+                                        >
+                                          <Edit3 className="w-5 h-5" />
+                                          <span className="tracking-wider">进入编辑</span>
+                                        </Button>
+                                      </div>
+                                      <div className="mt-8 flex items-center gap-2 text-zinc-400">
+                                        <Clock className="w-3.5 h-3.5" />
+                                        <span className="text-[10px] font-bold uppercase tracking-widest">
+                                          创建于 {new Date(existingManuscript.createdAt).toLocaleDateString('zh-CN')}
+                                        </span>
+                                      </div>
+                                    </>
+                                  );
+                                }
                                 
-                                <Button
-                                  className={cn(
-                                    "relative min-w-[320px] h-14 text-base font-bold rounded transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-3 shadow-lg shadow-zinc-200",
-                                    generating 
-                                      ? "bg-white text-zinc-400 border border-zinc-100 shadow-none" 
-                                      : "bg-zinc-900 hover:bg-zinc-800 text-white"
-                                  )}
-                                  onClick={handleGenerate}
-                                  disabled={generating}
-                                >
-                                  {generating ? (
-                                    <Loader2 className="w-5 h-5 animate-spin" />
-                                  ) : (
-                                    <Sparkles className="w-5 h-5" />
-                                  )}
-                                  <span className="tracking-wider">
-                                    {generating ? typeConfig.generatingText : typeConfig.generateBtnText}
-                                  </span>
-                                </Button>
-                              </div>
-
-                              {generating && (
-                                <div className="w-full max-w-sm mt-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
-                                  <div className="flex justify-between items-center mb-4 px-1">
-                                    <div className="flex items-center gap-2">
-                                      <div className="w-1.5 h-1.5 bg-zinc-900 rounded-full animate-ping" />
-                                      <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">{progress.message}</span>
+                                // 没有手稿，显示生成按钮
+                                return (
+                                  <>
+                                    <div className="relative group">
+                                      {/* 按钮背后的柔光层 */}
+                                      <div className="absolute -inset-1 bg-zinc-900 rounded blur-md opacity-20 group-hover:opacity-30 transition duration-500" />
+                                      
+                                      <Button
+                                        className={cn(
+                                          "relative min-w-[320px] h-14 text-base font-bold rounded transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-3 shadow-lg shadow-zinc-200",
+                                          generating 
+                                            ? "bg-white text-zinc-400 border border-zinc-100 shadow-none" 
+                                            : "bg-zinc-900 hover:bg-zinc-800 text-white"
+                                        )}
+                                        onClick={handleGenerate}
+                                        disabled={generating}
+                                      >
+                                        {generating ? (
+                                          <Loader2 className="w-5 h-5 animate-spin" />
+                                        ) : (
+                                          <Sparkles className="w-5 h-5" />
+                                        )}
+                                        <span className="tracking-wider">
+                                          {generating ? typeConfig.generatingText : typeConfig.generateBtnText}
+                                        </span>
+                                      </Button>
                                     </div>
-                                    <span className="text-xl font-bold text-zinc-900 tabular-nums tracking-tighter">{progress.percent}%</span>
-                                  </div>
-                                  <div className="h-1 bg-zinc-100 rounded-full overflow-hidden">
-                                    <div 
-                                      className="h-full bg-zinc-900 transition-all duration-1000 ease-out" 
-                                      style={{ width: `${progress.percent}%` }}
-                                    />
-                                  </div>
-                                </div>
-                              )}
-                              
-                              {!generating && (
-                                <div className="mt-8 flex items-center gap-2 text-zinc-400">
-                                  <CheckCircle className="w-3.5 h-3.5" />
-                                  <span className="text-[10px] font-bold uppercase tracking-widest">已通过安全与隐私加密校验</span>
-                                </div>
-                              )}
+
+                                    {generating && (
+                                      <div className="w-full max-w-sm mt-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                                        <div className="flex justify-between items-center mb-4 px-1">
+                                          <div className="flex items-center gap-2">
+                                            <div className="w-1.5 h-1.5 bg-zinc-900 rounded-full animate-ping" />
+                                            <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">{progress.message}</span>
+                                          </div>
+                                          <span className="text-xl font-bold text-zinc-900 tabular-nums tracking-tighter">{progress.percent}%</span>
+                                        </div>
+                                        <div className="h-1 bg-zinc-100 rounded-full overflow-hidden">
+                                          <div 
+                                            className="h-full bg-zinc-900 transition-all duration-1000 ease-out" 
+                                            style={{ width: `${progress.percent}%` }}
+                                          />
+                                        </div>
+                                      </div>
+                                    )}
+                                    
+                                    {!generating && (
+                                      <div className="mt-8 flex items-center gap-2 text-zinc-400">
+                                        <CheckCircle className="w-3.5 h-3.5" />
+                                        <span className="text-[10px] font-bold uppercase tracking-widest">已通过安全与隐私加密校验</span>
+                                      </div>
+                                    )}
+                                  </>
+                                );
+                              })()}
                             </div>
                           </div>
                         </div>

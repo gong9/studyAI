@@ -362,8 +362,8 @@ model TeachingManuscript {
   // 预加载音频缓存（JSON 格式：{ "text_hash": "base64_audio", ... }）
   cachedAudio     String?
   
-  // 关联课程
-  course          Course?
+  // 关联课程（支持多语言版本）
+  courses         Course[]
   
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
@@ -376,8 +376,10 @@ model TeachingManuscript {
 // 课程（可重放的讲解录制）
 model Course {
   id              String        @id @default(uuid())
-  manuscriptId    String        @unique
+  manuscriptId    String                             // 允许多个语言版本，不再 @unique
   manuscript      TeachingManuscript @relation(fields: [manuscriptId], references: [id], onDelete: Cascade)
+  
+  language        String        @default("zh")       // 语言标识: "zh" | "en"
   
   title           String                             // 课程标题
   description     String?                            // 课程描述
@@ -400,7 +402,9 @@ model Course {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   
+  @@unique([manuscriptId, language])                 // 联合唯一：一个手稿的每种语言只能有一个课程
   @@index([status])
+  @@index([language])
 }
 
 // 课程分享链接

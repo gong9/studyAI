@@ -178,11 +178,33 @@ async function mergeAudios(
 }
 
 // 字幕自动换行：每行最多 maxChars 个字符，直接按字符数切分
-function wrapSubtitleText(text: string, maxChars: number = 80): string {
+function wrapSubtitleText(text: string, isEnglish: boolean = false): string {
+  // 英文需要更长的行长度
+  const maxChars = isEnglish ? 120 : 80;
+  
   if (text.length <= maxChars) return text;
   
-  const lines: string[] = [];
+  // 英文按单词边界换行
+  if (isEnglish) {
+    const words = text.split(' ');
+    const lines: string[] = [];
+    let currentLine = '';
+    
+    for (const word of words) {
+      if (currentLine.length + word.length + 1 <= maxChars) {
+        currentLine = currentLine ? `${currentLine} ${word}` : word;
+      } else {
+        if (currentLine) lines.push(currentLine);
+        currentLine = word;
+      }
+    }
+    if (currentLine) lines.push(currentLine);
+    
+    return lines.join('\n');
+  }
   
+  // 中文按字符换行
+  const lines: string[] = [];
   for (let i = 0; i < text.length; i += maxChars) {
     lines.push(text.slice(i, i + maxChars));
   }
@@ -194,10 +216,12 @@ function wrapSubtitleText(text: string, maxChars: number = 80): string {
 async function generateSubtitles(
   frames: CourseFrame[],
   audioDurations: Map<number, number>,
-  tempDir: string
+  tempDir: string,
+  language: string = 'zh'
 ): Promise<string> {
   const srtPath = path.join(tempDir, 'subtitles.srt');
   const subtitles: string[] = [];
+  const isEnglish = language === 'en';
   
   let currentTime = 0; // 当前时间（毫秒）
   let subtitleIndex = 1;
@@ -217,8 +241,8 @@ async function generateSubtitles(
         return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')},${milliseconds.toString().padStart(3, '0')}`;
       };
       
-      // 自动换行处理
-      const wrappedText = wrapSubtitleText(frame.text);
+      // 自动换行处理（根据语言调整）
+      const wrappedText = wrapSubtitleText(frame.text, isEnglish);
       
       subtitles.push(`${subtitleIndex}`);
       subtitles.push(`${formatTime(startTime)} --> ${formatTime(endTime)}`);
@@ -377,10 +401,14 @@ async function generateVideo(
   console.log('[Export] 合并视频、音频和字幕...');
   const finalVideoPath = path.join(tempDir, 'final.mp4');
   
-  // 字幕样式
+  // 字幕样式 - 根据语言调整
   const escapedSubtitlePath = subtitlePath.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'");
-  // 字幕左右边距 200 像素，限制字幕宽度，避免超出屏幕
-  const subtitleFilter = `subtitles='${escapedSubtitlePath}':force_style='FontName=PingFang SC,FontSize=14,PrimaryColour=&HFFFFFF,BackColour=&H80404040,BorderStyle=4,Outline=0,Shadow=0,MarginV=30,MarginL=200,MarginR=200,Alignment=2'`;
+  // 英文需要更小的边距（更宽的字幕区域）
+  const isEnglish = language === 'en';
+  const fontName = isEnglish ? 'Arial' : 'PingFang SC';
+  const fontSize = isEnglish ? 12 : 14;
+  const marginLR = isEnglish ? 50 : 200;  // 英文边距更小
+  const subtitleFilter = `subtitles='${escapedSubtitlePath}':force_style='FontName=${fontName},FontSize=${fontSize},PrimaryColour=&HFFFFFF,BackColour=&H80404040,BorderStyle=4,Outline=0,Shadow=0,MarginV=30,MarginL=${marginLR},MarginR=${marginLR},Alignment=2'`;
   
   await new Promise<void>((resolve, reject) => {
     const cmd = ffmpeg()
@@ -464,8 +492,9 @@ export async function POST(
     const slides: string[] = JSON.parse(course.slides);
     const frames: CourseFrame[] = JSON.parse(course.frames);
     const audioData: { [key: number]: string } = JSON.parse(course.audioData);
+    const language = course.language || 'zh';
 
-    console.log(`[Export] 数据: ${slides.length} 页, ${frames.length} 帧, ${Object.keys(audioData).length} 音频`);
+    console.log(`[Export] 数据: ${slides.length} 页, ${frames.length} 帧, ${Object.keys(audioData).length} 音频, 语言: ${language}`);
 
     // 检测 slides 格式：base64 图片还是 Markdown
     const isBase64Image = slides.length > 0 && 
@@ -497,7 +526,7 @@ export async function POST(
 
     // 生成字幕文件
     console.log('[Export] 生成字幕...');
-    const subtitlePath = await generateSubtitles(frames, audioDurations, tempDir);
+    const subtitlePath = await generateSubtitles(frames, audioDurations, tempDir, language);
 
     // 生成视频（包含字幕）
     console.log('[Export] 生成视频...');

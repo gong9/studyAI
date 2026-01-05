@@ -12,9 +12,15 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { 
-  ArrowLeft, Loader2, RefreshCw, AlertCircle, Film, Music, Volume2, Download, CheckCircle
+  ArrowLeft, Loader2, RefreshCw, AlertCircle, Film, Music, Volume2, Download, CheckCircle, Globe, ChevronDown, ExternalLink
 } from 'lucide-react';
 import { MusicSelectorModal } from '@/components/teaching/MusicSelectorModal';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import type { BackgroundMusicConfig } from '@/lib/teaching/music/types';
 
 // Remotion Studio 服务地址（可通过环境变量配置）
@@ -47,6 +53,14 @@ export default function CourseEditorPage() {
   const [exporting, setExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState<{ percent: number; message: string } | null>(null);
   const [exportComplete, setExportComplete] = useState(false);
+  
+  // 英文版状态
+  const [hasEnglishVersion, setHasEnglishVersion] = useState(false);
+  const [englishCourseId, setEnglishCourseId] = useState<string | null>(null);
+  const [creatingEnglish, setCreatingEnglish] = useState(false);
+  const [englishProgress, setEnglishProgress] = useState<{ percent: number; message: string } | null>(null);
+  const [exportingEnglish, setExportingEnglish] = useState(false);
+  const [englishExportProgress, setEnglishExportProgress] = useState<{ percent: number; message: string } | null>(null);
   
   // 检查 Remotion Studio 服务状态
   const checkStudioStatus = useCallback(async () => {
@@ -101,6 +115,158 @@ export default function CourseEditorPage() {
     }
   }, [courseId]);
 
+  // 检查是否有英文版
+  const checkEnglishVersion = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/teaching/course/${courseId}/translate`);
+      if (res.ok) {
+        const data = await res.json();
+        setHasEnglishVersion(data.hasEnglishVersion);
+        if (data.englishCourse) {
+          setEnglishCourseId(data.englishCourse.id);
+        }
+      }
+    } catch (err) {
+      console.error('检查英文版失败:', err);
+    }
+  }, [courseId]);
+
+  // 创建英文版
+  const handleCreateEnglishVersion = async () => {
+    if (creatingEnglish || hasEnglishVersion) return;
+    
+    setCreatingEnglish(true);
+    setEnglishProgress({ percent: 0, message: '准备翻译...' });
+    
+    try {
+      const response = await fetch(`/api/teaching/course/${courseId}/translate`, {
+        method: 'POST',
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || '创建失败');
+      }
+      
+      // 使用 SSE 获取进度
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          const text = decoder.decode(value);
+          const lines = text.split('\n').filter(line => line.startsWith('data: '));
+          
+          for (const line of lines) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.percent !== undefined) {
+                setEnglishProgress({ percent: data.percent, message: data.message || '' });
+              }
+              if (data.complete) {
+                setHasEnglishVersion(true);
+                setEnglishCourseId(data.courseId);
+                setEnglishProgress({ percent: 100, message: '英文版创建完成！' });
+              }
+              if (data.error) {
+                throw new Error(data.error);
+              }
+            } catch (e: any) {
+              if (e.message && !e.message.includes('JSON')) {
+                throw e;
+              }
+            }
+          }
+        }
+      }
+    } catch (error: any) {
+      console.error('创建英文版失败:', error);
+      setEnglishProgress({ percent: 0, message: `失败: ${error.message}` });
+    } finally {
+      setCreatingEnglish(false);
+    }
+  };
+
+  // 查看英文版
+  const handleViewEnglishVersion = () => {
+    if (englishCourseId) {
+      router.push(`/dashboard/teaching/${kbId}/course/${englishCourseId}`);
+    }
+  };
+
+  // 导出英文版视频
+  const handleExportEnglishVideo = async () => {
+    if (exportingEnglish || !englishCourseId) return;
+    
+    setExportingEnglish(true);
+    setEnglishExportProgress({ percent: 0, message: '准备导出英文版...' });
+    
+    try {
+      // 先准备英文版课程数据
+      await fetch('/api/remotion/prepare-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ courseId: englishCourseId }),
+      });
+
+      // 调用导出 API
+      const response = await fetch('/api/remotion/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ courseId: englishCourseId }),
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || '导出失败');
+      }
+      
+      // 使用 SSE 获取进度
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          const text = decoder.decode(value);
+          const lines = text.split('\n').filter(line => line.startsWith('data: '));
+          
+          for (const line of lines) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.percent !== undefined) {
+                setEnglishExportProgress({ percent: data.percent, message: data.message || '' });
+              }
+              if (data.complete) {
+                setEnglishExportProgress({ percent: 100, message: '英文版导出完成！' });
+                
+                // 下载视频
+                if (data.downloadUrl) {
+                  const a = document.createElement('a');
+                  a.href = data.downloadUrl;
+                  a.download = `${courseInfo?.title || 'course'}_English.mp4`;
+                  a.click();
+                }
+              }
+            } catch (e) {
+              // 忽略解析错误
+            }
+          }
+        }
+      }
+    } catch (error: any) {
+      console.error('Export English failed:', error);
+      setEnglishExportProgress({ percent: 0, message: `失败: ${error.message}` });
+    } finally {
+      setExportingEnglish(false);
+    }
+  };
+
   // 处理音乐选择
   const handleMusicSelect = async (config: BackgroundMusicConfig) => {
     setBackgroundMusic(config);
@@ -139,6 +305,7 @@ export default function CourseEditorPage() {
       await Promise.all([
         checkStudioStatus(),
         prepareCourseData(),
+        checkEnglishVersion(),
       ]);
       setLoading(false);
     };
@@ -147,7 +314,7 @@ export default function CourseEditorPage() {
     
     const interval = setInterval(checkStudioStatus, 10000);
     return () => clearInterval(interval);
-  }, [checkStudioStatus, prepareCourseData]);
+  }, [checkStudioStatus, prepareCourseData, checkEnglishVersion]);
 
 
 
@@ -285,6 +452,72 @@ export default function CourseEditorPage() {
             </>
           )}
         </Button>
+        
+        {/* 英文版按钮 */}
+        {hasEnglishVersion ? (
+          // 已有英文版：显示下拉菜单
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={exportingEnglish}
+                className="border-green-500/50 text-green-400 hover:bg-green-500/10"
+              >
+                {exportingEnglish ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    {englishExportProgress?.percent || 0}%
+                  </>
+                ) : (
+                  <>
+                    <Globe className="h-4 w-4 mr-2" />
+                    英文版
+                    <ChevronDown className="h-3 w-3 ml-1" />
+                  </>
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="bg-zinc-900 border-zinc-800">
+              <DropdownMenuItem 
+                onClick={handleViewEnglishVersion}
+                className="text-zinc-300 hover:text-white hover:bg-zinc-800 cursor-pointer"
+              >
+                <ExternalLink className="h-4 w-4 mr-2" />
+                查看英文版
+              </DropdownMenuItem>
+              <DropdownMenuItem 
+                onClick={handleExportEnglishVideo}
+                disabled={exportingEnglish}
+                className="text-zinc-300 hover:text-white hover:bg-zinc-800 cursor-pointer"
+              >
+                <Download className="h-4 w-4 mr-2" />
+                导出英文版视频
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          // 未创建英文版：显示创建按钮
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleCreateEnglishVersion}
+            disabled={creatingEnglish || !courseInfo}
+            className="border-blue-500/50 text-blue-400 hover:bg-blue-500/10"
+          >
+            {creatingEnglish ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                {englishProgress?.percent || 0}%
+              </>
+            ) : (
+              <>
+                <Globe className="h-4 w-4 mr-2" />
+                生成英文版
+              </>
+            )}
+          </Button>
+        )}
         
         {/* 导出视频按钮 */}
         <Button
