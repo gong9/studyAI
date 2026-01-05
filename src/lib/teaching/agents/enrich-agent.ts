@@ -3,12 +3,11 @@
  * 
  * 职责：
  * - 语言润色，使表达更自然
- * - 补充绘图/动效意图标记（> diagram:, > animation:）
  * - 不改变核心教学内容
  */
 
 import { OpenAI } from '@llamaindex/openai';
-import { configureLLM } from '../../llm/config';
+import { configureLLM, getSmartModelConfig } from '../../llm/config';
 
 // ==================== 类型定义 ====================
 
@@ -37,16 +36,17 @@ const ENRICH_PROMPT = `你是一位专业的 PPT 课件编辑。请对以下教�
 
 ## 重要：PPT 分页排版规则
 
-### ⚠️ 总页数限制
-- **整个 PPT 控制在 8-12 页**，不要超过 12 页
-- 相关内容可以合并，提高每页信息密度
-- 优先保证核心内容完整
+### ⚠️ 内容筛选原则（最重要！）
+- **重点内容必须保留**：核心概念、关键定义、重要结论、例题解答等必须放入 PPT
+- **可以适当精简**：口语化的过渡语、重复的解释可以省略
+- **保留知识结构**：每个知识点的标题和核心要点都要有
+- 页数根据内容多少自动决定，不做硬性限制
 
-### ⚠️ 每页内容限制（必须严格遵守）
-- 每页最多 **1 个主标题 + 3-5 个要点**
-- 如果有图片，每页最多 **1 张图片 + 2-3 行说明文字**
-- 如果有练习题，每页最多 **1-2 道题目**
-- 内容过多时适当合并或精简，而非无限分页
+### ⚠️ 每页内容限制
+- 每页 **1 个主标题 + 若干要点**，内容适量即可
+- 如果一个知识点内容较多，可以分成多页
+- **禁止生成空页**：每页必须有实际内容，不要只有标题
+- **禁止连续使用 \`---\`**：两个分页符之间必须有内容
 
 ### 分页语法
 使用 \`---\` 作为分页符，每个 \`---\` 代表新的一页。
@@ -65,7 +65,7 @@ const ENRICH_PROMPT = `你是一位专业的 PPT 课件编辑。请对以下教�
 
 一次函数的形式：y = kx + b
 
-> visual: 一次函数图像示例
+其中 k 是斜率，b 是截距。
 
 ---
 
@@ -84,16 +84,14 @@ const ENRICH_PROMPT = `你是一位专业的 PPT 课件编辑。请对以下教�
 - 使教学语言更自然、简洁
 - 保持教师授课的口吻
 
-### 2. 补充视觉意图标记
-在需要配图的地方添加标记：
-\`\`\`
-> visual: 出租车计价示意图
-> diagram: 坐标系中 y = 2x + 1 的图像
-\`\`\`
-
-### 3. 不要改动的内容
+### 2. 不要改动的内容
 - 核心教学概念
 - 例题和解答
+
+### 3. 不要引用图片
+- **不要说"这张图"、"请看图"、"如图所示"等**，PPT 中没有图片
+- **不要添加 \`> visual:\` 或 \`> diagram:\` 等图片标记**
+- **但要保持内容丰富**：用详细的文字描述来讲解概念，内容量不能减少
 
 ## 输出要求
 1. 直接输出润色、分页后的 Markdown
@@ -126,11 +124,14 @@ export async function enrichManuscript(input: EnrichInput): Promise<EnrichResult
   try {
     configureLLM();
 
+    // 使用更智能的模型（aihubmix GPT）进行润色分页
+    const smartConfig = getSmartModelConfig();
     const llm = new OpenAI({
-      model: process.env.OPENAI_MODEL || 'qwen-plus',
-      apiKey: process.env.OPENAI_API_KEY!,
-      baseURL: process.env.OPENAI_API_BASE || 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+      model: smartConfig.model,
+      apiKey: smartConfig.apiKey,
+      baseURL: smartConfig.baseURL,
     });
+    console.log('[EnrichAgent] Using smart model:', smartConfig.model);
 
     const commentsStr = input.reviewComments && input.reviewComments.length > 0
       ? input.reviewComments.map((c, i) => `${i + 1}. ${c}`).join('\n')

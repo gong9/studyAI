@@ -16,7 +16,8 @@
     "remotion:service": "bash scripts/start-remotion-service.sh",
     "remotion:service:start": "bash scripts/start-remotion-service.sh start",
     "remotion:service:stop": "bash scripts/start-remotion-service.sh stop",
-    "remotion:service:status": "bash scripts/start-remotion-service.sh status"
+    "remotion:service:status": "bash scripts/start-remotion-service.sh status",
+    "ffmpeg:render": "npx tsx scripts/ffmpeg-render.ts"
   },
   "dependencies": {
     "@aarkue/tiptap-math-extension": "^1.4.0",
@@ -66,6 +67,7 @@
     "pdf-lib": "^1.17.1",
     "pdf-parse": "^1.1.1",
     "pptxgenjs": "^4.0.1",
+    "puppeteer-core": "^24.34.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-force-graph-2d": "^1.29.0",

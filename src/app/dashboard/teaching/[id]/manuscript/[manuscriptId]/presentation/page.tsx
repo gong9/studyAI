@@ -1093,54 +1093,42 @@ export default function PresentationPage() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // 重新生成讲稿（使用正确的场景类型）
+  // 重新生成讲解稿和语音（不重新生成PPT）
   const handleRegenerate = async () => {
-    if (!confirm('确定要重新生成讲稿吗？这将覆盖现有内容（包括讲解稿和语音缓存），并使用正确的场景类型。')) {
+    if (!confirm('确定要重新生成讲解稿和语音吗？这将覆盖现有的讲解稿和语音缓存，但不会影响PPT课件。')) {
       return;
     }
     
     setIsRegenerating(true);
     try {
-      // 0. 先清除旧的讲解稿和音频缓存
-      await fetch(`/api/teaching/manuscript/${manuscriptId}/clear-cache`, {
+      // 只清除讲解稿和音频缓存，保留PPT
+      const clearRes = await fetch(`/api/teaching/manuscript/${manuscriptId}/clear-audio-cache`, {
         method: 'POST',
       });
       
-      // 1. 调用 draft API 重新生成讲稿
-      const draftRes = await fetch('/api/teaching/manuscript/draft', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ manuscriptId }),
-      });
-      
-      if (!draftRes.ok) {
-        const err = await draftRes.json();
-        throw new Error(err.error || '重新生成讲稿失败');
+      if (!clearRes.ok) {
+        console.warn('[Presentation] Clear audio cache failed, continuing...');
       }
       
-      // 2. 调用 enrich API 润色
-      const enrichRes = await fetch(`/api/teaching/manuscript/${manuscriptId}/enrich`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ force: true }),
-      });
-      
-      if (!enrichRes.ok) {
-        console.warn('[Presentation] Enrich failed, continuing...');
+      // 如果已有发布的课程，重新发布以同步更新
+      if (publishedCourseId) {
+        console.log('[Presentation] Re-publishing course to sync updates...');
+        const publishRes = await fetch(`/api/teaching/manuscript/${manuscriptId}/publish`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ force: true }),
+        });
+        
+        if (publishRes.ok) {
+          const data = await publishRes.json();
+          setPublishedCourseId(data.courseId);
+          console.log('[Presentation] Course re-published:', data.courseId);
+        } else {
+          console.warn('[Presentation] Re-publish failed, continuing...');
+        }
       }
       
-      // 3. 调用 render API 重新生成课件
-      const renderRes = await fetch(`/api/teaching/manuscript/${manuscriptId}/render`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ force: true }),
-      });
-      
-      if (!renderRes.ok) {
-        console.warn('[Presentation] Render failed, continuing...');
-      }
-      
-      // 4. 刷新页面数据
+      // 刷新页面数据
       window.location.reload();
     } catch (error: any) {
       console.error('[Presentation] Regenerate error:', error);

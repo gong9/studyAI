@@ -148,3 +148,37 @@ export function getVisionModel(): OpenAI {
   });
 }
 
+/**
+ * PPT 智能生成模型配置
+ * 使用 aihubmix 的 GPT 模型，更智能
+ */
+export interface SmartModelConfig {
+  apiKey: string;
+  baseURL: string;
+  model: string;
+}
+
+/**
+ * 获取 PPT 智能生成模型配置
+ * 用于手稿生成、教学规划等需要更智能模型的场景
+ */
+export function getSmartModelConfig(): SmartModelConfig {
+  return {
+    apiKey: process.env.AIHUBMIX_API_KEY || process.env.OPENAI_API_KEY || '',
+    baseURL: process.env.AIHUBMIX_BASE_URL || 'https://aihubmix.com/v1',
+    model: process.env.SMART_MODEL || 'gpt-4o',
+  };
+}
+
+/**
+ * 获取 PPT 智能生成 OpenAI 实例
+ */
+export function getSmartModel(): OpenAI {
+  const config = getSmartModelConfig();
+  return new OpenAI({
+    apiKey: config.apiKey,
+    model: config.model,
+    baseURL: config.baseURL,
+  });
+}
+

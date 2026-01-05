@@ -123,7 +123,8 @@ const SubtitleRenderer: React.FC<{ text: string }> = ({ text }) => {
           backdropFilter: 'blur(8px)',
           padding: '16px 32px',
           borderRadius: 12,
-          maxWidth: '80%',
+          maxWidth: '85%',
+          boxSizing: 'border-box',
         }}
       >
         <p
@@ -134,6 +135,9 @@ const SubtitleRenderer: React.FC<{ text: string }> = ({ text }) => {
             textAlign: 'center',
             margin: 0,
             fontFamily: 'Inter, PingFang SC, system-ui, sans-serif',
+            wordBreak: 'break-word',
+            overflowWrap: 'break-word',
+            whiteSpace: 'pre-wrap',
           }}
         >
           {text}

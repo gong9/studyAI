@@ -58,6 +58,8 @@ lightrag-service/lightrag-data/
 *.webm
 /public/audio/bgm/*.mp3
 /public/video/
+/public/exports/
+/out/exports/
 
 # Keep the music library JSON (configuration)
 !/public/audio/bgm/music-library.json

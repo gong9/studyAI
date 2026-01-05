@@ -240,7 +240,7 @@ ${currentSlide.elements.map(el => `- [${el.id}] (${el.type}): ${el.content}`).jo
     const response = await client.chat.completions.create({
       model: 'qwen-turbo',
       messages: [
-        { role: 'system', content: LECTURE_PROMPT },
+        { role: 'system', content: getLecturePrompt() },
         { role: 'user', content: slideContext },
       ],
       response_format: { type: 'json_object' },
@@ -295,7 +295,7 @@ function generateFallbackActions(
         actions.push({ action: 'speak', text: element.content });
         break;
       case 'image':
-        actions.push({ action: 'speak', text: `请看这张图：${element.content}` });
+        // 跳过图片元素，因为系统不支持生成图片
         break;
       case 'formula':
         actions.push({ action: 'speak', text: `这里有一个公式，${element.content}` });
@@ -416,7 +416,8 @@ ${config.style}
 - 受众是：${config.audience}
 - 每页的讲解内容要有深度，不是简单复述 PPT
 - 讲解时长要合适，每页大约 30-60 秒的讲解内容
-- 最后一页的结束语：${config.closingWords}`;
+- 最后一页的结束语：${config.closingWords}
+- **不要引用图片**：不要说"这张图"、"请看这张图"、"如图所示"等。但讲解内容要丰富详细，用语言把概念讲透彻`;
 }
 
 // 进度回调类型
@@ -473,7 +474,7 @@ ${slidesContext}
     onProgress?.({ stage: 'generating', message: `正在为 ${slides.length} 页幻灯片生成讲解稿...`, percent: 30 });
     
     const response = await client.chat.completions.create({
-      model: 'qwen-plus', // 用更强的模型生成完整演讲稿
+      model: 'qwen-plus',
       messages: [
         { role: 'system', content: getFullScriptPrompt(sceneType) },
         { role: 'user', content: userMessage },

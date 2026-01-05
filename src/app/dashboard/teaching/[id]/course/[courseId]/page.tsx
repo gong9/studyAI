@@ -12,7 +12,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { 
-  ArrowLeft, Loader2, RefreshCw, AlertCircle, Film, Music, Volume2
+  ArrowLeft, Loader2, RefreshCw, AlertCircle, Film, Music, Volume2, Download, CheckCircle
 } from 'lucide-react';
 import { MusicSelectorModal } from '@/components/teaching/MusicSelectorModal';
 import type { BackgroundMusicConfig } from '@/lib/teaching/music/types';
@@ -42,6 +42,11 @@ export default function CourseEditorPage() {
   const [courseInfo, setCourseInfo] = useState<CourseInfo | null>(null);
   const [musicModalOpen, setMusicModalOpen] = useState(false);
   const [backgroundMusic, setBackgroundMusic] = useState<BackgroundMusicConfig | null>(null);
+  
+  // 导出状态
+  const [exporting, setExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState<{ percent: number; message: string } | null>(null);
+  const [exportComplete, setExportComplete] = useState(false);
   
   // 检查 Remotion Studio 服务状态
   const checkStudioStatus = useCallback(async () => {
@@ -154,6 +159,71 @@ export default function CourseEditorPage() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // 导出视频
+  const handleExportVideo = async () => {
+    if (exporting || !courseId) return;
+    
+    setExporting(true);
+    setExportProgress({ percent: 0, message: '准备导出...' });
+    setExportComplete(false);
+    
+    try {
+      // 调用 FFmpeg 渲染 API
+      const response = await fetch('/api/remotion/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ courseId }),
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || '导出失败');
+      }
+      
+      // 使用 SSE 获取进度
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          const text = decoder.decode(value);
+          const lines = text.split('\n').filter(line => line.startsWith('data: '));
+          
+          for (const line of lines) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.percent !== undefined) {
+                setExportProgress({ percent: data.percent, message: data.message || '' });
+              }
+              if (data.complete) {
+                setExportComplete(true);
+                setExportProgress({ percent: 100, message: '导出完成！' });
+                
+                // 下载视频
+                if (data.downloadUrl) {
+                  const a = document.createElement('a');
+                  a.href = data.downloadUrl;
+                  a.download = `${courseInfo?.title || 'course'}.mp4`;
+                  a.click();
+                }
+              }
+            } catch (e) {
+              // 忽略解析错误
+            }
+          }
+        }
+      }
+    } catch (error: any) {
+      console.error('Export failed:', error);
+      setExportProgress({ percent: 0, message: `失败: ${error.message}` });
+    } finally {
+      setExporting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
@@ -212,6 +282,31 @@ export default function CourseEditorPage() {
             <>
               <Music className="h-4 w-4 mr-2" />
               添加音乐
+            </>
+          )}
+        </Button>
+        
+        {/* 导出视频按钮 */}
+        <Button
+          size="sm"
+          onClick={handleExportVideo}
+          disabled={exporting || !courseInfo}
+          className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white border-0"
+        >
+          {exporting ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              {exportProgress?.percent || 0}%
+            </>
+          ) : exportComplete ? (
+            <>
+              <CheckCircle className="h-4 w-4 mr-2" />
+              已完成
+            </>
+          ) : (
+            <>
+              <Download className="h-4 w-4 mr-2" />
+              导出视频
             </>
           )}
         </Button>

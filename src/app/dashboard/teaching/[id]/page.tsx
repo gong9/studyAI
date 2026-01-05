@@ -8,7 +8,7 @@ import {
   ArrowLeft, Upload, FileText, ChevronRight, ChevronDown, 
   Sparkles, Loader2, CheckCircle, 
   BookOpen, ListTree, Play, Eye, Plus, LayoutGrid, Clock,
-  Target, Book, Settings2, Zap, Cpu, FileCheck, Scale, X, Network, Edit3
+  Target, Book, Settings2, Zap, Cpu, FileCheck, Scale, X, Network, Edit3, ClipboardPaste
 } from 'lucide-react';
 // BookUnderstandingPanel 已简化，使用左侧智能扫描按钮
 import BookKnowledgeGraph from '@/components/teaching/BookKnowledgeGraph';
@@ -153,6 +153,12 @@ export default function TeachingDetailPage() {
   
   // 大纲调整弹窗
   const [showOutlineAdjust, setShowOutlineAdjust] = useState(false);
+  
+  // 粘贴手稿弹窗
+  const [showPasteModal, setShowPasteModal] = useState(false);
+  const [pasteTitle, setPasteTitle] = useState('');
+  const [pasteContent, setPasteContent] = useState('');
+  const [pasting, setPasting] = useState(false);
   
   // 章节大小检查状态
   const [chapterSizeInfo, setChapterSizeInfo] = useState<{
@@ -399,6 +405,50 @@ export default function TeachingDetailPage() {
       }
     } catch (error) {
       console.error('创建章节失败:', error);
+    }
+  };
+
+  // 处理粘贴手稿
+  const handlePasteSubmit = async () => {
+    if (!pasteContent.trim()) {
+      alert('请输入内容');
+      return;
+    }
+
+    setPasting(true);
+    try {
+      const title = pasteTitle.trim() || `手稿_${new Date().toLocaleDateString()}`;
+      const res = await fetch('/api/documents/paste', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          knowledgeBaseId: kbId,
+          title,
+          content: pasteContent,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || '保存失败');
+      }
+      const doc = await res.json();
+      
+      // 后台处理索引
+      processDocumentIndex(doc.id);
+      
+      // 刷新文档列表
+      await fetchDocuments();
+      
+      // 关闭弹窗并清空
+      setShowPasteModal(false);
+      setPasteTitle('');
+      setPasteContent('');
+    } catch (error: any) {
+      console.error('保存失败:', error);
+      alert(error.message || '保存失败');
+    } finally {
+      setPasting(false);
     }
   };
 
@@ -746,24 +796,34 @@ export default function TeachingDetailPage() {
                       <FileText className="w-4 h-4 text-zinc-600" />
                       {typeConfig.docLibTitle}
                     </h3>
-                    <label className={cn(
-                      "text-xs font-semibold cursor-pointer flex items-center gap-1 px-2 py-1 rounded border transition-colors",
-                      // book 模式已有文档时禁用上传
-                      kb?.sourceMode === 'book' && documents.length > 0
-                        ? "text-zinc-400 bg-zinc-50 border-zinc-100 cursor-not-allowed"
-                        : "text-zinc-700 hover:text-zinc-900 bg-zinc-100 border-zinc-200 hover:bg-zinc-200"
-                    )}>
-                      <Plus className="w-3.5 h-3.5" />
-                      {kb?.sourceMode === 'book' && documents.length > 0 ? '已上传书籍' : typeConfig.addDocText}
-                      <input 
-                        type="file" 
-                        className="hidden" 
-                        accept=".pdf,.docx,.txt" 
-                        onChange={handleFileUpload} 
-                        disabled={uploading || (kb?.sourceMode === 'book' && documents.length > 0)}
-                        multiple={kb?.sourceMode !== 'book'}
-                      />
-                    </label>
+                    <div className="flex items-center gap-1.5">
+                      {/* 粘贴文本按钮 */}
+                      <button
+                        onClick={() => setShowPasteModal(true)}
+                        className="text-xs font-semibold flex items-center gap-1 px-2 py-1 rounded border transition-colors text-zinc-700 hover:text-zinc-900 bg-zinc-100 border-zinc-200 hover:bg-zinc-200"
+                      >
+                        <ClipboardPaste className="w-3.5 h-3.5" />
+                        粘贴
+                      </button>
+                      {/* 上传文件按钮 */}
+                      <label className={cn(
+                        "text-xs font-semibold cursor-pointer flex items-center gap-1 px-2 py-1 rounded border transition-colors",
+                        kb?.sourceMode === 'book' && documents.length > 0
+                          ? "text-zinc-400 bg-zinc-50 border-zinc-100 cursor-not-allowed"
+                          : "text-zinc-700 hover:text-zinc-900 bg-zinc-100 border-zinc-200 hover:bg-zinc-200"
+                      )}>
+                        <Plus className="w-3.5 h-3.5" />
+                        {kb?.sourceMode === 'book' && documents.length > 0 ? '已上传' : '上传'}
+                        <input 
+                          type="file" 
+                          className="hidden" 
+                          accept=".pdf,.docx,.txt" 
+                          onChange={handleFileUpload} 
+                          disabled={uploading || (kb?.sourceMode === 'book' && documents.length > 0)}
+                          multiple={kb?.sourceMode !== 'book'}
+                        />
+                      </label>
+                    </div>
                   </div>
                   
                   <div className="space-y-2.5 max-h-[140px] overflow-y-auto custom-scrollbar pr-1">
@@ -914,10 +974,10 @@ export default function TeachingDetailPage() {
                 <div className="flex-1 overflow-y-auto bg-zinc-50/50 custom-scrollbar">
                   {activeTab === 'workbench' ? (
                     selectedChapter ? (
-                      <div className="max-w-4xl mx-auto py-16 px-10 h-full flex flex-col">
-                        <div className="bg-white rounded-xl border border-zinc-200 shadow-[0_10px_40px_rgba(0,0,0,0.04)] flex flex-col overflow-hidden transition-all duration-500 hover:shadow-[0_15px_50px_rgba(0,0,0,0.06)]">
+                      <div className="max-w-4xl mx-auto py-8 px-10 h-full overflow-auto">
+                        <div className="bg-white rounded-xl border border-zinc-200 shadow-[0_10px_40px_rgba(0,0,0,0.04)] transition-all duration-500 hover:shadow-[0_15px_50px_rgba(0,0,0,0.06)]">
                           
-                          <div className="p-12 flex flex-col flex-1">
+                          <div className="p-10">
                             {/* 顶部指示器 */}
                             <div className="flex items-center gap-3 mb-10">
                               <div className="px-2.5 py-0.5 bg-zinc-100 text-zinc-700 text-[11px] font-bold rounded border border-zinc-200 tracking-wider">
@@ -1205,6 +1265,93 @@ export default function TeachingDetailPage() {
           fetchChapters();
         }}
       />
+
+      {/* 粘贴手稿弹窗 */}
+      {showPasteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-[90vw] max-w-2xl max-h-[85vh] flex flex-col overflow-hidden">
+            {/* 弹窗头部 */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-100 bg-zinc-50/50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-xl flex items-center justify-center shadow-sm">
+                  <ClipboardPaste className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-zinc-900">粘贴手稿</h2>
+                  <p className="text-xs text-zinc-500 mt-0.5">直接粘贴文本内容</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowPasteModal(false);
+                  setPasteTitle('');
+                  setPasteContent('');
+                }}
+                className="h-8 w-8 flex items-center justify-center text-zinc-400 hover:text-zinc-900 rounded-lg hover:bg-zinc-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* 弹窗内容 */}
+            <div className="flex-1 p-6 overflow-auto space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-zinc-500 ml-1">标题（可选）</label>
+                <input
+                  type="text"
+                  value={pasteTitle}
+                  onChange={(e) => setPasteTitle(e.target.value)}
+                  placeholder="给这份手稿起个名字..."
+                  className="w-full h-10 px-4 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-400"
+                />
+              </div>
+              <div className="space-y-1.5 flex-1">
+                <label className="text-xs font-bold text-zinc-500 ml-1">内容</label>
+                <textarea
+                  value={pasteContent}
+                  onChange={(e) => setPasteContent(e.target.value)}
+                  placeholder="在这里粘贴你的手稿内容...
+
+支持直接粘贴：
+• 课程讲稿
+• 技术文档
+• 学习笔记
+• 会议记录
+• 任何文本内容"
+                  className="w-full h-[320px] px-4 py-3 border border-zinc-200 rounded-lg text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-400"
+                />
+              </div>
+            </div>
+
+            {/* 弹窗底部 */}
+            <div className="px-6 py-4 border-t border-zinc-100 bg-zinc-50/50 flex justify-end gap-3">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowPasteModal(false);
+                  setPasteTitle('');
+                  setPasteContent('');
+                }}
+              >
+                取消
+              </Button>
+              <Button
+                onClick={handlePasteSubmit}
+                disabled={pasting || !pasteContent.trim()}
+              >
+                {pasting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    保存中...
+                  </>
+                ) : (
+                  '保存手稿'
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

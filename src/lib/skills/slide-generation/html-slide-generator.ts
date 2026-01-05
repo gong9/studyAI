@@ -11,6 +11,8 @@ import OpenAI from 'openai';
 const client = new OpenAI({
   apiKey: process.env.BANANA_API_KEY,
   baseURL: process.env.BANANA_API_BASE || 'https://aihubmix.com/v1',
+  timeout: 120000, // 增加超时时间到 120 秒
+  maxRetries: 2,   // 自动重试 2 次
 });
 
 const MODEL = 'gemini-3-flash-preview';
@@ -47,7 +49,8 @@ interface ParsedSection {
 }
 
 function parseMarkdownContent(content: string): ParsedSection[] {
-  let sections = content.split(/\n---\n/);
+  // 支持多种分隔符格式：\n---\n, \n---（行尾）, ---\n（行首）
+  let sections = content.split(/\n-{3,}\n|\n-{3,}$|^-{3,}\n/);
   
   // 跳过 frontmatter（如果有的话）
   if (sections[0].trim().startsWith('---') || sections[0].includes('theme:')) {
@@ -56,15 +59,28 @@ function parseMarkdownContent(content: string): ParsedSection[] {
   
   return sections
     .map((section, index) => {
-      if (!section.trim()) return null;
+      const trimmed = section.trim();
       
-      const lines = section.trim().split('\n');
+      // 跳过空 section
+      if (!trimmed) return null;
+      
+      // 跳过只有标题没有实际内容的 section（内容太少）
+      const lines = trimmed.split('\n').filter(l => l.trim());
+      if (lines.length < 2) {
+        // 只有1行或更少，检查是否只是一个标题
+        const firstLine = lines[0] || '';
+        if (firstLine.startsWith('#') && lines.length === 1) {
+          console.log(`[SlideGeneration] 跳过空页: "${firstLine}"`);
+          return null;
+        }
+      }
+      
       let title = '';
       
       for (const line of lines) {
-        const trimmed = line.trim();
-        if ((trimmed.startsWith('# ') || trimmed.startsWith('## ')) && !title) {
-          title = trimmed.replace(/^#+\s*/, '');
+        const lineTrimmed = line.trim();
+        if ((lineTrimmed.startsWith('# ') || lineTrimmed.startsWith('## ')) && !title) {
+          title = lineTrimmed.replace(/^#+\s*/, '');
           break;
         }
       }
@@ -72,7 +88,7 @@ function parseMarkdownContent(content: string): ParsedSection[] {
       return {
         index,
         title: title || `第 ${index + 1} 页`,
-        content: section.trim(),
+        content: trimmed,
       };
     })
     .filter(Boolean) as ParsedSection[];
@@ -106,171 +122,175 @@ function getThemeFromKbType(kbType?: string): SlideTheme {
 
 const THEME_CONFIGS: Record<SlideTheme, ThemeConfig> = {
   tech: {
-    name: '科技风',
-    description: '深色背景，Cyan 强调色，适合技术培训',
+    name: '科技简洁',
+    description: '纯白背景，蓝色强调，阿里风格',
     designPrompt: `
 1. **视觉效果**：
-   - 深色渐变背景（从 #0f0f23 到 #1a1a3e）
-   - 科技感装饰元素（发光球、几何线条、网格）
-   - 现代字体（Inter, PingFang SC）
-   - 强调色：Cyan (#64ffda)，次要色：Pink (#f472b6)
-   - 代码块使用终端风格（深色背景 + 红黄绿圆点装饰）
+   - 纯白背景 (#ffffff)，无渐变
+   - 主色：蚂蚁蓝 #1677ff
+   - 字体：PingFang SC, -apple-system
+   - 大面积留白，内容简洁
+   - 代码块：浅灰背景 #f5f5f5，无装饰
 
 2. **氛围**：
-   - 现代、前沿、科技感
-   - 像科技公司的产品发布会
+   - 简洁、专业、大方
+   - 像阿里云、蚂蚁集团的产品文档
 `,
   },
   policy: {
-    name: '商务风',
-    description: '浅色背景，蓝色强调色，适合制度培训',
+    name: '商务简洁',
+    description: '纯白背景，蓝色强调，适合制度培训',
     designPrompt: `
 1. **视觉效果**：
-   - 干净的浅色背景（白色 #ffffff 或浅灰 #f8fafc）
-   - 专业的蓝色强调色（#2563eb 蓝色，#1e40af 深蓝）
-   - 简洁的几何装饰（线条、方块、渐变条）
-   - 商务字体（思源黑体、微软雅黑风格）
-   - 表格和列表使用清晰的边框和阴影
+   - 纯白背景 (#ffffff)
+   - 主色：蚂蚁蓝 #1677ff
+   - 标题：#1f1f1f，正文：#434343
+   - 表格：简洁边框 #f0f0f0
+   - 卡片：轻微阴影或细边框
 
 2. **氛围**：
    - 专业、正式、可信赖
-   - 像企业培训PPT、政府公告
-   - 重点内容用蓝色高亮框标注
+   - 重点内容用浅蓝背景 #e6f4ff 标注
 `,
   },
   legal: {
-    name: '庄重风',
-    description: '深灰背景，金色强调色，适合普法讲座',
+    name: '庄重简洁',
+    description: '浅灰背景，深蓝强调，适合正式场合',
     designPrompt: `
 1. **视觉效果**：
-   - 深灰色渐变背景（从 #1a1a2e 到 #16213e）
-   - 金色/铜色强调色（#d4af37 金色，#cd7f32 铜色）
-   - 庄重的装饰元素（天平图案、书本图案、法徽轮廓）
-   - 衬线字体风格，增加庄重感
-   - 引用法条时使用特殊的边框样式（左侧金色竖线）
+   - 极浅灰背景 (#fafafa)
+   - 主色：深蓝 #1e3a8a
+   - 辅助色：金色 #b45309（用于重点）
+   - 字体保持简洁，略带庄重
+   - 引用使用左侧深蓝竖线
 
 2. **氛围**：
-   - 庄重、权威、专业
-   - 像法院公告、法律讲座
-   - 法条引用使用古典卷轴风格装饰
+   - 庄重、权威、简洁
+   - 像正式的法律文书风格
 `,
   },
   dark: {
-    name: '深色主题',
-    description: '通用深色主题',
+    name: '深色简洁',
+    description: '深灰背景，白色文字',
     designPrompt: `
 1. **视觉效果**：
-   - 深色渐变背景（从 #0f0f23 到 #1a1a3e）
-   - 白色/浅色文字
-   - 现代装饰元素
-   - 强调色可自由选择
+   - 深灰背景 (#1f1f1f)，无渐变
+   - 白色文字 #ffffff
+   - 蓝色强调 #1677ff
+   - 保持简洁，不要装饰
 `,
   },
   light: {
-    name: '浅色主题',
-    description: '通用浅色主题',
+    name: '浅色简洁',
+    description: '阿里风格浅色主题',
     designPrompt: `
 1. **视觉效果**：
-   - 浅色/白色背景
-   - 深色文字
-   - 简洁装饰元素
-   - 强调色可自由选择
+   - 纯白背景 (#ffffff)
+   - 标题 #1f1f1f，正文 #434343
+   - 蓝色强调 #1677ff
+   - 大面积留白，极简设计
 `,
   },
   auto: {
     name: '自动选择',
-    description: 'AI 根据内容自动选择',
+    description: '默认使用阿里简洁风格',
     designPrompt: '',
   },
 };
 
 // ==================== AI 生成 HTML ====================
 
-// 智能风格系统提示 - 让 AI 根据内容自动判断最佳风格
-const SMART_SYSTEM_PROMPT = `你是一位顶级的网页设计师和前端工程师，擅长创建精美的演示文稿幻灯片。
+// 智能风格系统提示 - 阿里风格：简洁、大方、专业
+const SMART_SYSTEM_PROMPT = `你是一位资深的阿里巴巴/蚂蚁集团设计师，擅长创建简洁大方的商务演示文稿。
 
-你的任务是将给定的教学内容转换为一个精美的 HTML 幻灯片页面。
+**⚠️ 最重要的规则：只展示用户提供的内容，严禁添加任何装饰性文字！**
+- 禁止添加：公司名称（如"XX集团"、"XX公司"、"蚂蚁集团"）
+- 禁止添加：品牌标语、水印文字
+- 禁止添加："技术培训"、"课程介绍"等通用标题
+- 禁止添加：任何用户内容中没有的文字
 
-## 🎨 智能设计原则
+你的设计理念是：**少即是多，留白即是美**。
 
-**根据内容自动选择最佳设计风格！**
+## 🎯 核心设计原则
 
-请分析内容的主题、语气和目的，然后选择最合适的设计方案：
+### 1. 极简主义
+- **纯净背景**：纯白 (#ffffff) 或极浅灰 (#fafafa)，绝不使用渐变背景
+- **大面积留白**：内容区域只占页面 60-70%，四周留足空间
+- **克制装饰**：不要装饰性线条、发光效果、几何图案、网格背景
+- **禁止**：渐变色块、发光球、科技感线条、过多的边框阴影
 
-### 可选风格参考（不限于此）：
+### 2. 色彩体系
+- **主色**：专业蓝 #1677ff（用于标题强调、序号）
+- **辅助色**：
+  - 成功绿 #52c41a
+  - 警告橙 #faad14
+  - 错误红 #ff4d4f
+- **中性色**：
+  - 标题文字：#1f1f1f
+  - 正文文字：#434343
+  - 次要文字：#8c8c8c
+  - 分割线：#f0f0f0
+- **禁止使用**：紫色渐变、霓虹色、过于鲜艳的颜色组合
 
-1. **科技风** - 适合：编程、AI、数据、产品介绍
-   - 深色渐变背景（#0f0f23 → #1a1a3e）
-   - Cyan (#64ffda) / 紫色 (#a855f7) 强调色
-   - 几何线条、网格、发光装饰
+### 3. 字体规范
+- **中文字体**：PingFang SC, -apple-system, "Microsoft YaHei"
+- **英文/数字**：-apple-system, SF Pro Display
+- **标题**：28-36px，字重 600，颜色 #1f1f1f
+- **正文**：16-18px，字重 400，颜色 #434343，行高 1.7
+- **禁止**：使用 Inter、Roboto 等典型 AI 风格字体
 
-2. **商务风** - 适合：流程、制度、管理、培训
-   - 浅色/白色背景
-   - 蓝色 (#2563eb) 强调色
-   - 简洁专业、表格清晰
+### 4. 布局规范
+- **内边距**：左右 80px，上下 60px
+- **标题位置**：页面左上区域，左对齐
+- **内容区域**：标题下方，保持左对齐为主
+- **卡片间距**：24px
+- **禁止**：内容居中铺满、过于紧凑的排版
 
-3. **学术风** - 适合：公式、理论、研究、分析
-   - 米色/暖白背景
-   - 深棕/墨绿强调色
-   - 衬线字体感、引用样式
+### 5. 组件样式
+- **列表**：
+  - 使用简洁的圆点或数字序号
+  - 序号使用蓝色 #1677ff
+  - 每项之间留有舒适间距（16-20px）
+  
+- **卡片**：
+  - 白色背景 + 极细边框 (1px solid #f0f0f0)
+  - 或无边框 + 轻微阴影 (0 1px 2px rgba(0,0,0,0.03))
+  - 圆角 8px
+  - 内边距 24px
+  
+- **代码块**：
+  - 浅灰背景 #f5f5f5
+  - 深色文字 #1f1f1f
+  - 简洁无装饰，不要终端风格的圆点
+  
+- **高亮/强调**：
+  - 使用蓝色文字 #1677ff
+  - 或使用浅蓝背景 #e6f4ff + 蓝色边框
+  - 不要使用渐变或发光效果
 
-4. **活力风** - 适合：营销、创意、活动、年轻化内容
-   - 渐变彩色背景
-   - 橙色/粉色/黄色强调色
-   - 圆角、emoji、活泼装饰
+## ⚠️ 严格禁止的元素
 
-5. **庄重风** - 适合：法律、政策、历史、严肃话题
-   - 深灰/藏蓝背景
-   - 金色 (#d4af37) 强调色
-   - 经典装饰、权威感
+1. ❌ 深色/黑色背景
+2. ❌ 渐变背景（尤其是紫色渐变）
+3. ❌ 发光球、光晕效果
+4. ❌ 科技感线条、网格背景
+5. ❌ 过多的装饰性几何图形
+6. ❌ 霓虹色、Cyan、Pink 等强对比色
+7. ❌ 卡片堆叠过多阴影
+8. ❌ 过度的圆角（超过 12px）
+9. ❌ emoji 作为装饰
+10. ❌ 任何用户内容中没有的文字（如公司名称、品牌标语、水印）
+11. ❌ **图片占位符**：如果内容提到"图"、"架构图"、"示意图"、"流程图"等，直接省略，不要生成空白占位框或占位文字
 
-6. **简约风** - 适合：概念介绍、总结、问答
-   - 大面积留白
-   - 单一强调色
-   - 极简几何
+## 输出要求
 
-7. **故事风** - 适合：案例、叙事、人物介绍
-   - 图文混排
-   - 柔和的渐变
-   - 沉浸式布局
-
-**注意：你可以混合使用或创造新风格，关键是让设计与内容高度匹配！**
-
-## 通用布局要求
-
-1. **布局**：
-   - 全屏幻灯片（width: 100%, height: 100%）- 注意：使用 100% 而不是 100vh！
-   - 内容居中或左对齐，有足够的留白
-   - 标题醒目，层次分明
-   - 所有尺寸使用百分比或固定像素值，不要使用 vh 单位
-
-2. **元素样式**：
-   - 列表项：带图标或数字标记，逐条分明
-   - 代码块：带语法高亮风格（深色背景 + 终端装饰）
-   - 公式：居中显示，可以用 Unicode 数学符号
-   - 图片占位：使用渐变色块表示
-
-3. **动态效果**：
-   - ⚠️ 禁止使用 CSS 动画（animation、@keyframes、transition）！
-   - 动画由 Remotion 视频渲染器统一处理
-   - 只生成静态 HTML，元素保持最终位置
-
-## 输出格式
-
-只输出一个完整的 HTML 代码块，包含内联 CSS 样式。不要包含 \`\`\`html 标记，直接输出 HTML 代码。
-
-结构如下：
-<div class="slide" style="...">
-  <!-- 背景装饰 -->
-  <!-- 内容区域 -->
-</div>
-
-注意：
-- 不需要 <!DOCTYPE>、<html>、<head>、<body> 标签
-- 只输出幻灯片的 div 容器
-- 所有样式都内联或使用 <style> 标签
-- 确保代码完整可用
-- 发挥创意，让每页幻灯片都独一无二！`;
+- 尺寸：width: 100%, height: 100%（不用 vh 单位）
+- 只输出 <div class="slide" style="...">...</div>
+- 不要 <!DOCTYPE>、<html> 等标签
+- 禁止 CSS 动画（animation、keyframes、transition）
+- 直接输出 HTML，不要 \`\`\`html 标记
+- **严禁添加用户内容中没有的任何文字！只能展示用户提供的内容！**
+- **如果无法真正显示图片/图表，直接省略，不要生成任何占位符！**`;
 
 // 保留旧的固定主题构建函数（作为备用）
 function buildSystemPrompt(theme: SlideTheme): string {
@@ -298,7 +318,7 @@ ${themeConfig.designPrompt}
    - 列表项：带图标或数字标记，逐条分明
    - 代码块：带语法高亮风格
    - 公式：居中显示，可以用 Unicode 数学符号
-   - 图片占位：使用渐变色块表示
+   - 图片/图表：如果无法真正显示，直接省略，不要生成占位符
 
 3. **动态效果**：
    - ⚠️ 禁止使用 CSS 动画（animation、@keyframes、transition）！
@@ -334,16 +354,16 @@ async function generateHtmlSlide(
     : buildSystemPrompt(theme === 'auto' ? 'tech' : theme);
   
   const userPrompt = useSmartStyle
-    ? `请为以下教学内容生成一页精美的 HTML 幻灯片。
+    ? `请为以下教学内容生成一页简洁大方的 HTML 幻灯片。
 
 ## 页面信息
 - 页码：第 ${section.index + 1} 页，共 ${totalSlides} 页
-- 是否标题页：${section.index === 0 ? '是（需要更醒目的设计）' : '否'}
+- 是否标题页：${section.index === 0 ? '是（标题页需要更大气，但依然简洁）' : '否'}
 
 ## 内容
 ${section.content}
 
-**请根据内容特点，自动选择最合适的设计风格！**
+**请严格遵循阿里设计规范：纯白背景、大面积留白、蓝色强调、禁止装饰性元素！**
 请直接输出 HTML 代码，不要包含任何解释。`
     : `请为以下教学内容生成一页精美的 HTML 幻灯片。
 
@@ -416,14 +436,14 @@ export async function generateHtmlSlides(
       });
     } catch (error: any) {
       console.error(`[SlideGeneration] 第 ${section.index + 1} 页生成失败:`, error);
-      // 生成一个简单的错误页面
+      // 生成一个简单的错误页面（阿里风格）
       slides.push({
         index: section.index,
         title: section.title,
-        html: `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#0f0f23,#1a1a3e);color:#fff;font-family:Inter,sans-serif;">
+        html: `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#ffffff;color:#1f1f1f;font-family:PingFang SC,-apple-system,Microsoft YaHei,sans-serif;padding:60px 80px;box-sizing:border-box;">
           <div style="text-align:center;">
-            <h1 style="font-size:2.5rem;margin-bottom:1rem;">${section.title}</h1>
-            <p style="color:#8892b0;">内容生成中...</p>
+            <h1 style="font-size:32px;font-weight:600;margin-bottom:16px;color:#1f1f1f;">${section.title}</h1>
+            <p style="color:#8c8c8c;font-size:16px;">内容生成中...</p>
           </div>
         </div>`,
       });

@@ -177,6 +177,19 @@ async function mergeAudios(
   return { mergedPath: mergedAudioPath, audioDurations };
 }
 
+// 字幕自动换行：每行最多 maxChars 个字符，直接按字符数切分
+function wrapSubtitleText(text: string, maxChars: number = 80): string {
+  if (text.length <= maxChars) return text;
+  
+  const lines: string[] = [];
+  
+  for (let i = 0; i < text.length; i += maxChars) {
+    lines.push(text.slice(i, i + maxChars));
+  }
+  
+  return lines.join('\n');
+}
+
 // 生成 SRT 字幕文件
 async function generateSubtitles(
   frames: CourseFrame[],
@@ -204,9 +217,12 @@ async function generateSubtitles(
         return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')},${milliseconds.toString().padStart(3, '0')}`;
       };
       
+      // 自动换行处理
+      const wrappedText = wrapSubtitleText(frame.text);
+      
       subtitles.push(`${subtitleIndex}`);
       subtitles.push(`${formatTime(startTime)} --> ${formatTime(endTime)}`);
-      subtitles.push(frame.text);
+      subtitles.push(wrappedText);
       subtitles.push('');
       
       subtitleIndex++;
@@ -363,7 +379,8 @@ async function generateVideo(
   
   // 字幕样式
   const escapedSubtitlePath = subtitlePath.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'");
-  const subtitleFilter = `subtitles='${escapedSubtitlePath}':force_style='FontName=PingFang SC,FontSize=14,PrimaryColour=&HFFFFFF,BackColour=&H80404040,BorderStyle=4,Outline=0,Shadow=0,MarginV=30,MarginL=100,MarginR=100,Alignment=2'`;
+  // 字幕左右边距 200 像素，限制字幕宽度，避免超出屏幕
+  const subtitleFilter = `subtitles='${escapedSubtitlePath}':force_style='FontName=PingFang SC,FontSize=14,PrimaryColour=&HFFFFFF,BackColour=&H80404040,BorderStyle=4,Outline=0,Shadow=0,MarginV=30,MarginL=200,MarginR=200,Alignment=2'`;
   
   await new Promise<void>((resolve, reject) => {
     const cmd = ffmpeg()
