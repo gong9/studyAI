@@ -66,3 +66,6 @@ lightrag-service/lightrag-data/
 !/bgm-resources/music-library.json
 
 .claude
+# Skills 相关文件
+AGENTS.md
+*.skill
