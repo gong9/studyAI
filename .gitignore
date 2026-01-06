@@ -64,3 +64,5 @@ lightrag-service/lightrag-data/
 # Keep the music library JSON (configuration)
 !/public/audio/bgm/music-library.json
 !/bgm-resources/music-library.json
+
+.claude
