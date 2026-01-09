@@ -58,6 +58,23 @@
 | **直播模式** | 1对1私教互动，随时打断提问，AI 实时解答 |
 | **录播模式** | 一键生成高清演示视频，支持多平台分享 |
 
+### Deep Agents 智能编排
+
+```
+用户请求 → 任务规划 → 子Agent委托 → 输出验证 → 结果输出
+              │             │              │            │
+              ▼             ▼              ▼            ▼
+         write_todos    task()        validate     trace
+```
+
+| 能力 | 描述 |
+|------|------|
+| **任务规划** | 自动分解复杂任务为可执行步骤 (write_todos) |
+| **子 Agent 委托** | 专业子 Agent 处理特定任务 (Analyzer/Layout/Reviewer) |
+| **输出验证** | 自动验证 Agent 输出质量，失败时回退 |
+| **执行追踪** | 完整记录思考过程、决策、工具调用 |
+| **人机协作 (HITL)** | 关键节点可暂停等待人工审核 |
+
 ### RAG 智能问答
 
 ```
@@ -81,12 +98,12 @@
 ┌─────────────────────────────────────────────────────────────────────┐
 │                           Frontend (Next.js 14)                      │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐ │
-│  │  Dashboard  │  │   Editor    │  │  Presenter  │  │   Player    │ │
-│  │  (React 18) │  │  (Tiptap)   │  │  (Remotion) │  │  (Remotion) │ │
+│  │  Dashboard  │  │   Editor    │  │  Presenter  │  │TraceViewer  │ │
+│  │  (React 18) │  │  (Tiptap)   │  │  (Remotion) │  │  (Agent)    │ │
 │  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘ │
 └─────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
+                                   │
+                                   ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │                        API Layer (Next.js API Routes)                │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌────────┐│
@@ -94,25 +111,27 @@
 │  │   API    │  │   API    │  │   API    │  │   API    │  │  API   ││
 │  └──────────┘  └──────────┘  └──────────┘  └──────────┘  └────────┘│
 └─────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                          Core Services                               │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐ │
-│  │ LlamaIndex  │  │  LightRAG   │  │ Meilisearch │  │   Prisma    │ │
-│  │ (向量检索)  │  │ (知识图谱)  │  │ (关键词)    │  │   (ORM)     │ │
-│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘ │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐ │
-│  │  Remotion   │  │   Slidev    │  │  阿里云TTS  │  │   FFmpeg    │ │
-│  │ (视频渲染)  │  │   (PPT)     │  │  (语音合成) │  │  (音视频)   │ │
-│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘ │
-└─────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                           LLM Backend                                │
-│              Qwen / GPT / DeepSeek (OpenAI Compatible)               │
-└─────────────────────────────────────────────────────────────────────┘
+                                   │
+           ┌───────────────────────┼───────────────────────┐
+           ▼                       ▼                       ▼
+┌─────────────────────┐  ┌─────────────────────┐  ┌─────────────────────┐
+│  Python Agents      │  │   Core Services     │  │    LLM Backend      │
+│  (Deep Agents)      │  │                     │  │                     │
+│  ┌───────────────┐  │  │  ┌───────────────┐  │  │   Qwen / GPT /      │
+│  │ TeachingAgent │  │  │  │  LlamaIndex   │  │  │   DeepSeek          │
+│  │ (规划/委托)   │  │  │  │  (向量检索)   │  │  │   Gemini            │
+│  ├───────────────┤  │  │  ├───────────────┤  │  │   (OpenAI 兼容)     │
+│  │ SubAgents     │  │  │  │  Meilisearch  │  │  │                     │
+│  │ ├─ Analyzer   │  │  │  │  (关键词)     │  │  └─────────────────────┘
+│  │ ├─ Layout     │  │  │  ├───────────────┤  │
+│  │ ├─ Reviewer   │  │  │  │  LightRAG     │  │
+│  │ └─ Enricher   │  │  │  │  (知识图谱)   │  │
+│  ├───────────────┤  │  │  ├───────────────┤  │
+│  │ Trace/HITL    │  │  │  │  Remotion     │  │
+│  │ (追踪/人机)   │  │  │  │  FFmpeg       │  │
+│  └───────────────┘  │  │  │  (视频渲染)   │  │
+└─────────────────────┘  │  └───────────────┘  │
+                         └─────────────────────┘
 ```
 
 ## 快速开始
@@ -121,7 +140,8 @@
 
 - Node.js 18+
 - pnpm 8+
-- Python 3.10+ (LightRAG 服务)
+- Python 3.11+ (Deep Agents / LightRAG 服务)
+- uv (Python 包管理器，推荐)
 - FFmpeg (视频渲染)
 
 ### 1. 安装依赖
@@ -150,6 +170,10 @@ DASHSCOPE_API_KEY=sk-xxxxxxxxxxxxxxxxxxxx
 # Meilisearch (可选，用于关键词搜索)
 MEILISEARCH_HOST=http://localhost:7700
 MEILISEARCH_API_KEY=your-master-key
+
+# Deep Agents Python 微服务 (可选，用于增强讲稿生成)
+USE_DEEPAGENTS=true
+PYTHON_AGENT_URL=http://localhost:8000
 ```
 
 ### 3. 初始化数据库
@@ -172,8 +196,11 @@ npx prisma db push
 **方式二：单独启动**
 
 ```bash
-# 启动 Next.js
+# 启动 Next.js + Python Agents（推荐）
 pnpm dev
+
+# 或者只启动 Next.js
+pnpm dev:next
 
 # 启动 Meilisearch（可选）
 ./deploy-meilisearch.sh
@@ -184,6 +211,7 @@ cd lightrag-service && python main.py
 
 启动后访问：
 - **Web 应用**: http://localhost:3000
+- **Python Agents API**: http://localhost:8000/docs
 - **LightRAG API**: http://localhost:8005/health
 - **Meilisearch**: http://localhost:7700
 
@@ -236,6 +264,18 @@ src/
 │   └── templates/                # 幻灯片模板
 └── types/                        # TypeScript 类型定义
 
+python-agents/                    # Deep Agents Python 微服务
+├── src/
+│   ├── agents/                   # Agent 实现
+│   │   ├── teaching_agent.py     # 主 Agent（规划、委托、验证）
+│   │   ├── trace.py              # 执行追踪
+│   │   ├── hitl.py               # 人机协作（HITL）
+│   │   └── subagents/            # 子 Agent
+│   ├── prompts/                  # 提示词模板
+│   ├── routes/                   # FastAPI 路由
+│   └── tools/                    # 工具（RAG 客户端等）
+└── tests/                        # 测试
+
 lightrag-service/                 # LightRAG Python 服务
 ```
 
@@ -245,12 +285,13 @@ lightrag-service/                 # LightRAG Python 服务
 |------|------|
 | **前端** | Next.js 14, React 18, Tailwind CSS, Tiptap, Remotion Player |
 | **后端** | Next.js API Routes, Prisma, WebSocket |
+| **Agent** | Deep Agents (LangChain/LangGraph), FastAPI, 执行追踪, HITL |
 | **LLM** | LlamaIndex, OpenAI API (兼容 Qwen/DeepSeek) |
 | **检索** | Meilisearch (全文检索), LlamaIndex (向量检索) |
 | **知识图谱** | LightRAG |
-| **语音** | 阿里云 TTS, 声音克隆 |
+| **语音** | 阿里云 TTS, MiniMax TTS, 声音克隆 |
 | **视频** | Remotion, FFmpeg |
-| **PPT** | Slidev, PPTXGenJS |
+| **PPT** | Gemini HTML Slide Generator |
 | **数据库** | SQLite (Prisma ORM) |
 
 ## 许可证
