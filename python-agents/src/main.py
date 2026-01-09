@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
-from .routes import teaching, hitl, trace
+from .routes import teaching, hitl, trace, storytelling
 
 # 配置日志
 logging.basicConfig(
@@ -47,6 +47,7 @@ app.add_middleware(
 app.include_router(teaching.router, prefix="/api/v1/teaching", tags=["teaching"])
 app.include_router(hitl.router, prefix="/api/v1/hitl", tags=["hitl"])
 app.include_router(trace.router, prefix="/api/v1/trace", tags=["trace"])
+app.include_router(storytelling.router, tags=["storytelling"])
 
 
 @app.get("/health")
