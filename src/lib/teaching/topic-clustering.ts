@@ -66,7 +66,6 @@ export async function clusterDocumentsToTopics(
     }
 
     // 1. 为每个文档生成摘要和关键词
-    console.log(`[TopicClustering] Processing ${documents.length} documents...`);
     
     const docSummaries: string[] = [];
     for (const doc of documents) {
@@ -107,7 +106,6 @@ ${docSummaries.join('\n---\n')}
 
 请直接输出 JSON，不要有其他内容。`;
 
-    console.log(`[TopicClustering] Calling LLM for clustering...`);
     const response = await llm.complete({ prompt: clusterPrompt });
     const responseText = response.text.trim();
 
@@ -121,7 +119,6 @@ ${docSummaries.join('\n---\n')}
       clusteredData = JSON.parse(jsonStr);
     } catch (parseError) {
       console.error('[TopicClustering] Failed to parse LLM response:', parseError);
-      console.log('[TopicClustering] Raw response:', responseText);
       
       // 如果解析失败，创建一个默认分组
       return {
@@ -169,7 +166,6 @@ ${docSummaries.join('\n---\n')}
       });
     }
 
-    console.log(`[TopicClustering] Clustered into ${topics.length} topics`);
 
     return {
       success: true,

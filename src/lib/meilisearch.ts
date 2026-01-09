@@ -41,7 +41,6 @@ class MeilisearchService {
         apiKey,
       });
 
-      console.log(`[Meilisearch] Connected to ${host}`);
     }
     return this.client;
   }
@@ -67,7 +66,6 @@ class MeilisearchService {
       // 索引不存在，创建新索引
       const errorCode = error.code || error.cause?.code;
       if (errorCode === 'index_not_found') {
-        console.log(`[Meilisearch] Creating new index: ${indexName}`);
         
         const task = await client.createIndex(indexName, { primaryKey: 'id' });
         // 等待索引创建完成（轮询检查）
@@ -154,10 +152,8 @@ class MeilisearchService {
             throw new Error(`Meilisearch indexing failed: ${finishedTask.error?.message || 'Unknown error'}`);
           }
           
-          console.log(`[Meilisearch] Indexed batch ${batchNum}/${totalBatches} (${batch.length} docs)`);
         }
         
-        console.log(`[Meilisearch] Successfully indexed ${meiliDocs.length} chunks for KB ${knowledgeBaseId}`);
       }
     } catch (error) {
       console.error(`[Meilisearch] Failed to index documents:`, error);
@@ -176,7 +172,6 @@ class MeilisearchService {
       await client.deleteIndex(indexName);
       this.indexCache.delete(indexName);
       
-      console.log(`[Meilisearch] Deleted index: ${indexName}`);
     } catch (error) {
       console.error(`[Meilisearch] Failed to delete index:`, error);
     }
@@ -194,7 +189,6 @@ class MeilisearchService {
         filter: `documentId = "${documentId}"`,
       });
       
-      console.log(`[Meilisearch] Deleted document ${documentId} from KB ${knowledgeBaseId}`);
     } catch (error) {
       console.error(`[Meilisearch] Failed to delete document:`, error);
     }
@@ -224,7 +218,6 @@ class MeilisearchService {
         highlightPostTag: '**',
       });
 
-      console.log(`[Meilisearch] Search "${query}" found ${results.hits.length} results`);
 
       return results.hits.map((hit, rank) => ({
         id: hit.id,

@@ -70,7 +70,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '知识库不存在' }, { status: 404 });
     }
 
-    console.log(`[Analyze] Starting for KB: ${knowledgeBaseId}, chapters: ${chapterIds.length}`);
 
     // ========== 获取选中的章节 ==========
     const dbChapters = await prisma.teachingChapter.findMany({
@@ -116,7 +115,6 @@ export async function POST(request: NextRequest) {
     };
 
     // ========== 阶段2：知识图谱构建 ==========
-    console.log('[Analyze] Stage 2: Building knowledge graph...');
     
     const conceptResult = await extractConcepts({
       thesis,
@@ -146,10 +144,8 @@ export async function POST(request: NextRequest) {
     }
 
     const kgResult: KGBuildResult = weightResult.result;
-    console.log(`[Analyze] KG built: ${kgResult.graph.concepts.length} concepts, ${kgResult.graph.relations.length} relations`);
 
     // ========== 阶段3：精读填充 ==========
-    console.log('[Analyze] Stage 3: Enriching concepts...');
     
     const enrichResult = await enrichConcepts({
       knowledgeBaseId,
@@ -171,10 +167,8 @@ export async function POST(request: NextRequest) {
     }
 
     const deepReadResult: DeepReadResult = sectionResult.result;
-    console.log(`[Analyze] Enriched ${deepReadResult.enrichedConcepts.length} concepts`);
 
     // ========== 阶段4：输出呈现 ==========
-    console.log('[Analyze] Stage 4: Generating output...');
     
     // 构建简化的 DAG（用于课程地图）
     const simpleDAG = {
@@ -209,7 +203,6 @@ export async function POST(request: NextRequest) {
       courseMap: courseMapResult.courseMap!,
     };
 
-    console.log(`[Analyze] Completed: ${outputResult.manuscript.sections.length} sections`);
 
     // ========== 保存讲稿到数据库 ==========
     // 为每个选中的章节创建/更新讲稿记录

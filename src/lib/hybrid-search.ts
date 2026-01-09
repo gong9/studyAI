@@ -202,7 +202,6 @@ export function reciprocalRankFusion(
     .sort((a, b) => b.score - a.score);
 
   // 日志：RRF 配置信息
-  console.log(`[RRF] Config: k=${k}, vectorWeight=${vectorWeight}, keywordWeight=${keywordWeight}, bothBonus=${bothBonus}`);
 
   return results;
 }
@@ -296,24 +295,19 @@ export async function hybridSearch(
 
   const isCodebase = preset === 'code' || knowledgeBaseId.startsWith('codebase_');
 
-  console.log(`[HybridSearch] Preset: ${preset}, Query: "${query.substring(0, 50)}..."`);
-  console.log(`[HybridSearch] vectorTopK=${vectorTopK}, keywordLimit=${keywordLimit}, minScore=${minVectorScore}`);
 
   // 1. 执行向量搜索
   let vectorResults = await vectorSearch(index, query, vectorTopK, isCodebase);
-  console.log(`[HybridSearch] Vector search found ${vectorResults.length} results`);
   
   // 2. 用原始余弦相似度过滤低相关性结果（在 RRF 之前！）
   const beforeFilter = vectorResults.length;
   vectorResults = vectorResults.filter(r => {
     if (r.score < minVectorScore) {
-      console.log(`[HybridSearch] Filtered low score (${r.score.toFixed(3)} < ${minVectorScore}): ${r.content.substring(0, 40)}...`);
       return false;
     }
     return true;
   });
   if (vectorResults.length < beforeFilter) {
-    console.log(`[HybridSearch] Filtered out ${beforeFilter - vectorResults.length} low relevance results`);
   }
 
   // 3. 检查 Meilisearch 是否可用
@@ -323,21 +317,17 @@ export async function hybridSearch(
     
     if (meiliAvailable) {
       keywordResults = await meilisearchService.search(knowledgeBaseId, query, keywordLimit);
-      console.log(`[HybridSearch] Keyword search found ${keywordResults.length} results`);
     } else {
-      console.log(`[HybridSearch] Meilisearch not available, using vector only`);
     }
   }
 
   // 4. RRF 融合
   if (keywordResults.length > 0) {
     const fusedResults = reciprocalRankFusion(vectorResults, keywordResults, rrfConfig);
-    console.log(`[HybridSearch] RRF fusion: ${fusedResults.length} unique results`);
     
     // 统计来源分布
     const sources = { vector: 0, keyword: 0, both: 0 };
     fusedResults.forEach(r => sources[r.source]++);
-    console.log(`[HybridSearch] Sources: vector=${sources.vector}, keyword=${sources.keyword}, both=${sources.both}`);
     
     return fusedResults;
   }

@@ -27,7 +27,6 @@ function getActiveVoiceId(): string {
       const content = readFileSync(CLONED_VOICE_CONFIG_PATH, 'utf-8');
       const config = JSON.parse(content);
       if (config.voiceId) {
-        console.log('[TTS] 使用复刻音色:', config.voiceId);
         return config.voiceId;
       }
     }
@@ -72,7 +71,6 @@ export async function POST(request: NextRequest) {
     
     const apiKey = getApiKey();
     
-    console.log('[TTS] 同步语音合成:', text.substring(0, 50) + '...');
     
     // 调用 MiniMax 同步语音合成 API - 使用 hex 格式（直接返回音频数据）
     const response = await fetch(`${MINIMAX_API_BASE}/v1/t2a_v2`, {
@@ -136,7 +134,6 @@ export async function POST(request: NextRequest) {
     const audioBuffer = Buffer.from(audioHex, 'hex');
     const audioBase64 = audioBuffer.toString('base64');
     
-    console.log('[TTS] 合成成功, 时长:', result.extra_info?.audio_length, 'ms');
     
     // 构建 data URL 供前端直接播放
     const audioUrl = `data:audio/mp3;base64,${audioBase64}`;

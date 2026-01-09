@@ -37,7 +37,6 @@ export async function extractSymbols(
   files: CodeFileInfo[],
   onProgress?: (current: number, total: number, file: string) => void
 ): Promise<SymbolExtractionResult> {
-  console.log(`[Symbol] 符号提取已禁用 (tree-sitter removed), 文件数: ${files.length}`);
   
   // 触发一次进度回调
   onProgress?.(files.length, files.length, '符号提取已跳过');
@@ -55,7 +54,6 @@ export async function saveSymbolsToDatabase(
 ): Promise<void> {
   const { prisma } = await import('@/lib/prisma');
   
-  console.log(`[Symbol] 跳过符号保存 (共 ${result.symbols.length} 个)`);
   
   // 清除旧符号（如果有）
   await prisma.codeSymbol.deleteMany({ where: { codeBaseId } });

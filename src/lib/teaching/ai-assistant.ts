@@ -154,7 +154,6 @@ export async function executeAIAction(request: AIRequest): Promise<AIResponse> {
       .replace('{text}', request.text)
       .replace('{context}', contextStr);
 
-    console.log(`[AIAssistant] Executing ${request.action}, text length: ${request.text.length}`);
 
     // 调用 LLM
     const response = await llm.complete({ prompt });
@@ -163,7 +162,6 @@ export async function executeAIAction(request: AIRequest): Promise<AIResponse> {
     // 清理可能的格式问题
     result = cleanResult(result);
 
-    console.log(`[AIAssistant] ${request.action} completed, result length: ${result.length}`);
 
     return {
       success: true,
@@ -199,7 +197,6 @@ async function searchKnowledgeBase(
       index = await loadIndex(knowledgeBaseId);
     } catch (indexError: any) {
       // 索引不存在是正常情况（教学知识库可能还没建立索引）
-      console.log(`[AIAssistant] Index not available for ${knowledgeBaseId}, proceeding without context`);
       return [];
     }
     

@@ -202,12 +202,10 @@ export async function cloneRepo(
     throw new Error('无效的 GitHub 仓库 URL');
   }
 
-  console.log(`[GitHub] Downloading ${repoInfo.owner}/${repoInfo.repo} (branch: ${branch}) to ${targetDir}`);
 
   // 方法1: 使用 GitHub zip API 下载
   try {
     await downloadAndExtractZip(repoInfo.owner, repoInfo.repo, branch, targetDir, onProgress);
-    console.log(`[GitHub] Download completed: ${targetDir}`);
     return;
   } catch (zipError: any) {
     console.warn(`[GitHub] Zip download failed, trying git clone:`, zipError.message);
@@ -218,7 +216,6 @@ export async function cloneRepo(
     onProgress?.('Cloning', 10);
     const gitUrl = normalizeGitHubUrl(url);
     const command = `git clone --depth 1 --single-branch --branch ${branch} "${gitUrl}" "${targetDir}"`;
-    console.log(`[GitHub] Running: ${command}`);
     
     await execAsync(command, {
       timeout: 300000,
@@ -226,7 +223,6 @@ export async function cloneRepo(
     });
     
     onProgress?.('Cloning', 100);
-    console.log(`[GitHub] Clone completed: ${targetDir}`);
   } catch (gitError: any) {
     console.error(`[GitHub] Git clone also failed:`, gitError);
     throw new Error(`克隆仓库失败: ${gitError.stderr || gitError.message}`);
@@ -244,7 +240,6 @@ async function downloadAndExtractZip(
   onProgress?: (phase: string, progress: number) => void
 ): Promise<void> {
   const zipUrl = `https://github.com/${owner}/${repo}/archive/refs/heads/${branch}.zip`;
-  console.log(`[GitHub] Downloading zip from: ${zipUrl}`);
   
   onProgress?.('Downloading', 10);
 
@@ -367,7 +362,6 @@ export async function walkCodeFiles(
   // 按路径排序
   files.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
   
-  console.log(`[GitHub] Found ${files.length} code files in ${dir}`);
   return files;
 }
 

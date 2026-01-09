@@ -42,13 +42,11 @@ export function wrapToolWithContextAwareness<T extends (...args: any[]) => any>(
       const { needUpdate, reason } = sharedContext.contextManager.shouldUpdate();
       
       if (needUpdate) {
-        console.log(`[ContextAwareTool] Triggering context update: ${reason}`);
         
         try {
           await sharedContext.contextManager.updateContext();
           // 更新共享的增强上下文
           sharedContext.enhancedContext = sharedContext.contextManager.getEnhancedContextString();
-          console.log(`[ContextAwareTool] Context updated successfully`);
         } catch (error) {
           console.error(`[ContextAwareTool] Context update failed:`, error);
         }
@@ -91,14 +89,12 @@ export function wrapFunctionTool(
       const { needUpdate, reason } = sharedContext.contextManager.shouldUpdate();
       
       if (needUpdate) {
-        console.log(`[ContextAwareTool] 🔄 Triggering context update: ${reason}`);
         
         try {
           await sharedContext.contextManager.updateContext();
           sharedContext.enhancedContext = sharedContext.contextManager.getEnhancedContextString();
           
           const stats = sharedContext.contextManager.getStats();
-          console.log(`[ContextAwareTool] ✅ Context updated: ${stats.discoveredEntities} entities, ${stats.currentTokens} tokens`);
         } catch (error) {
           console.error(`[ContextAwareTool] ❌ Context update failed:`, error);
         }

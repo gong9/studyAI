@@ -200,7 +200,6 @@ export async function generateTeachingPlan(input: PlanningInput): Promise<Planni
       .replace('{style}', sceneConfig.style)
       .replace('{chapterContent}', input.chapterContent); // 不再截断，保留完整内容
 
-    console.log('[TeachingPlanner] Generating flexible plan for:', input.chapterTitle, 'scene:', sceneType);
 
     const response = await llm.complete({ prompt });
     const text = response.text.trim();
@@ -218,13 +217,6 @@ export async function generateTeachingPlan(input: PlanningInput): Promise<Planni
 
     // 添加场景类型
     plan.sceneType = sceneType;
-
-    console.log('[TeachingPlanner] Plan generated:', {
-      summary: plan.summary,
-      goals: plan.teaching_goals.length,
-      sections: plan.sections.length,
-      totalDuration: plan.total_duration_minutes,
-    });
 
     return {
       success: true,

@@ -139,11 +139,9 @@ export async function chunkBySemantics(
     const segments = preChunk(content, maxChunkSize * 2);
     const allChunks: TeachingChunk[] = [];
 
-    console.log(`[SemanticChunker] Content length: ${content.length}, segments: ${segments.length}`);
 
     // 如果 segments 太多，使用简单规则切分而不是 LLM（避免太慢）
     if (segments.length > 3) {
-      console.log(`[SemanticChunker] Too many segments, using rule-based chunking`);
       for (let i = 0; i < segments.length; i++) {
         allChunks.push(createDefaultChunk(segments[i], metadata, i));
       }
@@ -156,7 +154,6 @@ export async function chunkBySemantics(
 
       for (let i = 0; i < segments.length; i++) {
         const segment = segments[i];
-        console.log(`[SemanticChunker] Processing segment ${i + 1}/${segments.length}...`);
         
         const prompt = SEMANTIC_CHUNK_PROMPT
           .replace('{grade}', metadata.grade || '未知')

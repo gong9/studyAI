@@ -92,7 +92,6 @@ export async function enrichConcepts(input: ConceptEnricherInput): Promise<Conce
     try {
       index = await loadIndex(knowledgeBaseId);
     } catch (e) {
-      console.log('[ConceptEnricher] Index not available, using basic enrichment');
       // 没有索引时使用基础填充
       return {
         success: true,
@@ -116,7 +115,6 @@ export async function enrichConcepts(input: ConceptEnricherInput): Promise<Conce
     const toEnrich = priorityQueue.slice(0, maxConcepts);
     const enrichedConcepts: EnrichedConcept[] = [];
 
-    console.log('[ConceptEnricher] Enriching', toEnrich.length, 'concepts');
 
     for (const item of toEnrich) {
       const concept = conceptMap.get(item.conceptId);
@@ -144,7 +142,6 @@ export async function enrichConcepts(input: ConceptEnricherInput): Promise<Conce
       }
     }
 
-    console.log('[ConceptEnricher] Enriched', enrichedConcepts.length, 'concepts');
 
     return {
       success: true,

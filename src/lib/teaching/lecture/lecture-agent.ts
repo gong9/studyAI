@@ -313,7 +313,7 @@ function generateFallbackActions(
     actions.push({ action: 'speak', text: config.closingWords });
     actions.push({ action: 'end' });
   } else {
-    actions.push({ action: 'speak', text: '好，我们继续看下一页' });
+    // 不说过渡语，直接翻页
     actions.push({ action: 'next_slide' });
   }
   
@@ -404,8 +404,8 @@ ${config.style}
     {
       "index": 1,
       "actions": [
-        {"action": "speak", "text": "好，我们继续。刚才我们了解了基本概念，现在来看具体内容。"},
         {"action": "highlight", "target": "slide-1-el-0"},
+        {"action": "speak", "text": "这部分我们来看具体内容..."},
         ...
       ]
     }
@@ -422,12 +422,184 @@ ${config.style}
 
 // 进度回调类型
 export type ProgressCallback = (progress: {
-  stage: 'parsing' | 'generating' | 'validating' | 'done';
+  stage: 'parsing' | 'overview' | 'generating' | 'validating' | 'done';
   message: string;
   percent: number;
+  current?: number;
+  total?: number;
 }) => void;
 
-// 生成完整演讲稿（包含所有页的指令）
+// ==================== Phase 1: 生成整体概览 ====================
+
+interface SlideOverview {
+  index: number;
+  title: string;
+  role: 'opening' | 'content' | 'summary' | 'closing';  // 页面角色
+  keyPoints: string[];  // 核心要点
+  transitionHint: string;  // 过渡提示
+  duration: number;  // 建议讲解时长（秒）
+}
+
+interface PresentationOverview {
+  totalSlides: number;
+  theme: string;  // 整体主题
+  flow: string;  // 讲解节奏描述
+  slides: SlideOverview[];
+}
+
+async function generatePresentationOverview(
+  slides: SlideInfo[],
+  sceneType?: LectureSceneType
+): Promise<PresentationOverview> {
+  const config = getSceneConfig(sceneType);
+  
+  const slideSummaries = slides.map((slide, idx) => {
+    return `第${idx + 1}页: ${slide.title}\n内容: ${slide.content.slice(0, 200)}...`;
+  }).join('\n\n');
+
+  const prompt = `你是一位演讲稿规划专家。请分析以下 PPT 的整体结构，为后续逐页生成演讲稿做准备。
+
+## PPT 内容概览（共 ${slides.length} 页）
+${slideSummaries}
+
+## 输出要求
+生成 JSON 格式的整体规划：
+
+{
+  "totalSlides": ${slides.length},
+  "theme": "整个演讲的核心主题（一句话）",
+  "flow": "讲解节奏描述（如：先概念引入，再深入讲解，最后总结）",
+  "slides": [
+    {
+      "index": 0,
+      "title": "页面标题",
+      "role": "opening",  // opening=开场, content=内容, summary=小结, closing=结尾
+      "keyPoints": ["这页要讲的核心点1", "核心点2"],
+      "transitionHint": "到下一页的过渡语提示",
+      "duration": 45  // 建议讲解秒数
+    }
+  ]
+}
+
+注意：
+1. role 要准确标注每页的角色
+2. keyPoints 提取 2-4 个核心要点
+3. transitionHint 要自然衔接下一页内容
+4. duration 根据内容量估算，每页 30-60 秒`;
+
+  try {
+    const response = await client.chat.completions.create({
+      model: 'qwen-turbo',
+      messages: [
+        { role: 'system', content: prompt },
+        { role: 'user', content: '请生成演讲规划' },
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.5,
+      max_tokens: 2000,
+    });
+
+    const content = response.choices[0]?.message?.content || '{}';
+    return JSON.parse(content);
+  } catch (error) {
+    console.error('[LectureAgent] Overview generation failed:', error);
+    // 降级：生成简单概览
+    return {
+      totalSlides: slides.length,
+      theme: slides[0]?.title || '演讲',
+      flow: '按顺序讲解',
+      slides: slides.map((slide, idx) => ({
+        index: idx,
+        title: slide.title,
+        role: idx === 0 ? 'opening' : idx === slides.length - 1 ? 'closing' : 'content',
+        keyPoints: [slide.title],
+        transitionHint: idx < slides.length - 1 ? '接下来我们看下一部分' : '',
+        duration: 45,
+      })),
+    };
+  }
+}
+
+// ==================== Phase 2: 逐页生成讲稿 ====================
+
+async function generateSingleSlideScript(
+  slide: SlideInfo,
+  overview: SlideOverview,
+  presentationOverview: PresentationOverview,
+  isFirst: boolean,
+  isLast: boolean,
+  sceneType?: LectureSceneType
+): Promise<LectureAction[]> {
+  const config = getSceneConfig(sceneType);
+  
+  const prompt = `你是${config.role}，正在为 PPT 的第 ${slide.index + 1}/${presentationOverview.totalSlides} 页生成讲解稿。
+
+## 本页内容（共 ${slide.elements.length} 个元素，必须全部讲到！）
+标题: ${slide.title}
+元素:
+${slide.elements.map(el => `[${el.id}] (${el.type}): ${el.content}`).join('\n')}
+
+## 输出格式（必须输出合法的 JSON）
+{
+  "actions": [
+    {"action": "highlight", "target": "元素ID"},
+    {"action": "speak", "text": "讲解内容（每段至少50字）"},
+    ...
+  ]
+}
+
+## 【核心要求】必须覆盖 PPT 上的所有内容！
+1. 本页有 ${slide.elements.length} 个元素，每个元素都要 highlight + speak 讲解
+2. 每个要点的讲解不少于 50 字，要展开解释，不是一句话带过
+3. 总共应该生成至少 ${slide.elements.length * 2} 个 actions（每个元素至少 highlight + speak）
+
+## 讲解风格
+${isFirst ? `- 这是第一页，用简短问候开场："${config.openingGreeting}..."，然后介绍主题背景` : '- 【禁止】不要用"各位好"、"大家好"、"接下来"、"下面"等开头词！直接讲本页主题内容'}
+- 风格：${config.style}
+- 先 highlight 再讲解
+- 不要照读 PPT 原文，要用自己的话展开讲解
+${isLast ? `- 这是最后一页，结尾用："${config.closingWords}"` : '- 讲完本页内容就结束，不要加过渡语'}
+- 不要说"这张图"、"请看图"、"如图所示"等`;
+
+  try {
+    const response = await client.chat.completions.create({
+      model: 'qwen-turbo',
+      messages: [
+        { role: 'system', content: prompt },
+        { role: 'user', content: '请生成本页讲解指令，输出 JSON 格式。注意：必须覆盖 PPT 上的所有元素！' },
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.7,
+      max_tokens: 3000,
+    });
+
+    const content = response.choices[0]?.message?.content || '{}';
+    const result = JSON.parse(content);
+    let actions: LectureAction[] = result.actions || [];
+
+    // 确保结尾正确
+    const lastAction = actions[actions.length - 1];
+    if (isLast) {
+      if (!lastAction || lastAction.action !== 'end') {
+        actions.push({ action: 'end' });
+      }
+    } else {
+      if (!lastAction || lastAction.action !== 'next_slide') {
+        actions.push({ action: 'next_slide' });
+      }
+    }
+
+    return actions;
+  } catch (error) {
+    console.error(`[LectureAgent] Failed to generate slide ${slide.index + 1}:`, error);
+    // 降级
+    const fallback = generateFallbackActions(slide, isLast, isFirst, sceneType);
+    return fallback.actions;
+  }
+}
+
+// ==================== 一次性生成完整演讲稿 ====================
+
 export async function generateFullLectureScript(
   slides: SlideInfo[],
   onProgress?: ProgressCallback,
@@ -435,108 +607,84 @@ export async function generateFullLectureScript(
 ): Promise<{ slides: { index: number; actions: LectureAction[] }[] }> {
   
   const config = getSceneConfig(sceneType);
-  console.log(`[LectureAgent] Scene type: ${sceneType || 'general'}, audience: ${config.audience}`);
   
-  // 发送进度
-  onProgress?.({ stage: 'parsing', message: '正在分析幻灯片内容...', percent: 10 });
+  onProgress?.({ stage: 'generating', message: '正在生成演讲稿...', percent: 10 });
   
   // 构建所有幻灯片的内容
   const slidesContext = slides.map((slide, idx) => {
-    const position = idx === 0 ? '【第一页/开场】' : 
-                    idx === slides.length - 1 ? '【最后一页/总结】' : 
-                    `【第 ${idx + 1} 页】`;
-    
-    return `
-${position}
-标题: ${slide.title}
-元素列表:
-${slide.elements.map(el => `  - [${el.id}] (${el.type}): ${el.content}`).join('\n')}
-原始内容:
-${slide.content.slice(0, 500)}${slide.content.length > 500 ? '...' : ''}
-`;
-  }).join('\n---\n');
+    const elementsDesc = slide.elements.map(el => `[${el.id}] (${el.type}): ${el.content}`).join('\n');
+    return `### 第 ${idx + 1} 页：${slide.title}
+元素列表：
+${elementsDesc}`;
+  }).join('\n\n');
 
-  const userMessage = `
-## 幻灯片内容（共 ${slides.length} 页）
+  const prompt = getFullScriptPrompt(sceneType);
+  const userMessage = `## 所有幻灯片内容（共 ${slides.length} 页）
 
 ${slidesContext}
 
-请生成完整的演讲稿，记住：
-1. 不要照读 PPT，要用讲师的口吻讲解
-2. 每讲一个知识点前先高亮对应元素
-3. 讲解内容要比 PPT 文字丰富
-4. 页与页之间要有过渡
-5. 称呼受众为"${config.audience}"
-`;
+请为这 ${slides.length} 页 PPT 生成完整的演讲稿。输出 JSON 格式。`;
 
   try {
-    console.log('[LectureAgent] 生成完整演讲稿...');
-    onProgress?.({ stage: 'generating', message: `正在为 ${slides.length} 页幻灯片生成讲解稿...`, percent: 30 });
+    onProgress?.({ stage: 'generating', message: '正在调用 AI 生成演讲稿...', percent: 30 });
     
     const response = await client.chat.completions.create({
-      model: 'qwen-plus',
+      model: 'qwen-plus',  // 使用更强的模型一次性生成
       messages: [
-        { role: 'system', content: getFullScriptPrompt(sceneType) },
+        { role: 'system', content: prompt },
         { role: 'user', content: userMessage },
       ],
       response_format: { type: 'json_object' },
-      temperature: 0.8,
-      max_tokens: 8000,
+      temperature: 0.7,
+      max_tokens: 16000,  // 足够长的输出
     });
 
-    onProgress?.({ stage: 'validating', message: 'AI 生成完成，正在验证格式...', percent: 80 });
+    onProgress?.({ stage: 'validating', message: '正在解析演讲稿...', percent: 80 });
 
     const content = response.choices[0]?.message?.content || '{}';
     const result = JSON.parse(content);
     
-    console.log(`[LectureAgent] 演讲稿生成完成，共 ${result.slides?.length || 0} 页`);
+    let slideScripts: { index: number; actions: LectureAction[] }[] = result.slides || [];
     
-    // 验证并补全
-    if (!result.slides || !Array.isArray(result.slides)) {
-      throw new Error('生成的演讲稿格式不正确');
-    }
     
-    // 确保每页都有 actions，并补充 next_slide
-    const validatedSlides = result.slides.map((slide: any, idx: number) => {
-      const actions = slide.actions || [];
-      
-      // 确保最后有翻页或结束指令
-      const lastAction = actions[actions.length - 1];
-      if (idx < slides.length - 1) {
-        if (!lastAction || lastAction.action !== 'next_slide') {
-          actions.push({ action: 'next_slide' });
-        }
+    // 验证和补充缺失的页面
+    for (let i = 0; i < slides.length; i++) {
+      const existing = slideScripts.find(s => s.index === i);
+      if (!existing || !existing.actions || existing.actions.length === 0) {
+        const isFirst = i === 0;
+        const isLast = i === slides.length - 1;
+        const fallback = generateFallbackActions(slides[i], isLast, isFirst, sceneType);
+        
+        if (existing) {
+          existing.actions = fallback.actions;
       } else {
-        if (!lastAction || lastAction.action !== 'end') {
-          actions.push({ action: 'speak', text: config.closingWords });
-          actions.push({ action: 'end' });
+          slideScripts.push({ index: i, actions: fallback.actions });
+        }
         }
       }
       
-      return {
-        index: idx,
-        actions,
-      };
-    });
+    // 按 index 排序
+    slideScripts.sort((a, b) => a.index - b.index);
     
     onProgress?.({ stage: 'done', message: '演讲稿准备就绪！', percent: 100 });
     
-    return { slides: validatedSlides };
+    
+    return { slides: slideScripts };
     
   } catch (error: any) {
-    console.error('[LectureAgent] 生成演讲稿失败:', error);
+    console.error('[LectureAgent] Failed to generate full script:', error);
     
-    // 降级：为每页生成简单讲解
-    console.log('[LectureAgent] 降级到逐页生成模式');
+    // 降级：为每页生成简单的讲稿
+    onProgress?.({ stage: 'validating', message: '使用备用方案生成讲稿...', percent: 80 });
+    
     const fallbackSlides = slides.map((slide, idx) => {
       const isFirst = idx === 0;
       const isLast = idx === slides.length - 1;
-      const result = generateFallbackActions(slide, isLast, isFirst, sceneType);
-      return {
-        index: idx,
-        actions: result.actions,
-      };
+      const fallback = generateFallbackActions(slide, isLast, isFirst, sceneType);
+      return { index: idx, actions: fallback.actions };
     });
+    
+    onProgress?.({ stage: 'done', message: '演讲稿准备就绪！', percent: 100 });
     
     return { slides: fallbackSlides };
   }

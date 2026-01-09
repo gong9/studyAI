@@ -69,7 +69,6 @@ export async function POST(
       explainCount = 1 
     } = body;
 
-    console.log('[Ask API] 收到问题:', question, '当前页:', currentSlide, '类型:', knowledgeBaseType);
 
     if (!question) {
       return NextResponse.json({ error: '缺少问题内容' }, { status: 400 });
@@ -93,10 +92,8 @@ export async function POST(
     
     // 解析为 slides
     const slides = parseManuscriptToSlides(manuscriptContent);
-    console.log('[Ask API] 从手稿解析 slides 数量:', slides.length);
     
     if (slides.length > 0) {
-      console.log('[Ask API] 第一页:', { title: slides[0].title, content: slides[0].content?.slice(0, 100) });
     }
 
     // ========== 构建上下文：手稿内容 + 知识库补充 ==========
@@ -107,7 +104,6 @@ export async function POST(
       pptContext = slides
         .map((s, i) => `【第${i + 1}页】${s.title}\n${s.content}`)
         .join('\n\n---\n\n');
-      console.log('[Ask API] PPT 内容长度:', pptContext.length);
     }
     
     // 2. 知识库检索补充（使用手稿关联的知识库）
@@ -115,7 +111,6 @@ export async function POST(
     const kbId = knowledgeBaseId || manuscript.knowledgeBaseId;
     if (kbId) {
       try {
-        console.log('[Ask API] 检索知识库补充信息...', kbId);
         const ragResult = await lightragClient.query({
           kb_id: kbId,
           question: question,
@@ -124,7 +119,6 @@ export async function POST(
         
         if (ragResult.answer) {
           kbContext = ragResult.answer;
-          console.log('[Ask API] 知识库检索成功，内容长度:', kbContext.length);
         }
       } catch (ragError: any) {
         console.error('[Ask API] 知识库检索失败:', ragError.message);
@@ -206,7 +200,6 @@ ${slideTitles || '（无页面信息）'}
       const content = response.choices[0]?.message?.content || '{}';
       const result = JSON.parse(content);
 
-      console.log('[Ask API] 回答结果:', result);
 
       // 处理跳转逻辑
       let targetSlide = result.targetSlide ?? currentSlide;
@@ -233,7 +226,6 @@ ${slideTitles || '（无页面信息）'}
         jumpAction = 'stay';
       }
 
-      console.log('[Ask API] 跳转:', { targetSlide, jumpAction, isOffTopic });
 
       return NextResponse.json({
         targetSlide,

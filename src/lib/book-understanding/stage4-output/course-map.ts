@@ -137,7 +137,6 @@ export function generateCourseMap(input: CourseMapGeneratorInput): CourseMapGene
       calculateDagreLayout(nodes, edges, chapters);
     }
 
-    console.log('[CourseMapGenerator] Generated map:', nodes.length, 'nodes,', edges.length, 'edges');
 
     return {
       success: true,

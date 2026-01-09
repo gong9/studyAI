@@ -141,6 +141,32 @@ export const RemotionPlayer: React.FC<RemotionPlayerProps> = ({
     };
   }, []);
 
+  // 监听播放器状态
+  useEffect(() => {
+    const player = playerRef.current;
+    if (!player) return;
+
+    const onPlay = () => setIsPlaying(true);
+    const onPause = () => setIsPlaying(false);
+    const onEnded = () => setIsPlaying(false);
+    const onFrameUpdate = () => {
+      const frame = player.getCurrentFrame();
+      setCurrentTime((frame / fps) * 1000);
+    };
+
+    player.addEventListener('play', onPlay);
+    player.addEventListener('pause', onPause);
+    player.addEventListener('ended', onEnded);
+    player.addEventListener('frameupdate', onFrameUpdate);
+
+    return () => {
+      player.removeEventListener('play', onPlay);
+      player.removeEventListener('pause', onPause);
+      player.removeEventListener('ended', onEnded);
+      player.removeEventListener('frameupdate', onFrameUpdate);
+    };
+  }, [fps]);
+
   // 组件 props
   const inputProps: CourseVideoProps = useMemo(() => ({
     slides,
@@ -189,8 +215,8 @@ export const RemotionPlayer: React.FC<RemotionPlayerProps> = ({
         )}>
           <Player
             ref={playerRef}
-            component={CourseVideo}
-            inputProps={inputProps}
+            component={CourseVideo as unknown as React.FC<Record<string, unknown>>}
+            inputProps={inputProps as unknown as Record<string, unknown>}
             durationInFrames={durationInFrames}
             fps={fps}
             compositionWidth={1920}
@@ -208,19 +234,6 @@ export const RemotionPlayer: React.FC<RemotionPlayerProps> = ({
             moveToBeginningWhenEnded={false}
             showVolumeControls={false}
             showPlaybackRateControl={false}
-            // 事件回调
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            onPlay={() => setIsPlaying(true)}
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            onPause={() => setIsPlaying(false)}
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            onEnded={() => setIsPlaying(false)}
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            onTimeUpdate={(e: any) => {
-              if (e && typeof e.detail === 'object' && 'frame' in e.detail) {
-                setCurrentTime((e.detail.frame / fps) * 1000);
-              }
-            }}
           />
         </div>
       </div>

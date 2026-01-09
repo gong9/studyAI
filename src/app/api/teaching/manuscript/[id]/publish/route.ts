@@ -42,7 +42,6 @@ function getActiveVoiceId(): string {
       const content = readFileSync(CLONED_VOICE_CONFIG_PATH, 'utf-8');
       const config = JSON.parse(content);
       if (config.voiceId) {
-        console.log('[Publish] 使用复刻音色:', config.voiceId);
         return config.voiceId;
       }
     }
@@ -76,7 +75,6 @@ async function generateTTSAudio(
     // 检查全局限速状态，如果还在限速期内，先等待
     if (isRateLimited && Date.now() < rateLimitResetTime) {
       const waitTime = rateLimitResetTime - Date.now();
-      console.log(`[Publish] 全局限速中，等待 ${Math.ceil(waitTime / 1000)}s...`);
       await delay(waitTime);
     }
     
@@ -152,7 +150,6 @@ async function generateTTSAudio(
         isRateLimited = true;
         rateLimitResetTime = Date.now() + waitTime;
         
-        console.log(`[Publish] ⚠️ 遇到限速，等待 ${waitTime / 1000}s 后重试 (${attempt}/${maxRetries})...`);
         await delay(waitTime);
         
         // 重试前清除限速状态
@@ -180,7 +177,6 @@ export async function POST(
     const body = await request.json().catch(() => ({}));
     const forceRegenerate = body.force === true; // 是否强制重新发布
 
-    console.log('[Publish] 开始发布课程:', manuscriptId, forceRegenerate ? '(强制重新生成)' : '');
 
     // 1. 获取手稿数据（包括缓存的音频）
     const manuscriptRaw = await prisma.teachingManuscript.findUnique({
@@ -212,7 +208,6 @@ export async function POST(
     if (existingCourse) {
       if (forceRegenerate) {
         // 强制重新发布：删除旧课程
-        console.log('[Publish] 删除旧课程:', existingCourse.id);
         await prisma.course.delete({
           where: { id: existingCourse.id },
         });
@@ -241,13 +236,11 @@ export async function POST(
     if (manuscript.htmlSlides) {
       slides = JSON.parse(manuscript.htmlSlides);
       slideFormat = 'html';
-      console.log('[Publish] 使用 Remotion HTML 模式');
     } 
     // 回退到旧的图片模式
     else if (manuscript.bananaImages) {
       slides = JSON.parse(manuscript.bananaImages);
       slideFormat = 'image';
-      console.log('[Publish] 使用精美PPT图片模式（旧）');
     } 
     // 最后使用 Markdown 模式
     else {
@@ -260,7 +253,6 @@ export async function POST(
         }
         slides = parts.filter((p: string) => p.trim().length > 0);
         slideFormat = 'markdown';
-        console.log('[Publish] 使用 Markdown 模式');
       }
     }
     
@@ -270,7 +262,6 @@ export async function POST(
     
     const lectureScript = JSON.parse(manuscript.lectureScript);
     
-    console.log(`[Publish] 解析完成: ${slides.length} 页PPT, ${lectureScript.slides?.length || 0} 页讲解`);
 
     // 3. 构建帧序列并生成音频
     const frames: CourseFrame[] = [];
@@ -295,14 +286,12 @@ export async function POST(
       }
     }
 
-    console.log(`[Publish] 需要生成 ${speakTexts.length} 条语音`);
 
     // 读取已缓存的音频（来自演示时的预加载）
     let audioCache: Record<string, string> = {};
     if (manuscript.cachedAudio) {
       try {
         audioCache = JSON.parse(manuscript.cachedAudio);
-        console.log(`[Publish] 发现 ${Object.keys(audioCache).length} 条已缓存的音频`);
       } catch (e) {
         // ignore
       }
@@ -311,6 +300,7 @@ export async function POST(
     // 批量生成 TTS
     // 注意：暂时不使用缓存，因为缓存中没有保存时长信息，会导致视频节奏不对
     // TODO: 改进缓存结构，同时保存 { base64, duration }
+    console.log(`[Publish] 📢 开始生成 TTS 音频，共 ${speakTexts.length} 条语音...`);
     const audioResults: Map<string, { base64: string; duration: number }> = new Map();
     let cacheHitCount = 0;
     let generateCount = 0;
@@ -323,7 +313,6 @@ export async function POST(
       // TODO: 未来可以改进缓存结构来复用
       /*
       if (audioCache[item.text]) {
-        console.log(`[Publish] ✓ 使用缓存 ${i + 1}/${speakTexts.length}: ${item.text.substring(0, 30)}...`);
         // 缓存里只有 base64，没有时长信息
         audioResults.set(key, { base64: audioCache[item.text], duration: ??? });
         cacheHitCount++;
@@ -332,12 +321,13 @@ export async function POST(
       */
       
       // 调用 TTS 生成（包含准确的时长信息）
-      console.log(`[Publish] → 生成语音 ${i + 1}/${speakTexts.length}: ${item.text.substring(0, 30)}...`);
+      console.log(`[Publish] 🎤 TTS 生成中 [${i + 1}/${speakTexts.length}]: "${item.text.slice(0, 30)}..."`);
       
       try {
         const result = await generateTTSAudio(item.text);
         audioResults.set(key, result);
         generateCount++;
+        console.log(`[Publish] ✓ TTS 完成 [${i + 1}/${speakTexts.length}], 时长: ${result.duration}ms`);
         
         // 每次成功后等待 1 秒，避免请求过快触发限流
         await delay(1000);
@@ -346,7 +336,6 @@ export async function POST(
         
         // 如果是限速错误，等待更长时间再继续
         if (error.message === 'rate limit') {
-          console.log(`[Publish] 限速未解除，等待 30s 后继续下一条...`);
           await delay(30000);
         } else {
           // 其他错误，短暂等待后继续
@@ -356,7 +345,8 @@ export async function POST(
       }
     }
 
-    console.log(`[Publish] 语音生成完成: ${generateCount} 条, 总计 ${audioResults.size}/${speakTexts.length}`);
+
+    console.log(`[Publish] ✅ TTS 生成完成！成功: ${generateCount}/${speakTexts.length}`);
 
     // 4. 构建帧序列
     let currentSlideIndex = 0;
@@ -415,7 +405,6 @@ export async function POST(
       }
     }
 
-    console.log(`[Publish] 帧序列构建完成: ${frames.length} 帧, 总时长 ${Math.round(totalDuration / 1000)}秒`);
 
     // 5. 创建课程记录
     // 封面图：仅旧的图片模式有封面，新的 HTML 模式由前端渲染生成
@@ -445,7 +434,6 @@ export async function POST(
       },
     });
 
-    console.log(`[Publish] 课程创建成功: ${course.id}`);
 
     return NextResponse.json({
       success: true,

@@ -103,7 +103,6 @@ export async function generateSectionContent(input: SectionGeneratorInput): Prom
     const sectionContents: SectionContent[] = [];
     const validationIssues: DeepReadResult['validationResult']['issues'] = [];
 
-    console.log('[SectionGenerator] Generating content for', chapters.length, 'chapters');
 
     // 按章节顺序生成
     let order = 0;
@@ -154,7 +153,6 @@ export async function generateSectionContent(input: SectionGeneratorInput): Prom
       }
     }
 
-    console.log('[SectionGenerator] Generated', sectionContents.length, 'sections');
 
     return {
       success: true,

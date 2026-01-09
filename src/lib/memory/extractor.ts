@@ -69,9 +69,7 @@ export async function extractMemories(
     // 解析 JSON
     const memories = parseMemoryResponse(responseText);
     
-    console.log(`[Memory] Extracted ${memories.length} memories from conversation`);
     memories.forEach((m, i) => {
-      console.log(`[Memory]   ${i + 1}. [${m.type}] ${m.content} (conf: ${m.confidence})`);
     });
     
     return memories;

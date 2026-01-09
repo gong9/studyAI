@@ -54,14 +54,8 @@ export async function POST(
     configureLLM();
     const llm = getOpenAI();
 
-    console.log(`\n${'='.repeat(60)}`);
-    console.log(`[CodeChat] 查询开始`);
-    console.log(`[CodeChat] 代码库: ${codeBase.name} (${codeBaseId})`);
-    console.log(`[CodeChat] 用户问题: "${question}"`);
-    console.log(`${'='.repeat(60)}`);
 
     // ========== Step 1: LLM 提取搜索关键词 ==========
-    console.log(`\n[Step 1] 提取搜索关键词...`);
     
     const keywordResponse = await llm.chat({
       messages: [
@@ -97,10 +91,8 @@ export async function POST(
       .filter((k: string) => k && /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(k))
       .slice(0, 10);
 
-    console.log(`  提取的关键词: [${keywords.join(', ')}]`);
 
     // ========== Step 2: 获取相关模块摘要 ==========
-    console.log(`\n[Step 2] 获取模块摘要...`);
     let moduleContext = '';
     
     // 获取模块，优先选择有摘要的
@@ -128,13 +120,10 @@ export async function POST(
         return line;
       }).join('\n\n');
       
-      console.log(`  找到 ${modules.length} 个模块`);
     } else {
-      console.log(`  无模块摘要`);
     }
 
     // ========== Step 3: Meilisearch 关键词搜索 ==========
-    console.log(`\n[Step 3] 关键词搜索...`);
     let searchResults: any[] = [];
 
     if (keywords.length > 0) {
@@ -162,14 +151,11 @@ export async function POST(
           return !excludePatterns.some(pattern => pattern.test(docId));
         });
 
-        console.log(`  Meilisearch 结果: ${searchResults.length} 条`);
       } catch (e: any) {
-        console.log(`  Meilisearch 搜索失败: ${e.message}`);
       }
     }
 
     // ========== Step 4: 符号数据库搜索 ==========
-    console.log(`\n[Step 4] 符号数据库搜索...`);
     let symbolResults: any[] = [];
 
     if (keywords.length > 0) {
@@ -197,14 +183,11 @@ export async function POST(
         take: 15,
       });
 
-      console.log(`  符号搜索结果: ${symbolResults.length} 个`);
       symbolResults.slice(0, 5).forEach((s, i) => {
-        console.log(`    ${i + 1}. ${s.type} ${s.name} @ ${s.filePath}:${s.startLine}`);
       });
     }
 
     // ========== Step 5: 构建上下文并生成回答 ==========
-    console.log(`\n[Step 5] 构建上下文...`);
 
     // 系统提示词
     const systemPrompt = `你是一个代码助手，专门帮助用户理解和分析代码库 "${codeBase.name}"。
@@ -258,10 +241,8 @@ export async function POST(
       contextContent = '（未找到相关代码，将基于问题直接回答）';
     }
 
-    console.log(`  上下文长度: ${contextContent.length} 字符`);
 
     // 生成回答
-    console.log(`\n[Step 6] 生成回答...`);
     const finalResponse = await llm.chat({
       messages: [
         { role: 'system', content: systemPrompt },
@@ -353,14 +334,6 @@ export async function POST(
     }
 
     // 汇总日志
-    console.log(`\n${'='.repeat(60)}`);
-    console.log(`[CodeChat] 查询完成`);
-    console.log(`  关键词: [${keywords.join(', ')}]`);
-    console.log(`  模块: ${modules.length} 个`);
-    console.log(`  符号: ${symbolResults.length} 个`);
-    console.log(`  代码块: ${searchResults.length} 个`);
-    console.log(`  回答长度: ${answer.length} 字符`);
-    console.log(`${'='.repeat(60)}\n`);
 
     return NextResponse.json({
       answer,

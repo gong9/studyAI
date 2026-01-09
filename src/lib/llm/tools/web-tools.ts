@@ -22,7 +22,6 @@ export function createWebSearchTool(ctx: ToolContext) {
         query = params.query.trim();
       } else {
         invalidCallCount++;
-        console.log(`[LLM] 🌐 Web search: invalid params (${invalidCallCount}/${config.maxInvalidCalls})`, params);
         
         if (invalidCallCount >= config.maxInvalidCalls) {
           return '[ERROR] 网络搜索工具调用失败次数过多，请停止调用此工具，直接基于已有信息回答。';
@@ -33,7 +32,6 @@ export function createWebSearchTool(ctx: ToolContext) {
       // 有效调用，重置计数器
       invalidCallCount = 0;
       
-      console.log(`[LLM] 🌐 Web search: original query "${query}"`);
       
       // 用 LLM 分析用户意图，生成最佳搜索词
       let optimizedQuery = query;
@@ -55,16 +53,13 @@ export function createWebSearchTool(ctx: ToolContext) {
         });
         
         optimizedQuery = intentResponse.text.trim().replace(/["""'']/g, '');
-        console.log(`[LLM] 🌐 Intent analysis: "${query}" → "${optimizedQuery}"`);
       } catch (e) {
-        console.log(`[LLM] 🌐 Intent analysis failed, using original query`);
       }
       
       // 遍历 SearXNG 实例
       for (const instance of config.instances) {
         try {
           const url = `${instance}/search?q=${encodeURIComponent(optimizedQuery)}&format=json&language=zh-CN`;
-          console.log(`[LLM] 🌐 Trying instance: ${instance}`);
           
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), config.timeout);
@@ -80,14 +75,12 @@ export function createWebSearchTool(ctx: ToolContext) {
           clearTimeout(timeoutId);
           
           if (!response.ok) {
-            console.log(`[LLM] 🌐 Instance ${instance} returned ${response.status}`);
             continue;
           }
           
           const data = await response.json();
           
           if (!data.results || data.results.length === 0) {
-            console.log(`[LLM] 🌐 Instance ${instance} returned no results`);
             continue;
           }
           
@@ -96,12 +89,10 @@ export function createWebSearchTool(ctx: ToolContext) {
             `[${i + 1}] ${r.title || '无标题'}\n${r.content || r.description || '无描述'}\n来源: ${r.url}`
           ).join('\n\n');
           
-          console.log(`[LLM] 🌐 Web search found ${data.results.length} results from ${instance}`);
           
           // 自动抓取第一个结果的网页内容
           if (results.length > 0 && results[0].url) {
             try {
-              console.log(`[LLM] 🌐 Auto-fetching first result: ${results[0].url}`);
               const pageResponse = await fetch(results[0].url, {
                 headers: {
                   'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
@@ -121,23 +112,19 @@ export function createWebSearchTool(ctx: ToolContext) {
                   .trim()
                   .substring(0, 2000);
                 
-                console.log(`[LLM] 🌐 Auto-fetched page content: ${pageText.length} chars`);
                 
                 return `搜索结果摘要:\n${top3}\n\n第一个网页的详细内容:\n${pageText}`;
               }
             } catch (e) {
-              console.log(`[LLM] 🌐 Auto-fetch failed, returning search results only`);
             }
           }
           
           return top3;
         } catch (error: any) {
-          console.log(`[LLM] 🌐 Instance ${instance} failed: ${error.message}`);
           continue;
         }
       }
       
-      console.log(`[LLM] 🌐 All SearXNG instances failed`);
       return '网络搜索暂时不可用，所有搜索节点均无响应';
     },
     {
@@ -170,11 +157,9 @@ export function createFetchWebpageTool(_ctx: ToolContext) {
       } else if (params && typeof params === 'object' && params.url) {
         url = params.url;
       } else {
-        console.log(`[LLM] 📄 Fetch webpage: invalid params`, params);
         return '网页URL参数无效';
       }
       
-      console.log(`[LLM] 📄 Fetching webpage: ${url}`);
       
       try {
         const controller = new AbortController();
@@ -215,7 +200,6 @@ export function createFetchWebpageTool(_ctx: ToolContext) {
           text = text.substring(0, 3000) + '...(内容已截断)';
         }
         
-        console.log(`[LLM] 📄 Webpage content length: ${text.length} chars`);
         return text || '网页内容为空';
       } catch (error: any) {
         console.error(`[LLM] 📄 Fetch webpage failed: ${error.message}`);

@@ -380,7 +380,6 @@ export default function PresentationPage() {
         if (result.audioBase64) {
           audioCacheToSaveRef.current.set(text, result.audioBase64);
         }
-        console.log('[TTS] 预加载成功:', text.substring(0, 30) + '...');
       }
     } catch (error) {
       console.error('[TTS] 预加载失败:', text.substring(0, 30), error);
@@ -405,7 +404,6 @@ export default function PresentationPage() {
       
       if (response.ok) {
         const result = await response.json();
-        console.log(`[TTS] 音频缓存已保存: ${result.addedCount} 条新增，共 ${result.totalCount} 条`);
         audioCacheToSaveRef.current.clear();
       }
     } catch (error) {
@@ -427,7 +425,6 @@ export default function PresentationPage() {
             audioMapRef.current.set(text, audioUrl);
             loadedCount++;
           });
-          console.log(`[TTS] 从缓存加载了 ${loadedCount} 条音频`);
           return loadedCount;
         }
       }
@@ -468,7 +465,6 @@ export default function PresentationPage() {
     const DELAY_MS = 1000; // 后台加载间隔 1 秒，避免限速
     const remaining = texts.slice(startIndex);
     
-    console.log(`[TTS] 后台加载剩余 ${remaining.length} 条语音...`);
     
     for (const text of remaining) {
       if (!preloadRemainingAudioRef.current) break; // 被中断
@@ -478,7 +474,6 @@ export default function PresentationPage() {
     }
     
     preloadRemainingAudioRef.current = false;
-    console.log('[TTS] 后台加载完成');
     
     // 保存音频缓存到数据库
     await saveAudioCache();
@@ -496,7 +491,6 @@ export default function PresentationPage() {
     
     // 如果没有预加载，实时获取（作为回退）
     if (!audioUrl) {
-      console.log('[TTS] 未预加载，实时获取...');
       try {
         const response = await fetch('/api/tts', {
           method: 'POST',
@@ -518,11 +512,9 @@ export default function PresentationPage() {
     
     // 如果还是没有音频 URL，回退到浏览器 TTS
     if (!audioUrl) {
-      console.log('[TTS] 无音频，回退到浏览器 TTS');
       return speakWithBrowserTTS(text);
     }
     
-    console.log('[TTS] 播放预加载音频');
     setIsSpeaking(true);
     
     // 播放音频
@@ -654,21 +646,17 @@ export default function PresentationPage() {
   
   useEffect(() => {
     slidesRef.current = slides;
-    console.log('[同步] slides ref 更新:', slides.length);
   }, [slides]);
 
   // ====== 导航函数 ======
   const goToSlide = useCallback((index: number) => {
     const slidesLength = slidesRef.current.length;
-    console.log('[导航] goToSlide 被调用:', index, '当前:', currentSlideRef.current, 'slides:', slidesLength);
     if (index >= 0 && index < slidesLength) {
-      console.log('[导航] 执行跳转到:', index);
       setCurrentSlide(index);
       currentSlideRef.current = index; // 立即更新 ref
       clearHighlight();
       onSlideChangeRef.current?.(index);
     } else {
-      console.log('[导航] 跳转失败，索引越界');
     }
   }, [clearHighlight]); // 移除 slides.length 依赖，使用 ref
 
@@ -725,7 +713,6 @@ export default function PresentationPage() {
       onReady: (callback) => { onReadyRef.current = callback; },
     };
 
-    console.log('[Presentation] window.ppt API 已暴露');
   }, [currentSlide, slides, nextSlide, prevSlide, goToSlide, highlight, clearHighlight, speak, stopSpeaking, isSpeaking]);
 
   // ====== 数据加载 ======
@@ -737,7 +724,6 @@ export default function PresentationPage() {
   useEffect(() => {
     if (slides.length > 0 && !loading) {
       onReadyRef.current?.(slides.length);
-      console.log(`[Presentation] Ready: ${slides.length} slides`);
     }
   }, [slides.length, loading]);
 
@@ -830,7 +816,6 @@ export default function PresentationPage() {
             const parsedHtmlSlides = JSON.parse(data.htmlSlides);
             if (Array.isArray(parsedHtmlSlides) && parsedHtmlSlides.length > 0) {
               setHtmlSlides(parsedHtmlSlides);
-              console.log(`[Presentation] Loaded ${parsedHtmlSlides.length} HTML slides`);
             }
           } catch (e) {
             console.error('[Presentation] Failed to parse HTML slides:', e);
@@ -846,7 +831,6 @@ export default function PresentationPage() {
         try {
           const cachedCount = await loadAudioCache();
           if (cachedCount > 0) {
-            console.log(`[Presentation] 从缓存加载了 ${cachedCount} 条音频`);
           }
         } catch (e) {
           console.error('[Presentation] Failed to load audio cache:', e);
@@ -859,7 +843,6 @@ export default function PresentationPage() {
             const publishData = await publishRes.json();
             if (publishData.hasPublished && publishData.course) {
               setPublishedCourseId(publishData.course.id);
-              console.log(`[Presentation] Course already published: ${publishData.course.id}`);
             }
           }
         } catch (e) {
@@ -978,7 +961,6 @@ export default function PresentationPage() {
           clearInterval(recordingTimerRef.current);
         }
         
-        console.log('[录制] 录制完成，文件大小:', (blob.size / 1024 / 1024).toFixed(2), 'MB');
       };
 
       // 监听用户停止共享
@@ -997,7 +979,6 @@ export default function PresentationPage() {
         setRecordingTime(prev => prev + 1);
       }, 1000);
 
-      console.log('[录制] 开始录制屏幕');
       
       // 自动进入全屏
       if (!document.fullscreenElement) {
@@ -1005,7 +986,6 @@ export default function PresentationPage() {
           await document.documentElement.requestFullscreen();
           setIsFullscreen(true);
         } catch (e) {
-          console.log('[录制] 无法进入全屏');
         }
       }
     } catch (error: any) {
@@ -1021,7 +1001,6 @@ export default function PresentationPage() {
   const stopScreenRecording = () => {
     if (screenRecorderRef.current && screenRecorderRef.current.state === 'recording') {
       screenRecorderRef.current.stop();
-      console.log('[录制] 停止录制');
     }
   };
 
@@ -1050,7 +1029,6 @@ export default function PresentationPage() {
       
       // 如果已有发布的课程，重新发布以同步更新
       if (publishedCourseId) {
-        console.log('[Presentation] Re-publishing course to sync updates...');
         const publishRes = await fetch(`/api/teaching/manuscript/${manuscriptId}/publish`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1060,7 +1038,6 @@ export default function PresentationPage() {
         if (publishRes.ok) {
           const data = await publishRes.json();
           setPublishedCourseId(data.courseId);
-          console.log('[Presentation] Course re-published:', data.courseId);
         } else {
           console.warn('[Presentation] Re-publish failed, continuing...');
         }
@@ -1083,7 +1060,6 @@ export default function PresentationPage() {
     try {
       // 如果没有讲解稿，先自动生成
       if (!hasLectureScript) {
-        console.log('[Presentation] 没有讲解稿，先自动生成...');
         setIsPreparingLecture(true);
         setPrepareProgress(0);
         setPrepareMessage('正在生成讲解稿...');
@@ -1126,7 +1102,6 @@ export default function PresentationPage() {
               
               // 检查是否完成
               if (text.includes('event: complete')) {
-                console.log('[Presentation] 讲解稿生成完成');
                 break;
               }
               
@@ -1193,7 +1168,6 @@ export default function PresentationPage() {
 
   // 执行单个指令
   const executeCommand = async (command: any): Promise<void> => {
-    console.log('[Presentation] 执行指令:', command);
     
     switch (command.action) {
       case 'speak':
@@ -1253,7 +1227,6 @@ export default function PresentationPage() {
       }
       
       const command = await res.json();
-      console.log('[Presentation] 收到指令:', command);
       
       // 更新进度
       if (command.progress) {
@@ -1309,7 +1282,6 @@ export default function PresentationPage() {
       await new Promise<void>((resolve, reject) => {
         eventSource.addEventListener('progress', (event) => {
           const data = JSON.parse(event.data);
-          console.log('[Presentation] 进度:', data);
           // 用真实进度覆盖假进度（如果更大）
           if (data.percent > fakeProgress) {
             fakeProgress = data.percent;
@@ -1320,7 +1292,6 @@ export default function PresentationPage() {
         
         eventSource.addEventListener('complete', async (event) => {
           const data = JSON.parse(event.data);
-          console.log('[Presentation] 讲解初始化完成:', data);
           // 停止假进度
           if (progressIntervalRef.current) {
             clearInterval(progressIntervalRef.current);
@@ -1334,7 +1305,6 @@ export default function PresentationPage() {
           
           if (speakTexts.length > 0) {
             const initialCount = Math.min(INITIAL_LOAD_COUNT, speakTexts.length);
-            console.log(`[Presentation] 预加载前 ${initialCount} 条语音...`);
             setPrepareMessage(`正在预加载语音 (0/${initialCount})...`);
             
             await preloadInitialAudio(speakTexts, initialCount, (current, total) => {
@@ -1344,7 +1314,6 @@ export default function PresentationPage() {
               setPrepareMessage(`正在预加载语音 (${current}/${total})...`);
             });
             
-            console.log('[Presentation] 初始语音预加载完成');
             
             // 后台继续加载剩余音频（不阻塞启动）
             if (speakTexts.length > INITIAL_LOAD_COUNT) {
@@ -1388,7 +1357,6 @@ export default function PresentationPage() {
           await document.documentElement.requestFullscreen();
           setIsFullscreen(true);
         } catch (e) {
-          console.log('[Presentation] 无法进入全屏模式');
         }
       }
       
@@ -1485,7 +1453,6 @@ export default function PresentationPage() {
       const mode = interactionModeRef.current;
       const lecturing = isLecturingRef2.current;
       
-      console.log('[语音识别] 识别结果:', transcript, '(final:', lastResult.isFinal, ', mode:', mode, ')');
       
       if (!lastResult.isFinal) return;
       
@@ -1499,16 +1466,13 @@ export default function PresentationPage() {
         }
         // 录制学生问题
         if (transcript.length > 2 && !transcript.includes('老师')) {
-          console.log('[语音识别] 学生问题:', transcript);
           handleStudentQuestion(transcript);
         }
       } else if (mode === 'confirming') {
         // 检测确认词
         if (transcript.includes('明白') || transcript.includes('懂了') || transcript.includes('好了') || transcript.includes('可以') || transcript.includes('是')) {
-          console.log('[语音识别] 学生明白了');
           handleStudentUnderstood();
         } else if (transcript.includes('没') || transcript.includes('不') || transcript.includes('再讲') || transcript.includes('不懂')) {
-          console.log('[语音识别] 学生没明白');
           handleStudentNotUnderstood();
         }
       }
@@ -1526,7 +1490,6 @@ export default function PresentationPage() {
     };
     
     recognition.onend = () => {
-      console.log('[语音识别] 识别结束');
       // 如果还需要监听，自动重启
       if (recognitionRef.current) {
         setTimeout(() => {
@@ -1552,7 +1515,6 @@ export default function PresentationPage() {
       try {
         recognitionRef.current.start();
         setIsListeningEnabled(true);
-        console.log('[语音识别] 已启动');
       } catch (e) {
         console.error('[语音识别] 启动失败:', e);
       }
@@ -1565,7 +1527,6 @@ export default function PresentationPage() {
     if (recognitionRef.current) {
       try {
         recognitionRef.current.stop();
-        console.log('[语音识别] 已停止');
       } catch (e) {
         // 忽略
       }
@@ -1579,7 +1540,6 @@ export default function PresentationPage() {
   // 开始录音
   const startRecording = useCallback(async () => {
     try {
-      console.log('[ASR] 开始录音...');
       
       // 获取麦克风权限
       const stream = await navigator.mediaDevices.getUserMedia({ 
@@ -1606,7 +1566,6 @@ export default function PresentationPage() {
       };
       
       mediaRecorder.onstop = async () => {
-        console.log('[ASR] 录音结束，开始识别...');
         
         // 合并音频数据
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
@@ -1641,7 +1600,6 @@ export default function PresentationPage() {
   // 停止录音
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-      console.log('[ASR] 停止录音');
       mediaRecorderRef.current.stop();
       setIsRecording(false);
     }
@@ -1714,7 +1672,6 @@ export default function PresentationPage() {
       
       if (result.success && result.text) {
         const recognizedText = result.text.trim();
-        console.log('[ASR] 识别成功:', recognizedText);
         
         // 先显示识别结果
         setStudentQuestion(recognizedText);
@@ -1727,7 +1684,6 @@ export default function PresentationPage() {
           
           // 如果当前模式已经变了（比如用户举手了），忽略这次识别结果
           if (currentMode !== 'listening' && modeBeforeSend !== 'listening') {
-            console.log('[ASR] 模式已变化，忽略识别结果:', { modeBeforeSend, currentMode });
             return;
           }
           
@@ -1776,7 +1732,6 @@ export default function PresentationPage() {
   const initMediaPipe = useCallback(async () => {
     try {
       setDetectionStatus('正在加载视觉模型...');
-      console.log('[MediaPipe] 初始化中...');
       
       const vision = await FilesetResolver.forVisionTasks('/models/wasm');
       
@@ -1803,7 +1758,6 @@ export default function PresentationPage() {
       handLandmarkerRef.current = handModel;
       setMediaPipeReady(true);
       setDetectionStatus('视觉检测就绪');
-      console.log('[MediaPipe] 初始化完成');
     } catch (err) {
       console.error('[MediaPipe] 初始化失败:', err);
       setDetectionStatus('视觉模型加载失败');
@@ -1836,7 +1790,6 @@ export default function PresentationPage() {
           }
           setCameraEnabled(true);
           setDetectionStatus('学生监测中');
-          console.log('[MediaPipe] 摄像头已启动');
         };
       }
     } catch (err) {
@@ -1857,7 +1810,6 @@ export default function PresentationPage() {
     }
     setCameraEnabled(false);
     setDetectionStatus('');
-    console.log('[MediaPipe] 摄像头已停止');
   }, []);
   
   // 检测循环（需要在 handleWakeUp 定义后设置）
@@ -1894,7 +1846,6 @@ export default function PresentationPage() {
   
   // 处理唤醒（由 MediaPipe 举手检测触发）
   const handleWakeUp = useCallback(() => {
-    console.log('[互动] 学生举手唤醒老师');
     
     // 保存中断状态
     interruptStateRef.current = {
@@ -2035,7 +1986,6 @@ export default function PresentationPage() {
             if (now - handRaisedStartRef.current > 800) {
               // 只在讲解中且空闲模式时触发
               if (isLecturingRef2.current && interactionModeRef.current === 'idle') {
-                console.log('[MediaPipe] 检测到举手，触发唤醒');
                 handRaisedStartRef.current = null;
                 handleWakeUp();
               }
@@ -2054,7 +2004,6 @@ export default function PresentationPage() {
           
           const frownScore = (getVal('browDownLeft') + getVal('browDownRight')) / 2;
           if (frownScore > 0.45 && now - lastFrownAlertRef.current > 10000) {
-            console.log('[MediaPipe] 检测到皱眉，学生可能困惑');
             lastFrownAlertRef.current = now;
             setDetectionStatus('检测到困惑表情');
             setTimeout(() => {
@@ -2097,9 +2046,6 @@ export default function PresentationPage() {
   
   // 处理学生问题
   const handleStudentQuestion = useCallback(async (question: string) => {
-    console.log('[互动] 处理学生问题:', question);
-    console.log('[互动] slides 数量:', slides.length);
-    console.log('[互动] 第一页内容:', slides[0]?.title, slides[0]?.content?.slice(0, 100));
     
     setStudentQuestion(question);
     setInteractionMode('processing');
@@ -2109,7 +2055,6 @@ export default function PresentationPage() {
       // 调用问题理解 API - 使用 RAG 检索知识库
       // 使用 ref 获取最新的 currentSlide（避免闭包问题）
       const actualCurrentSlide = currentSlideRef.current;
-      console.log('[互动] 实际当前页:', actualCurrentSlide);
       
       const response = await fetch(`/api/teaching/lecture/${manuscriptId}/ask`, {
         method: 'POST',
@@ -2137,7 +2082,6 @@ export default function PresentationPage() {
       }
       
       const result = await response.json();
-      console.log('[互动] API 返回:', result);
       
       // 保存问题上下文
       questionContextRef.current = {
@@ -2149,7 +2093,6 @@ export default function PresentationPage() {
       // 根据 jumpAction 决定是否跳转
       if (result.jumpAction === 'jump' && result.targetSlide !== actualCurrentSlide) {
         // 跳转到目标页
-        console.log('[互动] 跳转到:', result.targetSlide);
         goToSlide(result.targetSlide);
       }
       // 'stay' / 'later' / 'not_found' 都不跳转
@@ -2178,7 +2121,6 @@ export default function PresentationPage() {
   
   // 学生明白了
   const handleStudentUnderstood = useCallback(async () => {
-    console.log('[互动] 学生明白了，恢复讲解');
     
     setInteractionMode('idle');
     setInteractionStatus('');
@@ -2215,7 +2157,6 @@ export default function PresentationPage() {
   
   // 学生还有问题 - 让学生提新问题
   const handleStudentNotUnderstood = useCallback(async () => {
-    console.log('[互动] 学生还有问题，等待新问题');
     
     // 清空之前的问题上下文
     questionContextRef.current = null;
@@ -2235,7 +2176,6 @@ export default function PresentationPage() {
   
   // 旧的继续解释逻辑（保留但不使用）
   const handleContinueExplaining = useCallback(async () => {
-    console.log('[互动] 继续解释');
     
     const ctx = questionContextRef.current;
     if (!ctx) {

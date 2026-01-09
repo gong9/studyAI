@@ -81,7 +81,6 @@ export async function reviewManuscript(input: ReviewInput): Promise<ReviewResult
       .replace('{content}', input.confirmedContent)
       .replace('{plan}', planStr);
 
-    console.log('[ReviewAgent] Reviewing manuscript...');
 
     const response = await llm.complete({ prompt });
     const text = response.text.trim();
@@ -89,7 +88,6 @@ export async function reviewManuscript(input: ReviewInput): Promise<ReviewResult
     // 解析 JSON 数组
     const comments = parseComments(text);
 
-    console.log('[ReviewAgent] Review completed, comments:', comments.length);
 
     return {
       success: true,

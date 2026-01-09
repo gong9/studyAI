@@ -114,7 +114,6 @@ export async function buildRelations(input: RelationBuilderInput): Promise<Relat
       .replace('{chapterStructure}', chapterStructure)
       .replace('{conceptList}', conceptList);
 
-    console.log('[RelationBuilder] Building relations for', concepts.length, 'concepts');
 
     const response = await llm.complete({ prompt });
     const text = response.text.trim();
@@ -124,14 +123,12 @@ export async function buildRelations(input: RelationBuilderInput): Promise<Relat
 
     if (!relations || relations.length === 0) {
       // 降级到简单关系
-      console.log('[RelationBuilder] Falling back to simple relations');
       return {
         success: true,
         relations: buildSimpleRelations(concepts, chapters),
       };
     }
 
-    console.log('[RelationBuilder] Built', relations.length, 'relations');
 
     return {
       success: true,

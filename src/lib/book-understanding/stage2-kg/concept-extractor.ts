@@ -108,7 +108,6 @@ export async function extractConcepts(input: ConceptExtractorInput): Promise<Con
       .replace('{knowledgeType}', thesis.knowledgeType)
       .replace('{chapterInfo}', chapterInfo);
 
-    console.log('[ConceptExtractor] Extracting concepts from', chapters.length, 'chapters');
 
     const response = await llm.complete({ prompt });
     const text = response.text.trim();
@@ -118,14 +117,12 @@ export async function extractConcepts(input: ConceptExtractorInput): Promise<Con
 
     if (!concepts || concepts.length === 0) {
       // 降级：从章节的 keyConcepts 生成基础概念
-      console.log('[ConceptExtractor] Falling back to keyConcepts');
       return {
         success: true,
         concepts: extractFromKeyConcepts(chapters),
       };
     }
 
-    console.log('[ConceptExtractor] Extracted', concepts.length, 'concepts');
 
     return {
       success: true,

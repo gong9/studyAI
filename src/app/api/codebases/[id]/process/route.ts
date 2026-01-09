@@ -61,7 +61,6 @@ export async function GET(
               clearInterval(heartbeatInterval);
               heartbeatInterval = null;
             }
-            console.log('[Process] Stream closed by client');
           }
         };
 
@@ -143,7 +142,6 @@ export async function GET(
           });
 
           const structureStats = getStructureStats(repoStructure);
-          console.log(`[Process] Structure analysis: type=${repoStructure.type}, modules=${structureStats.moduleCount}, language=${repoStructure.language}`);
 
           sendEvent('status', { 
             status: 'parsing', 
@@ -182,7 +180,6 @@ export async function GET(
               }
             );
 
-            console.log(`[Process] Module graph: ${moduleGraphResult.modulesCreated} modules, ${moduleGraphResult.summariesGenerated} summaries, ${moduleGraphResult.embeddingsGenerated} embeddings`);
 
             // 获取模块映射用于符号归属
             const modules = await prisma.repoModule.findMany({
@@ -295,7 +292,6 @@ export async function GET(
               progress: 70
             });
             
-            console.log(`[Process] Symbols: ${symbolResult.symbols.length}`);
           } catch (symbolError: any) {
             console.error('[Process] Symbol extraction failed:', symbolError);
             sendEvent('status', { 
@@ -325,7 +321,6 @@ export async function GET(
           });
 
           const chunkStats = getChunkStats(chunks);
-          console.log(`[Process] Chunk stats:`, chunkStats);
 
           sendEvent('status', { 
             status: 'indexing', 
@@ -354,7 +349,6 @@ export async function GET(
                 });
               }
             );
-            console.log(`[Process] Meilisearch indexed ${meiliDocs.length} chunks`);
           } catch (meiliError) {
             console.error('[Process] Meilisearch indexing failed:', meiliError);
             sendEvent('status', { 
@@ -365,7 +359,6 @@ export async function GET(
           }
 
           // ========== Step 6: 完成 (100%) ==========
-          console.log(`[Process] All indexing completed (DeepWiki architecture)`);
 
           // 更新状态为完成
           await prisma.codeBase.update({
@@ -426,7 +419,6 @@ export async function GET(
       },
       cancel() {
         // 客户端断开连接时清理
-        console.log('[Process] Client disconnected, cleaning up...');
         isStreamClosed = true;
         if (heartbeatInterval) {
           clearInterval(heartbeatInterval);

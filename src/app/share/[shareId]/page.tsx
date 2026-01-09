@@ -293,7 +293,6 @@ export default function SharePlayerPage() {
           }
         } catch (e) {
           // 横屏锁定失败，忽略（iOS 不支持）
-          console.log('横屏锁定不支持');
         }
         
         // 3. 对于不支持 Fullscreen API 的设备，使用 CSS 模拟

@@ -114,7 +114,6 @@ export async function buildChapterDAG(input: DAGBuilderInput): Promise<DAGBuilde
       .replace('{bookTopic}', thesis.topic)
       .replace('{chapterInfo}', chapterInfo);
 
-    console.log('[DAGBuilder] Analyzing dependencies for', chapters.length, 'chapters');
 
     const response = await llm.complete({ prompt });
     const text = response.text.trim();
@@ -124,7 +123,6 @@ export async function buildChapterDAG(input: DAGBuilderInput): Promise<DAGBuilde
 
     if (!dag) {
       // 降级到简单 DAG
-      console.log('[DAGBuilder] Falling back to simple DAG');
       return {
         success: true,
         dag: buildSimpleDAG(chapters),
@@ -134,7 +132,6 @@ export async function buildChapterDAG(input: DAGBuilderInput): Promise<DAGBuilde
     // 验证 DAG（检测循环）
     const validated = validateAndFixDAG(dag);
 
-    console.log('[DAGBuilder] DAG built:', validated.nodes.length, 'nodes,', validated.edges.length, 'edges');
 
     return {
       success: true,
@@ -326,7 +323,6 @@ function validateAndFixDAG(dag: ChapterDAG): ChapterDAG {
 
   // 移除循环边
   if (cycleEdges.size > 0) {
-    console.log('[DAGBuilder] Removing', cycleEdges.size, 'cycle edges');
     dag.edges = dag.edges.filter(edge => !cycleEdges.has(`${edge.from}->${edge.to}`));
   }
 

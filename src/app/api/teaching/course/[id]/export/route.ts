@@ -22,7 +22,6 @@ const nodeModulesFfmpegPath = path.join(process.cwd(), 'node_modules', 'ffmpeg-s
 
 // 优先使用系统 ffmpeg（线上环境），否则使用 node_modules 里的（本地开发）
 const ffmpegPath = existsSync(systemFfmpegPath) ? systemFfmpegPath : nodeModulesFfmpegPath;
-console.log('[Export] 使用 ffmpeg:', ffmpegPath);
 ffmpeg.setFfmpegPath(ffmpegPath);
 
 // 导出选项类型
@@ -151,7 +150,6 @@ async function mergeAudios(
       const audioPath = path.join(tempDir, `audio_${idx}.mp3`);
       await writeBase64ToFile(audioData[idx], audioPath);
       audioFiles.push(audioPath);
-      console.log(`[Export] 音频 ${idx} 时长: ${audioDurations.get(idx) || 0}ms`);
     }
   }
 
@@ -257,7 +255,6 @@ async function generateSubtitles(
   }
   
   await fs.writeFile(srtPath, subtitles.join('\n'), 'utf-8');
-  console.log(`[Export] 生成字幕文件: ${subtitleIndex - 1} 条字幕`);
   
   return srtPath;
 }
@@ -292,7 +289,6 @@ async function runWithConcurrency<T>(
 // 注意：h264_videotoolbox 对 -loop 1 静态图片输入可能有兼容性问题，暂时禁用
 async function detectHardwareEncoder(): Promise<string> {
   // 暂时禁用硬件加速，因为对静态图片循环有兼容性问题
-  console.log('[Export] 使用软件编码: libx264 (并行处理)');
   return 'libx264';
 }
 
@@ -303,7 +299,8 @@ async function generateVideo(
   mergedAudioPath: string,
   subtitlePath: string,
   tempDir: string,
-  options: ExportOptions
+  options: ExportOptions,
+  language: string = 'zh'
 ): Promise<string> {
   const preset = PRESET_CONFIG[options.quality];
   const resolution = RESOLUTION_CONFIG[options.resolution];
@@ -312,10 +309,8 @@ async function generateVideo(
   const encoder = await detectHardwareEncoder();
   const useHardwareEncoder = encoder === 'h264_videotoolbox';
   
-  console.log(`[Export] 使用预设: ${options.quality} (${preset.preset}), 分辨率: ${options.resolution}, 编码器: ${encoder}`);
 
   // 写入所有图片（并行）
-  console.log('[Export] 写入图片文件...');
   const imageFiles: string[] = [];
   await Promise.all(slides.map(async (slide, i) => {
     const imagePath = path.join(tempDir, `slide_${i}.png`);
@@ -329,7 +324,6 @@ async function generateVideo(
     const partPath = path.join(tempDir, `part_${i}.mp4`);
     const duration = slideDurations[i] / 1000; // 转为秒
 
-    console.log(`[Export] 生成视频片段 ${i + 1}/${slides.length} (${duration.toFixed(1)}s)...`);
 
     // 为每张图片生成对应时长的视频
     await new Promise<void>((resolve, reject) => {
@@ -373,10 +367,8 @@ async function generateVideo(
   });
 
   // 并行生成视频片段（限制并发数为 4，避免资源耗尽）
-  console.log(`[Export] 并行生成 ${slides.length} 个视频片段 (并发数: 4)...`);
   const startTime = Date.now();
   await runWithConcurrency(tasks, 4);
-  console.log(`[Export] 视频片段生成完成，耗时: ${((Date.now() - startTime) / 1000).toFixed(1)}s`);
 
   // 创建拼接列表
   const videoListPath = path.join(tempDir, 'video_list.txt');
@@ -384,7 +376,6 @@ async function generateVideo(
   await fs.writeFile(videoListPath, listContent);
 
   // 拼接所有视频片段（使用 -c copy 避免重编码）
-  console.log('[Export] 拼接视频片段...');
   const videoOnlyPath = path.join(tempDir, 'video_only.mp4');
   await new Promise<void>((resolve, reject) => {
     ffmpeg()
@@ -398,7 +389,6 @@ async function generateVideo(
   });
 
   // 合并视频、音频和字幕
-  console.log('[Export] 合并视频、音频和字幕...');
   const finalVideoPath = path.join(tempDir, 'final.mp4');
   
   // 字幕样式 - 根据语言调整
@@ -477,7 +467,6 @@ export async function POST(
       resolution: body.resolution || '1080p',
     };
 
-    console.log('[Export] 开始导出课程:', courseId, options);
 
     // 获取课程数据
     const course = await prisma.course.findUnique({
@@ -494,7 +483,6 @@ export async function POST(
     const audioData: { [key: number]: string } = JSON.parse(course.audioData);
     const language = course.language || 'zh';
 
-    console.log(`[Export] 数据: ${slides.length} 页, ${frames.length} 帧, ${Object.keys(audioData).length} 音频, 语言: ${language}`);
 
     // 检测 slides 格式：base64 图片还是 Markdown
     const isBase64Image = slides.length > 0 && 
@@ -503,7 +491,6 @@ export async function POST(
       slides[0].length > 100;
     
     if (!isBase64Image) {
-      console.log('[Export] 检测到 Markdown 格式，暂不支持导出');
       return NextResponse.json({ 
         error: '当前课程使用普通模式发布，暂不支持导出视频。请回到课件页面，使用"精美模式"重新发布后再导出。',
         hint: '精美模式会将课件渲染为高清图片，导出效果更佳。'
@@ -512,26 +499,19 @@ export async function POST(
 
     // 创建临时目录
     tempDir = await createTempDir();
-    console.log('[Export] 临时目录:', tempDir);
 
     // 合并音频（同时获取每段音频的实际时长）
-    console.log('[Export] 合并音频...');
     const { mergedPath: mergedAudioPath, audioDurations } = await mergeAudios(audioData, frames, tempDir);
-    console.log('[Export] 音频合并完成');
 
     // 计算每页时长（使用实际音频时长）
     const slideDurations = calculateSlideDurations(frames, slides.length, audioDurations);
     const totalDuration = slideDurations.reduce((a, b) => a + b, 0) / 1000;
-    console.log('[Export] 总时长:', `${totalDuration.toFixed(1)}s`);
 
     // 生成字幕文件
-    console.log('[Export] 生成字幕...');
     const subtitlePath = await generateSubtitles(frames, audioDurations, tempDir, language);
 
     // 生成视频（包含字幕）
-    console.log('[Export] 生成视频...');
-    const videoPath = await generateVideo(slides, slideDurations, mergedAudioPath, subtitlePath, tempDir, options);
-    console.log('[Export] 视频生成完成');
+    const videoPath = await generateVideo(slides, slideDurations, mergedAudioPath, subtitlePath, tempDir, options, language);
 
     // 读取视频文件
     const videoBuffer = await fs.readFile(videoPath);
@@ -540,7 +520,6 @@ export async function POST(
     await cleanupTempDir(tempDir);
     tempDir = null;
 
-    console.log(`[Export] 导出完成，视频大小: ${(videoBuffer.length / 1024 / 1024).toFixed(2)} MB`);
 
     // 返回视频文件
     return new NextResponse(videoBuffer, {

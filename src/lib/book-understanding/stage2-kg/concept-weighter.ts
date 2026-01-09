@@ -124,8 +124,6 @@ export function weightConcepts(input: ConceptWeighterInput): ConceptWeighterOutp
       },
     };
 
-    console.log('[ConceptWeighter] Weighted', concepts.length, 'concepts');
-    console.log('[ConceptWeighter] Core concepts:', coreConceptIds.length);
 
     return {
       success: true,

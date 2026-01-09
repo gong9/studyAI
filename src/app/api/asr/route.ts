@@ -29,7 +29,6 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    console.log('[Whisper] 收到音频文件:', audioFile.name, audioFile.size, 'bytes');
     
     // 构建 OpenAI 请求
     const openaiFormData = new FormData();
@@ -54,7 +53,6 @@ export async function POST(request: NextRequest) {
     }
     
     // 调用 Whisper API（通过 AIHubMix）
-    console.log('[Whisper] 调用 API:', WHISPER_API_URL);
     const response = await fetch(WHISPER_API_URL, {
       method: 'POST',
       headers: {
@@ -74,7 +72,6 @@ export async function POST(request: NextRequest) {
     
     const result = await response.json();
     
-    console.log('[Whisper] 识别结果:', result.text);
     
     return NextResponse.json({
       success: true,

@@ -36,7 +36,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('[Music Generate API] Generating BGM for scene:', sceneType);
 
     const result = await generateBackgroundMusic({
       sceneType,

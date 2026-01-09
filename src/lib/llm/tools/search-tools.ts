@@ -13,7 +13,6 @@ import type { ToolContext } from './types';
 export function createSearchTool(ctx: ToolContext) {
   return FunctionTool.from(
     async ({ query }: { query: string }): Promise<string> => {
-      console.log(`[LLM] 🔍 Hybrid search: "${query}"`);
       
       const results = await hybridSearch(ctx.index, ctx.knowledgeBaseId, query, {
         vectorTopK: 5,
@@ -26,7 +25,6 @@ export function createSearchTool(ctx: ToolContext) {
       }
       
       const formatted = formatSearchResults(results, 3);
-      console.log(`[LLM] 🔍 Found ${results.length} results (showing top 3)`);
       ctx.toolCalls.push({ tool: 'search_knowledge', input: query, output: formatted.substring(0, 200) });
       
       // 保存检索结果用于前端展示
@@ -56,7 +54,6 @@ export function createSearchTool(ctx: ToolContext) {
 export function createDeepSearchTool(ctx: ToolContext) {
   return FunctionTool.from(
     async ({ query }: { query: string }): Promise<string> => {
-      console.log(`[LLM] 📚 Deep hybrid search: "${query}"`);
       
       const results = await hybridSearch(ctx.index, ctx.knowledgeBaseId, query, {
         vectorTopK: 10,
@@ -69,7 +66,6 @@ export function createDeepSearchTool(ctx: ToolContext) {
       }
       
       const formatted = formatSearchResults(results, 8);
-      console.log(`[LLM] 📚 Found ${results.length} results (showing top 8)`);
       ctx.toolCalls.push({ tool: 'deep_search', input: query, output: formatted.substring(0, 200) });
       
       // 保存检索结果
@@ -99,7 +95,6 @@ export function createDeepSearchTool(ctx: ToolContext) {
 export function createKeywordSearchTool(ctx: ToolContext) {
   return FunctionTool.from(
     async ({ query }: { query: string }): Promise<string> => {
-      console.log(`[LLM] 🔤 Keyword search: "${query}"`);
       
       const results = await meilisearchService.search(ctx.knowledgeBaseId, query, 5);
       
@@ -111,7 +106,6 @@ export function createKeywordSearchTool(ctx: ToolContext) {
         .map((r, i) => `[来源${i + 1}: ${r.documentName}]\n${r.content}`)
         .join('\n\n');
       
-      console.log(`[LLM] 🔤 Found ${results.length} keyword matches`);
       return formatted;
     },
     {

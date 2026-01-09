@@ -34,7 +34,6 @@ export class MemoryStore {
    * 保存记忆（同时写入 Prisma 和向量索引）
    */
   async save(memory: ExtractedMemory): Promise<Memory> {
-    console.log(`[MemoryStore] Saving memory: ${memory.content.substring(0, 50)}...`);
     
     // 1. 写入 Prisma
     const dbMemory = await prisma.memory.create({
@@ -72,7 +71,6 @@ export class MemoryStore {
         data: { vectorNodeId: dbMemory.id },
       });
       
-      console.log(`[MemoryStore] Memory saved with vector: ${dbMemory.id}`);
     } catch (error) {
       console.error('[MemoryStore] Failed to save to vector index:', error);
       // 向量写入失败不影响 Prisma 记录
@@ -104,7 +102,6 @@ export class MemoryStore {
     limit: number = 10,
     minRelevance: number = 0.5  // 关键！相关性阈值
   ): Promise<ScoredMemory[]> {
-    console.log(`[MemoryStore] Retrieving memories for: ${query.substring(0, 50)}... (minRelevance: ${minRelevance})`);
     
     try {
       const index = await this.getIndex();
@@ -122,7 +119,6 @@ export class MemoryStore {
       );
       
       if (memoryNodes.length === 0) {
-        console.log('[MemoryStore] No memory nodes found in vector search');
         return [];  // 不再 fallback，没有相关记忆就返回空
       }
       
@@ -149,7 +145,6 @@ export class MemoryStore {
         
         // 🔥 关键：只保留相关性超过阈值的记忆
         if (relevanceScore < minRelevance) {
-          console.log(`[MemoryStore] Skipping low relevance memory (${relevanceScore.toFixed(3)} < ${minRelevance}): ${dbMemory?.content.substring(0, 30)}...`);
           continue;
         }
         
@@ -171,7 +166,6 @@ export class MemoryStore {
       // 按综合评分排序
       scored.sort((a, b) => b.score - a.score);
       
-      console.log(`[MemoryStore] Retrieved ${scored.length} relevant memories (filtered from ${memoryNodes.length})`);
       return scored.slice(0, limit);
     } catch (error) {
       console.error('[MemoryStore] Vector retrieval failed:', error);
@@ -184,7 +178,6 @@ export class MemoryStore {
    * 按最近访问时间排序
    */
   private async fallbackRetrieve(limit: number): Promise<ScoredMemory[]> {
-    console.log('[MemoryStore] Using fallback retrieval');
     
     const dbMemories = await prisma.memory.findMany({
       where: { knowledgeBaseId: this.knowledgeBaseId },
@@ -245,7 +238,6 @@ export class MemoryStore {
     
     // 注意：向量索引中的节点不容易删除
     // 可以在检索时通过 metadata 过滤掉已删除的记忆
-    console.log(`[MemoryStore] Memory deleted: ${memoryId}`);
   }
   
   /**
@@ -275,7 +267,6 @@ export class MemoryStore {
     try {
       const similar = await this.retrieve(content, 1);
       if (similar.length > 0 && similar[0].relevanceScore >= threshold) {
-        console.log(`[MemoryStore] Similar memory exists: ${similar[0].content}`);
         return true;
       }
     } catch (error) {

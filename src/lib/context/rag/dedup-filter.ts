@@ -221,13 +221,11 @@ export function processResults(
     
     // 如果没有任何关键词匹配，认为不相关
     if (!hasKeywordMatch && queryKeywords.length > 0) {
-      console.log(`[DedupFilter] Skipping no-keyword-match result: ${r.content.substring(0, 40)}...`);
       return false;
     }
     return true;
   });
   if (processed.length < beforeCount) {
-    console.log(`[DedupFilter] Filtered out ${beforeCount - processed.length} irrelevant results (no keyword match)`);
   }
   
   // 1. 噪音过滤

@@ -131,7 +131,6 @@ export async function POST(request: Request) {
               }
             } catch (e) {
               // 检查状态失败，继续等待
-              console.log('Check status failed, continuing...', e);
             }
           }
 

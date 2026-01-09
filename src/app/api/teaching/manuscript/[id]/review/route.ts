@@ -41,7 +41,6 @@ export async function POST(
       );
     }
 
-    console.log('[API] Reviewing manuscript:', id);
 
     // 更新状态
     await prisma.teachingManuscript.update({
@@ -86,7 +85,6 @@ export async function POST(
       },
     });
 
-    console.log('[API] Review completed, comments:', result.comments.length);
 
     return NextResponse.json({
       success: true,

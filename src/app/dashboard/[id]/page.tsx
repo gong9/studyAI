@@ -224,7 +224,6 @@ export default function KnowledgeBaseDetailPage() {
       }
     } catch (error) {
       // 静默失败，不影响页面
-      console.log('检查图谱状态失败:', error);
     }
   };
 
@@ -290,7 +289,6 @@ export default function KnowledgeBaseDetailPage() {
       
       eventSource.addEventListener('status', (e) => {
         const data = JSON.parse(e.data);
-        console.log('[SSE] Status:', data);
         
         // 更新文档状态
         setKb((prev) => {
@@ -314,12 +312,10 @@ export default function KnowledgeBaseDetailPage() {
       // 心跳事件 - 保持连接活跃
       eventSource.addEventListener('heartbeat', (e) => {
         const data = JSON.parse(e.data);
-        console.log('[SSE] Heartbeat:', data.progress);
       });
       
       eventSource.addEventListener('complete', (e) => {
         const data = JSON.parse(e.data);
-        console.log('[SSE] Complete:', data);
         
         // 更新为完成状态
         setKb((prev) => {

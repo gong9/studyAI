@@ -100,7 +100,6 @@ export async function judgeRetrieval(
   // 检查是否是画图任务
   const isDiagramTask = toolsCalled.includes('generate_diagram');
   
-  console.log(`[RetrievalJudge] Question: "${question.substring(0, 30)}...", Tools: [${toolsCalled.join(', ')}], isDiagram: ${isDiagramTask}`);
 
   const prompt = `你是一个 RAG 系统检索质量评估专家。请评估检索结果与用户问题的相关性。
 ${isDiagramTask ? `
@@ -360,7 +359,6 @@ ${expectedIntent || '未指定'}
  * 综合评估 - 运行所有 Judge
  */
 export async function runAllJudges(input: EvalInput): Promise<EvalScores> {
-  console.log(`[EvalJudges] Running all judges for question: "${input.question.substring(0, 50)}..."`);
 
   // 并行运行所有 Judge（传入 toolsCalled 以正确处理工具调用场景）
   const [retrieval, faithfulness, quality, tool] = await Promise.all([
@@ -374,7 +372,6 @@ export async function runAllJudges(input: EvalInput): Promise<EvalScores> {
   // 平均分只计算 3 个核心维度（不含工具分数）
   const average = (retrieval.score + faithfulness.score + quality.score) / 3;
 
-  console.log(`[EvalJudges] Scores: R=${retrieval.score}, F=${faithfulness.score}, Q=${quality.score}, Avg=${average.toFixed(2)}`);
 
   return {
     retrieval,

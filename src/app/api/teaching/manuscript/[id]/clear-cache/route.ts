@@ -34,7 +34,6 @@ export async function POST(
       },
     });
 
-    console.log(`[API] Cache cleared for manuscript: ${manuscriptId}`);
 
     return NextResponse.json({
       success: true,

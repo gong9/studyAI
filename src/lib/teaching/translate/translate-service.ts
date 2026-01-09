@@ -139,7 +139,6 @@ export async function translateHtmlSlides(
       message: `翻译幻灯片 ${i + 1}/${slides.length}: ${slide.title}`,
     });
 
-    console.log(`[Translate] 翻译幻灯片 ${i + 1}/${slides.length}: ${slide.title}`);
 
     try {
       const translatedTitle = await translateText(slide.title);
@@ -188,7 +187,6 @@ export async function translateLectureScript(
     }
   }
 
-  console.log(`[Translate] 需要翻译 ${textsToTranslate.length} 条演讲文本`);
 
   // 翻译所有文本
   const translations = new Map<string, string>();
@@ -204,7 +202,6 @@ export async function translateLectureScript(
       message: `翻译演讲稿 ${i + 1}/${textsToTranslate.length}`,
     });
 
-    console.log(`[Translate] 翻译演讲稿 ${i + 1}/${textsToTranslate.length}: ${item.text.substring(0, 30)}...`);
 
     try {
       const translated = await translateText(item.text);

@@ -72,10 +72,8 @@ export async function POST(request: Request) {
       { role: 'user' as const, content: h.question },
       { role: 'assistant' as const, content: h.answer },
     ]);
-    console.log(`[API] Chat history: ${chatHistory.length / 2} rounds`);
 
     // 根据模式选择查询方法，传入对话历史和会话ID
-    console.log(`[API] Query mode: ${mode}`);
     const result = mode === 'agentic'
       ? await LLMService.agenticQuery(knowledgeBaseId, question, chatHistory, sessionId)
       : await LLMService.query(knowledgeBaseId, question, chatHistory);

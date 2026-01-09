@@ -94,7 +94,6 @@ export async function analyzeContentForMusic(
       .replace('{courseContent}', truncatedContent)
       .replace('{sceneType}', sceneType);
 
-    console.log('[MusicRecommender] Analyzing content for music...');
 
     const response = await llm.complete({ prompt });
     const text = response.text.trim();
@@ -182,11 +181,6 @@ export async function recommendMusic(
   
   // 3. 匹配推荐
   const recommendations = matchMusicByAnalysis(library.tracks, analysis, 5);
-  
-  console.log('[MusicRecommender] Recommendations:', {
-    analysis,
-    count: recommendations.length,
-  });
   
   return {
     analysis,

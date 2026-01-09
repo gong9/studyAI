@@ -14,12 +14,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from '@/components/ui/input';
 import { 
   LogOut, Plus, Trash2, FileText, 
-  Clock, Sparkles, Cpu, FileCheck, ArrowRight, Scale
+  Clock, Sparkles, Cpu, FileCheck, ArrowRight, Scale, GraduationCap
 } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 
 type ScenarioType = 'tech' | 'policy' | 'legal';
-type SourceModeType = 'book' | 'docs' | 'fragments';
+type SourceModeType = 'book' | 'docs' | 'fragments' | 'paper';
 
 interface SourceModeConfig {
   id: SourceModeType;
@@ -46,6 +46,12 @@ const sourceModes: SourceModeConfig[] = [
     name: '碎片资料',
     desc: '零散的笔记、文章等',
     icon: Sparkles,
+  },
+  {
+    id: 'paper',
+    name: '论文',
+    desc: '学术论文或技术报告',
+    icon: GraduationCap,
   },
 ];
 
@@ -466,7 +472,7 @@ export default function DashboardPage() {
                 </div>
                 <div className="space-y-3">
                   <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1">内容来源</label>
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-4 gap-3">
                     {sourceModes.map((mode) => (
                       <button
                         key={mode.id}

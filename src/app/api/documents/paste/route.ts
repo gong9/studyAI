@@ -58,7 +58,6 @@ export async function POST(request: Request) {
     
     const filePath = path.join(uploadDir, fileName);
     await fs.writeFile(filePath, content.trim(), 'utf-8');
-    console.log(`[PasteDocument] Created file: ${filePath}`);
 
     // 创建文档记录
     const document = await prisma.document.create({
@@ -72,7 +71,6 @@ export async function POST(request: Request) {
       },
     });
 
-    console.log(`[PasteDocument] Created document: ${document.id} (${fileName})`);
 
     return NextResponse.json(document, { status: 201 });
   } catch (error: any) {

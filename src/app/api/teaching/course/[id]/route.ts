@@ -38,7 +38,6 @@ export async function PATCH(
         ? JSON.stringify(body.backgroundMusic)
         : null;
       
-      console.log('[Course API] Updating background music:', body.backgroundMusic);
     }
 
     // 执行更新

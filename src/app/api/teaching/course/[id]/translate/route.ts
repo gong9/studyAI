@@ -66,7 +66,6 @@ async function generateEnglishTTS(
     // 检查全局限速状态
     if (isRateLimited && Date.now() < rateLimitResetTime) {
       const waitTime = rateLimitResetTime - Date.now();
-      console.log(`[TranslateAPI] 全局限速中，等待 ${Math.ceil(waitTime / 1000)}s...`);
       await delay(waitTime);
     }
 
@@ -139,10 +138,6 @@ async function generateEnglishTTS(
         const waitTime = retryDelayMs * attempt;
         isRateLimited = true;
         rateLimitResetTime = Date.now() + waitTime;
-
-        console.log(
-          `[TranslateAPI] ⚠️ 遇到限速，等待 ${waitTime / 1000}s 后重试 (${attempt}/${maxRetries})...`
-        );
         await delay(waitTime);
 
         isRateLimited = false;
@@ -164,7 +159,6 @@ export async function POST(
   try {
     const { id: courseId } = await params;
 
-    console.log('[TranslateAPI] 开始创建英文版课程:', courseId);
 
     // 1. 获取中文课程
     const zhCourse = await prisma.course.findUnique({
@@ -188,7 +182,6 @@ export async function POST(
     });
 
     if (existingEn) {
-      console.log('[TranslateAPI] 英文版已存在:', existingEn.id);
       return NextResponse.json({
         success: true,
         courseId: existingEn.id,
@@ -212,7 +205,6 @@ export async function POST(
           sendProgress('translating_slides', 10, '正在翻译 PPT 幻灯片...');
 
           const zhSlides: HtmlSlide[] = JSON.parse(zhCourse.slides);
-          console.log(`[TranslateAPI] 翻译 ${zhSlides.length} 页幻灯片`);
 
           const enSlides = await translateHtmlSlides(zhSlides, (progress) => {
             const percent = 10 + Math.floor((progress.current / progress.total) * 30);
@@ -271,7 +263,6 @@ export async function POST(
             }
           }
 
-          console.log(`[TranslateAPI] 生成 ${speakTexts.length} 条英文语音`);
 
           // 生成 TTS 并构建 frames
           const audioResults: Map<number, { base64: string; duration: number }> = new Map();
@@ -283,10 +274,6 @@ export async function POST(
               'generating_tts',
               percent,
               `生成英文语音 ${i + 1}/${speakTexts.length}`
-            );
-
-            console.log(
-              `[TranslateAPI] 生成语音 ${i + 1}/${speakTexts.length}: ${item.text.substring(0, 30)}...`
             );
 
             try {
@@ -367,7 +354,6 @@ export async function POST(
             },
           });
 
-          console.log(`[TranslateAPI] 英文版课程创建成功: ${enCourse.id}`);
 
           // 完成
           controller.enqueue(

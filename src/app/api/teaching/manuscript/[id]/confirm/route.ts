@@ -42,7 +42,6 @@ export async function POST(
       },
     });
 
-    console.log('[API] Manuscript confirmed:', id);
 
     return NextResponse.json({
       success: true,

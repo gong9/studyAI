@@ -156,9 +156,9 @@ const SCENE_PROMPTS: Record<string, ScenePromptConfig> = {
 4. **分页**：每个部分用 \`---\` 分隔（幻灯片分页标记）
 
 ### 页数限制（必须遵守）
-1. **整个 PPT 最多 12 页**，不能超过
-2. 合理合并相关内容，每页信息密度可以高一些
-3. 优先保证核心技术点的完整讲解
+1. **整个 PPT 控制在 15-20 页**，不能超过 20 页
+2. 合理合并相关内容，精简表达，突出重点
+3. 开头 1 页 + 核心内容 13-17 页 + 总结 1-2 页
 
 ### 重要提示
 1. 必须详细讲解每个技术点
@@ -418,10 +418,6 @@ export async function generateManuscript(input: ManuscriptInput): Promise<Manusc
       .replace('{summary}', chapterSummary || '（暂无）')
       .replace('{ragContent}', ragContent || '（暂无检索结果，请根据规划生成）');
 
-    console.log('[ManuscriptGenerator] Generating manuscript for:', plan.chapter);
-    console.log('[ManuscriptGenerator] Scene type:', sceneType);
-    console.log('[ManuscriptGenerator] RAG content length:', ragContent.length);
-    console.log('[ManuscriptGenerator] Key points count:', chapterKeyPoints?.length || 0);
 
     const response = await llm.complete({ prompt });
     let markdown = response.text.trim();
@@ -429,7 +425,6 @@ export async function generateManuscript(input: ManuscriptInput): Promise<Manusc
     // 清理可能的 markdown 代码块包装
     markdown = cleanMarkdown(markdown);
 
-    console.log('[ManuscriptGenerator] Manuscript generated, length:', markdown.length);
 
     return {
       success: true,
@@ -468,7 +463,6 @@ async function fetchSectionMaterials(
       }
       const query = queryParts.join(' ');
 
-      console.log(`[ManuscriptGenerator] RAG query: ${query}`);
 
       const results = await hybridSearch(index, knowledgeBaseId, query, {
         vectorTopK: 4,

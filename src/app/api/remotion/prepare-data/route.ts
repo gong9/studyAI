@@ -99,7 +99,6 @@ export async function POST(request: NextRequest) {
             volume: backgroundMusic.volume || 0.2,
             enabled: true,
           };
-          console.log('[Prepare Data] Background music converted to base64, size:', Math.round(musicBuffer.length / 1024), 'KB');
         } catch (e) {
           console.error('[Prepare Data] Failed to read background music file:', e);
           // 回退到原始路径
@@ -138,8 +137,6 @@ export async function POST(request: NextRequest) {
     
     await fs.writeFile(dataFilePath, JSON.stringify(courseData, null, 2), 'utf-8');
 
-    console.log(`[Prepare Data] 课程数据已保存: ${dataFilePath}`);
-    console.log(`[Prepare Data] 幻灯片: ${slides.length} 页, 时长: ${course.duration}ms`);
 
     return NextResponse.json({
       success: true,

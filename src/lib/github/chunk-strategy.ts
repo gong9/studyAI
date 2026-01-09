@@ -122,7 +122,6 @@ export async function createCodeChunks(
     }
   }
   
-  console.log(`[Chunk] Created ${chunks.length} chunks from ${files.length} files`);
   return chunks;
 }
 

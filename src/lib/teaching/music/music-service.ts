@@ -45,7 +45,6 @@ export async function getMusicLibrary(): Promise<MusicLibrary> {
 
   // 本地模式直接使用默认库
   if (IS_LOCAL_MODE) {
-    console.log('[MusicService] Using local/default library');
     cachedLibrary = DEFAULT_LIBRARY;
     cacheTimestamp = Date.now();
     return DEFAULT_LIBRARY;
@@ -61,7 +60,6 @@ export async function getMusicLibrary(): Promise<MusicLibrary> {
       const library = await response.json() as MusicLibrary;
       cachedLibrary = library;
       cacheTimestamp = Date.now();
-      console.log('[MusicService] Library loaded from CDN:', library.tracks.length, 'tracks');
       return library;
     }
   } catch (error) {
@@ -69,7 +67,6 @@ export async function getMusicLibrary(): Promise<MusicLibrary> {
   }
 
   // 使用默认库
-  console.log('[MusicService] Using default library');
   return DEFAULT_LIBRARY;
 }
 

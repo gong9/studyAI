@@ -286,7 +286,6 @@ export default function CourseEditorPage() {
         body: JSON.stringify({ courseId }),
       });
       
-      console.log('Background music updated:', config);
       
       // 刷新 Remotion Studio iframe 以加载新数据
       const iframe = document.getElementById('remotion-studio-iframe') as HTMLIFrameElement;

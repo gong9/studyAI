@@ -55,7 +55,6 @@ export async function POST(request: Request) {
         .join('\n\n')
         .slice(0, 8000); // 限制长度
       
-      console.log(`[Legal Recommend] Retrieved ${results.length} chunks for "${lawName}"`);
     } catch (searchError) {
       console.error('[Legal Recommend] Search error:', searchError);
     }

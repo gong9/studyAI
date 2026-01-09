@@ -121,8 +121,6 @@ export async function GET(
     return NextResponse.json({ error: '没有幻灯片' }, { status: 400 });
   }
 
-  console.log(`[Lecture] 初始化讲解: ${manuscriptId}, ${slides.length} 页`);
-  console.log(`[Lecture] 生成完整演讲稿中...`);
 
   try {
     let scriptResult: { slides: { index: number; actions: LectureAction[] }[] };
@@ -135,12 +133,10 @@ export async function GET(
     });
     
     if (existingScript?.lectureScript) {
-      console.log(`[Lecture] 从数据库加载已有讲解稿: ${manuscriptId}`);
       scriptResult = JSON.parse(existingScript.lectureScript);
       fromCache = true;
     } else {
       // 一次性生成完整演讲稿
-      console.log(`[Lecture] 生成新讲解稿中... 场景类型: ${sceneType}`);
       scriptResult = await generateFullLectureScript(slides, undefined, sceneType);
       
       // 保存到数据库
@@ -150,7 +146,6 @@ export async function GET(
           lectureScript: JSON.stringify(scriptResult),
         },
       });
-      console.log(`[Lecture] 讲解稿已保存到数据库`);
     }
     
     // 初始化讲解状态
@@ -163,7 +158,6 @@ export async function GET(
     });
 
     const totalActions = scriptResult.slides.reduce((sum, s) => sum + s.actions.length, 0);
-    console.log(`[Lecture] 演讲稿就绪: ${scriptResult.slides.length} 页, ${totalActions} 条指令`);
 
     return NextResponse.json({
       success: true,
@@ -295,7 +289,6 @@ export async function DELETE(
 ) {
   const { manuscriptId } = params;
   lectureStates.delete(manuscriptId);
-  console.log(`[Lecture] 停止讲解: ${manuscriptId}`);
   return NextResponse.json({ success: true, message: '讲解已停止' });
 }
 

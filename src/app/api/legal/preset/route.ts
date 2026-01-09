@@ -130,7 +130,6 @@ export async function POST() {
       }, { status: 400 });
     }
 
-    console.log(`[Preset Legal] Found ${docxFiles.length} law documents`);
 
     // 如果知识库不存在，创建它
     if (!presetKB) {
@@ -144,7 +143,6 @@ export async function POST() {
         },
         include: { documents: true },
       });
-      console.log(`[Preset Legal] Created preset KB: ${presetKB.id}`);
     }
 
     // 创建上传目录
@@ -161,7 +159,6 @@ export async function POST() {
     for (const fileName of docxFiles) {
       // 跳过已存在的文档
       if (existingNames.includes(fileName)) {
-        console.log(`[Preset Legal] Skipping existing: ${fileName}`);
         continue;
       }
 
@@ -182,18 +179,15 @@ export async function POST() {
       });
 
       importedDocs.push({ id: doc.id, name: fileName });
-      console.log(`[Preset Legal] Imported: ${fileName}`);
     }
 
     // 构建向量索引（处理所有文档）
-    console.log(`[Preset Legal] Building vector index...`);
     
     try {
       await LLMService.createOrUpdateIndex(
         presetKB.id,
         uploadDir,
         (progress, message) => {
-          console.log(`[Preset Legal] Index progress: ${progress}% - ${message}`);
         }
       );
 
@@ -203,7 +197,6 @@ export async function POST() {
         data: { status: 'completed' },
       });
 
-      console.log(`[Preset Legal] Index built successfully!`);
 
       return NextResponse.json({
         success: true,

@@ -58,7 +58,6 @@ export async function POST(request: Request) {
     // 解析文档内容（如果还没解析）
     for (const doc of documents) {
       if (!doc.content && doc.path) {
-        console.log(`[ClusterTopics] Parsing document: ${doc.name}`);
         try {
           const ext = path.extname(doc.name).toLowerCase();
           let content = '';
@@ -90,7 +89,6 @@ export async function POST(request: Request) {
     }
 
     // 调用主题聚类
-    console.log(`[ClusterTopics] Clustering ${documents.length} documents...`);
     const clusterResult = await clusterDocumentsToTopics(
       documents.map(d => ({
         id: d.id,
@@ -138,7 +136,6 @@ export async function POST(request: Request) {
       data: { status: 'completed' },
     });
 
-    console.log(`[ClusterTopics] Created ${chapterNodes.length} topic chapters`);
 
     return NextResponse.json({
       success: true,

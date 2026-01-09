@@ -150,7 +150,6 @@ export async function classifyChapterRoles(input: RoleClassifierInput): Promise<
       .replace('{knowledgeType}', thesis.knowledgeType)
       .replace('{chapterList}', finalChapterList);
 
-    console.log(`[RoleClassifier] Classifying ${chapters.length} chapters, prompt length: ${prompt.length}`);
 
     const response = await llm.complete({ prompt });
     const text = response.text.trim();
@@ -168,7 +167,6 @@ export async function classifyChapterRoles(input: RoleClassifierInput): Promise<
 
     // 统计角色分布
     const roleStats = countRoles(classifiedChapters);
-    console.log('[RoleClassifier] Role distribution:', roleStats);
 
     return {
       success: true,

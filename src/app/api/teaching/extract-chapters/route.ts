@@ -11,6 +11,7 @@ import { extractChapters, extractChaptersByRules, type ChapterNode } from '@/lib
 import { analyzeChapter } from '@/lib/teaching/agents/chapter-analyzer';
 import { loadIndex } from '@/lib/llm/index-manager';
 import { clusterDocumentsToTopics, topicsToChapterNodes } from '@/lib/teaching/topic-clustering';
+import { processPaper, paperResultToChapterNodes } from '@/lib/teaching/paper-processor';
 import * as fs from 'fs-extra';
 import * as path from 'path';
 import pdfParse from 'pdf-parse';
@@ -65,7 +66,6 @@ export async function POST(request: Request) {
     // 解析 PDF 内容（如果还没解析）
     for (const doc of documents) {
       if (!doc.content && doc.path) {
-        console.log(`[ExtractChapters] Parsing PDF: ${doc.name}`);
         try {
           const ext = path.extname(doc.name).toLowerCase();
           let content = '';
@@ -74,7 +74,6 @@ export async function POST(request: Request) {
             const buffer = await fs.readFile(doc.path);
             const pdfData = await pdfParse(buffer);
             content = pdfData.text || '';
-            console.log(`[ExtractChapters] Extracted ${content.length} chars from ${doc.name}`);
           } else if ((ext === '.txt' || ext === '.md') && await fs.pathExists(doc.path)) {
             content = await fs.readFile(doc.path, 'utf-8');
           } else if (ext === '.docx' && await fs.pathExists(doc.path)) {
@@ -118,14 +117,12 @@ export async function POST(request: Request) {
     // tech -> 技术文档结构, policy -> 制度条款
     const kbType = kb.type || 'tech';
     const sourceMode = kb.sourceMode || 'book';
-    console.log(`[ExtractChapters] KB type: ${kbType}, sourceMode: ${sourceMode}`);
 
     // 根据 sourceMode 选择不同的处理逻辑
     let result;
     
     if (sourceMode === 'docs') {
       // docs 模式：每个文档直接作为一个章节，跳过 LLM 提取
-      console.log(`[ExtractChapters] Using docs mode: ${documents.length} documents -> chapters`);
       const chapters: ChapterNode[] = documents.map((doc, index) => ({
         title: doc.name.replace(/\.(pdf|docx|txt|md)$/i, ''),
         level: 1,
@@ -141,7 +138,6 @@ export async function POST(request: Request) {
       };
     } else if (sourceMode === 'fragments') {
       // fragments 模式：使用 AI 主题聚类
-      console.log(`[ExtractChapters] Using fragments mode with topic clustering`);
       const clusterResult = await clusterDocumentsToTopics(
         documents.map(d => ({
           id: d.id,
@@ -166,7 +162,28 @@ export async function POST(request: Request) {
         };
       } else {
         // 聚类失败时回退到普通 LLM 提取
-        console.log(`[ExtractChapters] Clustering failed, falling back to LLM extraction`);
+        result = await extractChapters(fullContent, kbType);
+      }
+    } else if (sourceMode === 'paper') {
+      // paper 模式：论文三阶段处理（段落摘要 → 结构识别 → 动态章节）
+      const paperResult = await processPaper(actualContent);
+      
+      if (paperResult.success) {
+        const chapterNodes = paperResultToChapterNodes(paperResult, actualContent);
+        result = {
+          success: true,
+          chapters: chapterNodes,
+          metadata: {
+            totalChapters: chapterNodes.length,
+            sourceMode: 'paper',
+            paperType: paperResult.paperOverview?.paperType,
+            paperTitle: paperResult.paperOverview?.title,
+            totalParagraphs: paperResult.metadata?.totalParagraphs,
+            ...paperResult.metadata,
+          },
+        };
+      } else {
+        // 论文处理失败时回退到普通 LLM 提取
         result = await extractChapters(fullContent, kbType);
       }
     } else {
@@ -282,12 +299,10 @@ async function saveChaptersToDb(
  * 异步分析所有章节（后台任务）
  */
 async function analyzeAllChapters(knowledgeBaseId: string) {
-  console.log(`[ExtractChapters] Starting background analysis for KB: ${knowledgeBaseId}`);
   
   // 检查索引是否就绪（不创建，只检查）
   const indexReady = await isIndexReady(knowledgeBaseId);
   if (!indexReady) {
-    console.log('[ExtractChapters] Index not ready, skipping chapter analysis. Please wait for document processing to complete.');
     return;
   }
   
@@ -306,15 +321,12 @@ async function analyzeAllChapters(knowledgeBaseId: string) {
   });
 
   if (chapters.length === 0) {
-    console.log('[ExtractChapters] No chapters to analyze');
     return;
   }
 
-  console.log(`[ExtractChapters] Analyzing ${chapters.length} chapters...`);
 
   for (const chapter of chapters) {
     try {
-      console.log(`[ExtractChapters] Analyzing: ${chapter.title}`);
       
       const result = await analyzeChapter({
         knowledgeBaseId,
@@ -332,9 +344,7 @@ async function analyzeAllChapters(knowledgeBaseId: string) {
             analyzed: true,
           },
         });
-        console.log(`[ExtractChapters] ✓ Analyzed: ${chapter.title} (${result.keyPoints.length} key points)`);
       } else {
-        console.log(`[ExtractChapters] ✗ Failed: ${chapter.title} - ${result.error}`);
       }
 
       // 避免 API 限流
@@ -345,7 +355,6 @@ async function analyzeAllChapters(knowledgeBaseId: string) {
     }
   }
 
-  console.log(`[ExtractChapters] Background analysis completed for KB: ${knowledgeBaseId}`);
 }
 
 /**
@@ -355,10 +364,8 @@ async function analyzeAllChapters(knowledgeBaseId: string) {
 async function isIndexReady(knowledgeBaseId: string): Promise<boolean> {
   try {
     await loadIndex(knowledgeBaseId);
-    console.log(`[ExtractChapters] ✓ Index is ready`);
     return true;
   } catch (error: any) {
-    console.log(`[ExtractChapters] Index not ready: ${error.message}`);
     return false;
   }
 }

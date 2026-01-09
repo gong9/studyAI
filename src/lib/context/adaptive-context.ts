@@ -111,7 +111,6 @@ export class AdaptiveContextManager {
     // 记录新发现的实体
     entities.forEach(e => this.state.discoveredEntities.add(e));
     
-    console.log(`[AdaptiveContext] Tool call recorded: ${tool}, entities: ${entities.length}`);
   }
   
   /**
@@ -163,7 +162,6 @@ export class AdaptiveContextManager {
    * 执行增量上下文更新
    */
   async updateContext(): Promise<BuiltContext> {
-    console.log(`[AdaptiveContext] Updating context (update #${this.state.updateCount + 1})...`);
     
     const contextEngine = getContextEngine();
     
@@ -190,7 +188,6 @@ export class AdaptiveContextManager {
     this.state.lastUpdateAtCallCount = this.state.toolCalls.length;
     this.state.updateCount++;
     
-    console.log(`[AdaptiveContext] Context updated, new token estimate: ${this.estimateCurrentTokens()}`);
     
     return mergedContext;
   }

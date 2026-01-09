@@ -97,13 +97,11 @@ export async function analyzeChapter(input: ChapterAnalysisInput): Promise<Chapt
 
     const { knowledgeBaseId, chapterTitle } = input;
 
-    console.log(`[ChapterAnalyzer] Analyzing chapter: ${chapterTitle}`);
 
     // 1. 通过 RAG 获取与章节相关的教材内容
     const materialContent = await fetchChapterMaterial(knowledgeBaseId, chapterTitle);
     
     if (!materialContent || materialContent.length < 100) {
-      console.log('[ChapterAnalyzer] Insufficient material content');
       return {
         success: false,
         keyPoints: [],
@@ -112,7 +110,6 @@ export async function analyzeChapter(input: ChapterAnalysisInput): Promise<Chapt
       };
     }
 
-    console.log(`[ChapterAnalyzer] Fetched ${materialContent.length} chars of material`);
 
     // 2. 调用 LLM 分析
     const llm = new OpenAI({
@@ -131,7 +128,6 @@ export async function analyzeChapter(input: ChapterAnalysisInput): Promise<Chapt
     // 3. 解析结果
     const result = parseAnalysisResult(text);
 
-    console.log(`[ChapterAnalyzer] Extracted ${result.keyPoints.length} key points`);
 
     return {
       success: true,

@@ -170,14 +170,6 @@ export const HtmlSlideVideo: React.FC<HtmlSlideVideoProps> = ({
   return (
     <AbsoluteFill style={{ backgroundColor: '#0f0f23' }}>
       {/* 背景音乐 - 贯穿整个视频 */}
-      {(() => {
-        console.log('[HtmlSlideVideo] backgroundMusic:', backgroundMusic ? {
-          enabled: backgroundMusic.enabled,
-          volume: backgroundMusic.volume,
-          srcLength: backgroundMusic.src?.length,
-        } : 'undefined');
-        return null;
-      })()}
       {backgroundMusic?.enabled && backgroundMusic.src && (
         <Audio 
           src={backgroundMusic.src} 

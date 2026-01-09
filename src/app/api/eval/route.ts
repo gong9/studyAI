@@ -78,7 +78,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`[API] POST /api/eval - KB: ${knowledgeBaseId}, Questions: ${questions.length}`);
 
     // 创建评估运行（传入动态生成的问题列表和用户ID）
     const evalRunId = await EvalService.createEvalRun(knowledgeBaseId, questions, userId);

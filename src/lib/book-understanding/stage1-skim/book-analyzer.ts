@@ -91,19 +91,16 @@ export async function analyzeBook(input: BookAnalyzerInput): Promise<BookAnalyze
     let analysisContent: string;
     
     if (input.knowledgeBaseId) {
-      console.log('[BookAnalyzer] Using RAG to fetch key content');
       analysisContent = await fetchKeyContentByRAG(input.knowledgeBaseId);
     }
     
     // 如果 RAG 内容不足，使用备选方案
     if (!analysisContent || analysisContent.length < 500) {
-      console.log('[BookAnalyzer] RAG content insufficient, using fallback extraction');
       analysisContent = extractKeyParts(input.content);
     }
     
     const prompt = BOOK_ANALYSIS_PROMPT.replace('{content}', analysisContent);
 
-    console.log('[BookAnalyzer] Analyzing book, content length:', analysisContent.length);
 
     const response = await llm.complete({ prompt });
     const text = response.text.trim();
@@ -119,7 +116,6 @@ export async function analyzeBook(input: BookAnalyzerInput): Promise<BookAnalyze
       };
     }
 
-    console.log('[BookAnalyzer] Analysis complete:', thesis.title);
 
     return {
       success: true,
@@ -174,7 +170,6 @@ async function fetchKeyContentByRAG(knowledgeBaseId: string): Promise<string> {
     }
 
     const combined = allContent.join('\n\n---\n\n');
-    console.log(`[BookAnalyzer] RAG fetched ${allContent.length} chunks, total ${combined.length} chars`);
     
     // 限制总长度
     const maxLength = 15000;

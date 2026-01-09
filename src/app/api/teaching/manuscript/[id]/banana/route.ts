@@ -52,7 +52,6 @@ export async function POST(
       );
     }
 
-    console.log('[HTML Slide API] 开始生成精美课件:', id);
 
     // 使用 Skill 生成 HTML 幻灯片
     const result = await generateHtmlSlides({
@@ -60,7 +59,6 @@ export async function POST(
       theme: theme as 'dark' | 'light' | 'auto',
     });
 
-    console.log(`[HTML Slide API] 生成完成: ${result.totalCount} 页`);
 
     // 保存到数据库
     await prisma.teachingManuscript.update({
@@ -70,7 +68,6 @@ export async function POST(
       },
     });
 
-    console.log('[HTML Slide API] 保存成功');
 
     return NextResponse.json({
       success: true,

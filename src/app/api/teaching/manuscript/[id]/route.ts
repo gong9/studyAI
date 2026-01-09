@@ -126,7 +126,6 @@ export async function PUT(
       },
     });
 
-    console.log('[API] Manuscript updated:', id);
 
     return NextResponse.json({
       success: true,

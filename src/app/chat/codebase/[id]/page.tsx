@@ -577,10 +577,7 @@ export default function CodebaseChatPage() {
       if (response.ok) {
         const data = await response.json();
         
-        console.log('[handleSubmit] 收到响应 data.sourceNodes:', data.sourceNodes);
-        console.log('[handleSubmit] sourceNodes 长度:', data.sourceNodes?.length);
         if (data.sourceNodes?.length > 0) {
-          console.log('[handleSubmit] 第一个 source:', JSON.stringify(data.sourceNodes[0]));
         }
         
         const assistantMessage: Message = {

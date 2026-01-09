@@ -49,11 +49,9 @@ export async function buildModuleGraph(
 
   const totalModules = structure.modules.length;
   if (totalModules === 0) {
-    console.log('[ModuleGraph] No modules found in structure');
     return result;
   }
 
-  console.log(`[ModuleGraph] Building module graph for ${totalModules} modules`);
 
   // 配置 LLM
   configureLLM();
@@ -94,7 +92,6 @@ export async function buildModuleGraph(
     }
   }
 
-  console.log(`[ModuleGraph] Created ${result.modulesCreated} modules`);
 
   // 3. 分析并创建模块依赖关系
   for (let i = 0; i < totalModules; i++) {
@@ -131,7 +128,6 @@ export async function buildModuleGraph(
     }
   }
 
-  console.log(`[ModuleGraph] Created ${result.dependenciesCreated} dependencies`);
 
   // 4. 为每个模块生成 LLM 摘要
   for (let i = 0; i < totalModules; i++) {
@@ -178,7 +174,6 @@ export async function buildModuleGraph(
     }
   }
 
-  console.log(`[ModuleGraph] Generated ${result.summariesGenerated} summaries, ${result.embeddingsGenerated} embeddings`);
 
   // 5. 更新 CodeBase 的结构信息
   await prisma.codeBase.update({

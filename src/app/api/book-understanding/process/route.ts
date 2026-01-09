@@ -133,7 +133,6 @@ export async function POST(request: NextRequest) {
               parsedDocs.push(parsed);
               fullContent += `\n\n=== ${doc.name} ===\n\n${parsed.fullText}`;
               
-              console.log(`[Process] Parsed ${doc.name}: ${parsed.totalPages} pages, ${parsed.fullText.length} chars`);
             } else if ((ext === '.txt' || ext === '.md') && doc.path && await fs.pathExists(doc.path)) {
               // 文本文件：模拟单页文档
               const content = await fs.readFile(doc.path, 'utf-8');
@@ -163,7 +162,6 @@ export async function POST(request: NextRequest) {
           // 选取主文档（页数最多的）用于结构分析
           const mainDoc = parsedDocs.reduce((a, b) => a.totalPages > b.totalPages ? a : b);
 
-          console.log(`[Process] Main document: ${mainDoc.fileName}, ${mainDoc.totalPages} pages`);
 
           // ========== 阶段1：粗读建结构 ==========
           sendProgress('stage1_skim', '阶段1：分析全书主题（RAG 检索关键内容）...', 12);
@@ -185,18 +183,15 @@ export async function POST(request: NextRequest) {
           });
           
           if (!boundaryResult.success || boundaryResult.chapters.length === 0) {
-            console.log('[Process] Boundary detection failed, falling back to regex');
             // 降级：使用传统正则方法
           }
 
-          console.log(`[Process] Detected ${boundaryResult.chapters.length} chapter boundaries`);
 
           sendProgress('stage1_skim', '阶段1：提取章节内容并分类...', 25);
           
           // 将 ChapterBoundary 转换为 RawChapter（带完整内容）
           const rawChapters = convertBoundariesToRawChapters(mainDoc, boundaryResult.chapters);
           
-          console.log(`[Process] Converted to ${rawChapters.length} raw chapters`);
 
           sendProgress('stage1_skim', '阶段1：批量分类章节角色...', 30);
           
@@ -454,7 +449,6 @@ async function classifyChapterRolesInBatches(
     const batch = chapters.slice(i, i + batchSize);
     const batchIndex = Math.floor(i / batchSize) + 1;
 
-    console.log(`[Process] Classifying batch ${batchIndex}/${totalBatches} (${batch.length} chapters)`);
 
     const result = await classifyChapterRoles({
       thesis,

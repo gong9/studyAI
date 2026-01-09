@@ -31,7 +31,6 @@ if (typeof process !== 'undefined' && process.argv[2]) {
   const courseId = process.argv[2];
   loadCourseProps(courseId)
     .then(props => {
-      console.log(JSON.stringify(props));
     })
     .catch(err => {
       console.error('Error:', err.message);

@@ -134,7 +134,6 @@ export async function parsePdfBufferByPage(
 
     // 如果 pagerender 没有被调用（某些 PDF），使用分页符分割
     if (pages.length === 0 && pdfData.text) {
-      console.log('[PageParser] Using page break splitting fallback');
       const splitPages = splitByPageBreaks(pdfData.text, totalPages);
       pages.push(...splitPages);
     }
@@ -150,7 +149,6 @@ export async function parsePdfBufferByPage(
       .map(p => `[第${p.pageNumber}页]\n${p.text}`)
       .join('\n\n');
 
-    console.log(`[PageParser] Completed: ${fileName}, ${filteredPages.length}/${totalPages} pages, ${fullText.length} chars`);
 
     return {
       fileName,
@@ -162,7 +160,6 @@ export async function parsePdfBufferByPage(
     console.error('[PageParser] Error:', error.message);
     
     // 降级：使用简单解析
-    console.log('[PageParser] Falling back to simple parse');
     const pdfData = await pdfParse(buffer);
     const simplePages = splitByPageBreaks(pdfData.text, pdfData.numpages);
     

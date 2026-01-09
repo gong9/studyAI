@@ -40,7 +40,6 @@ export function createDateTimeTool(ctx: ToolContext) {
 - 今天是 ${year} 年的第 ${dayOfYear} 天
 - 今天是 ${year} 年的第 ${weekNumber} 周`;
       
-      console.log(`[LLM] 📅 DateTime tool called, result: ${formatted}`);
       ctx.toolCalls.push({ tool: 'get_current_datetime', input: '', output: result });
       return result;
     },

@@ -107,6 +107,9 @@ importers:
       clsx:
         specifier: ^2.1.0
         version: 2.1.1
+      dotenv:
+        specifier: ^17.2.3
+        version: 17.2.3
       ffmpeg-static:
         specifier: ^5.3.0
         version: 5.3.0
@@ -143,6 +146,9 @@ importers:
       next-auth:
         specifier: ^4.24.5
         version: 4.24.13(next@14.2.25(@babel/core@7.28.5)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      openai:
+        specifier: ^6.15.0
+        version: 6.15.0(ws@8.18.3)(zod@3.25.76)
       pdf-lib:
         specifier: ^1.17.1
         version: 1.17.1
@@ -5562,6 +5568,18 @@ packages:
       zod:
         optional: true
 
+  openai@6.15.0:
+    resolution: {integrity: sha512-F1Lvs5BoVvmZtzkUEVyh8mDQPPFolq4F+xdsx/DO8Hee8YF3IGAlZqUIsF+DVGhqf4aU0a3bTghsxB6OIsRy1g==}
+    hasBin: true
+    peerDependencies:
+      ws: ^8.18.0
+      zod: ^3.25 || ^4.0
+    peerDependenciesMeta:
+      ws:
+        optional: true
+      zod:
+        optional: true
+
   openid-client@5.7.1:
     resolution: {integrity: sha512-jDBPgSVfTnkIh71Hg9pRvtJc6wTwqjRkN88+gCFtYWrlP4Yx2Dsrow8uPi3qLr/aeymPF3o2+dS+wOpglK04ew==}
 
@@ -8677,14 +8695,14 @@ snapshots:
       '@remotion/media-parser': 4.0.396
       '@remotion/studio': 4.0.396(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@remotion/studio-shared': 4.0.396(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      css-loader: 5.2.7(webpack@5.96.1(esbuild@0.25.0))
+      css-loader: 5.2.7(webpack@5.96.1)
       esbuild: 0.25.0
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
       react-refresh: 0.9.0
       remotion: 4.0.396(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       source-map: 0.7.3
-      style-loader: 4.0.0(webpack@5.96.1(esbuild@0.25.0))
+      style-loader: 4.0.0(webpack@5.96.1)
       webpack: 5.96.1(esbuild@0.25.0)
     transitivePeerDependencies:
       - '@swc/core'
@@ -10851,7 +10869,7 @@ snapshots:
       shebang-command: 2.0.0
       which: 2.0.2
 
-  css-loader@5.2.7(webpack@5.96.1(esbuild@0.25.0)):
+  css-loader@5.2.7(webpack@5.96.1):
     dependencies:
       icss-utils: 5.1.0(postcss@8.5.6)
       loader-utils: 2.0.4
@@ -11239,8 +11257,7 @@ snapshots:
       domelementtype: 2.3.0
       domhandler: 5.0.3
 
-  dotenv@17.2.3:
-    optional: true
+  dotenv@17.2.3: {}
 
   dotenv@9.0.2: {}
 
@@ -13558,6 +13575,11 @@ snapshots:
       ws: 8.18.3
       zod: 3.25.76
 
+  openai@6.15.0(ws@8.18.3)(zod@3.25.76):
+    optionalDependencies:
+      ws: 8.18.3
+      zod: 3.25.76
+
   openid-client@5.7.1:
     dependencies:
       jose: 4.15.9
@@ -14681,7 +14703,7 @@ snapshots:
 
   strip-json-comments@3.1.1: {}
 
-  style-loader@4.0.0(webpack@5.96.1(esbuild@0.25.0)):
+  style-loader@4.0.0(webpack@5.96.1):
     dependencies:
       webpack: 5.96.1(esbuild@0.25.0)
 

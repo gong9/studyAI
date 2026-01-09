@@ -10,6 +10,7 @@
  * - 使用 RAG 检索教材内容
  * - 根据知识库类型自动推断场景类型
  * - 递归合并子章节内容，覆盖更多知识点
+ * - 支持 Python deepagents 服务（通过 USE_DEEPAGENTS 环境变量控制）
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -18,6 +19,7 @@ import { generateManuscript } from '@/lib/teaching/agents/manuscript-generator';
 import type { TeachingPlan, SceneType } from '@/lib/teaching/agents/teaching-planner';
 import type { KeyPoint } from '@/lib/teaching/agents/chapter-analyzer';
 import { getMergedChapterContent } from '@/lib/teaching/utils/chapter-content-merger';
+import { isDeepAgentsEnabled, callPythonDraftAPI } from '@/lib/teaching/python-agent-client';
 
 /** 根据知识库类型推断场景类型 */
 function getSceneTypeFromKbType(kbType: string): SceneType {
@@ -72,7 +74,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('[API] Generating manuscript draft for:', manuscript.chapter.title);
 
     // 解析教学规划
     let plan: TeachingPlan;
@@ -88,7 +89,6 @@ export async function POST(request: NextRequest) {
     // 根据知识库类型推断并强制设置场景类型（修复 sceneType 丢失问题）
     const inferredSceneType = getSceneTypeFromKbType(manuscript.knowledgeBase.type);
     if (!plan.sceneType || plan.sceneType !== inferredSceneType) {
-      console.log(`[API] Correcting sceneType: ${plan.sceneType} -> ${inferredSceneType}`);
       plan.sceneType = inferredSceneType;
     }
 
@@ -104,9 +104,6 @@ export async function POST(request: NextRequest) {
 
     const chapterSummary = manuscript.chapter.summary || undefined;
 
-    console.log('[API] Chapter analyzed:', manuscript.chapter.analyzed);
-    console.log('[API] Key points count:', keyPoints.length);
-    console.log('[API] Summary length:', chapterSummary?.length || 0);
 
     // 获取合并后的章节内容（包含子章节）
     const mergedResult = await getMergedChapterContent(manuscript.chapterId);
@@ -116,9 +113,7 @@ export async function POST(request: NextRequest) {
       // 回退到原来的逻辑
     }
 
-    console.log(`[API] Merged content: ${mergedResult.chapterCount} chapters, ${mergedResult.totalLength} chars`);
     if (mergedResult.warning) {
-      console.log(`[API] Warning: ${mergedResult.warning}`);
     }
 
     // 使用合并后的内容（如果成功），否则回退到原内容
@@ -126,14 +121,35 @@ export async function POST(request: NextRequest) {
       ? mergedResult.content
       : (manuscript.chapter.contentFull || manuscript.chapter.contentPreview || '');
 
-    // 生成手稿（带 RAG 检索）
-    const result = await generateManuscript({
-      plan,
-      knowledgeBaseId: manuscript.knowledgeBaseId,
-      chapterKeyPoints: keyPoints,
-      chapterSummary,
-      chapterContent,
-    });
+    // 生成手稿
+    let result: { success: boolean; markdown: string | null; error?: string };
+    
+    // 如果启用了 Python deepagents 服务，优先使用
+    if (isDeepAgentsEnabled()) {
+      console.log('[API] Using Python deepagents service for draft generation');
+      const pythonResult = await callPythonDraftAPI({
+        knowledge_base_id: manuscript.knowledgeBaseId,
+        plan,
+        chapter_key_points: keyPoints,
+        chapter_summary: chapterSummary,
+        chapter_content: chapterContent,
+      });
+      
+      result = {
+        success: pythonResult.success,
+        markdown: pythonResult.markdown || null,
+        error: pythonResult.error,
+      };
+    } else {
+      // 使用原有的 TypeScript 实现（带 RAG 检索）
+      result = await generateManuscript({
+        plan,
+        knowledgeBaseId: manuscript.knowledgeBaseId,
+        chapterKeyPoints: keyPoints,
+        chapterSummary,
+        chapterContent,
+      });
+    }
 
     if (!result.success || !result.markdown) {
       return NextResponse.json(
@@ -151,7 +167,6 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    console.log('[API] Manuscript draft saved, length:', result.markdown.length);
 
     return NextResponse.json({
       success: true,

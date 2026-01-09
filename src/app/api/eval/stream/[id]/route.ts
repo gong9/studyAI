@@ -98,7 +98,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       }
     },
     cancel() {
-      console.log('[SSE] Client disconnected');
     },
   });
 

@@ -24,7 +24,6 @@ function createSafeEventSender(controller: ReadableStreamDefaultController) {
       return true;
     } catch (e) {
       isClosed = true;
-      console.log('[LightRAG] Stream closed by client');
       return false;
     }
   };
@@ -129,7 +128,6 @@ export async function POST(
 
           const skipped = codeFiles.length - filteredFiles.length;
           const modeLabel = quickMode ? '快速模式' : '完整模式';
-          console.log(`[LightRAG] ${modeLabel}: Filtered ${filteredFiles.length}/${codeFiles.length} files (skipped ${skipped})`);
 
           sendEvent('start', { 
             message: `开始构建代码知识图谱... (${filteredFiles.length}/${codeFiles.length} 核心文件)`,
@@ -214,7 +212,6 @@ ${content}
 
             // 如果流已关闭，停止轮询
             if (isClosed()) {
-              console.log('[LightRAG] Client disconnected, stopping poll');
               break;
             }
 
@@ -246,7 +243,6 @@ ${content}
               }
             } catch (e) {
               // 检查状态失败，继续等待
-              console.log('[LightRAG] Check status failed, continuing...', e);
             }
           }
 
@@ -270,7 +266,6 @@ ${content}
         }
       },
       cancel() {
-        console.log('[LightRAG] Client disconnected, cleaning up...');
         if (streamHelper) {
           streamHelper.markClosed();
         }

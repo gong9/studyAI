@@ -53,6 +53,7 @@ export async function POST(request: NextRequest) {
         knowledgeBaseId,
         chapterId: chapter.id,
         teachingPlan: JSON.stringify({
+          source: 'blank',  // 标记为用户手稿，前端会根据此标记显示简化按钮
           title: defaultTitle,
           objectives: ['用户自定义'],
           keyPoints: [],
@@ -79,7 +80,6 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    console.log('[API] Blank manuscript created:', manuscript.id);
 
     return NextResponse.json({
       success: true,

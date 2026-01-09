@@ -183,7 +183,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '无权访问此知识库' }, { status: 403 });
     }
 
-    console.log(`[FetchURL] Fetching: ${validUrl.href}`);
 
     // 直接抓取网页
     const response = await fetch(validUrl.href, {
@@ -218,7 +217,6 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
-    console.log(`[FetchURL] Extracted: "${title}" (${content.length} chars)`);
 
     // 创建文档记录
     const fileName = `${title.slice(0, 50)}.txt`;
@@ -235,7 +233,6 @@ export async function POST(request: Request) {
       },
     });
 
-    console.log(`[FetchURL] Created document: ${document.id}`);
 
     return NextResponse.json(document, { status: 201 });
   } catch (error: any) {

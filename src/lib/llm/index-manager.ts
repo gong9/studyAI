@@ -31,13 +31,11 @@ export async function createOrUpdateIndex(
 ): Promise<void> {
   try {
     configureLLM();
-    console.log(`[LLM] Starting index creation for KB ${knowledgeBaseId}`);
     onProgress?.(5, '初始化处理环境...');
     
     // 清除旧缓存
     if (indexCache.has(knowledgeBaseId)) {
       indexCache.delete(knowledgeBaseId);
-      console.log(`[LLM] Cleared cached index for KB ${knowledgeBaseId}`);
     }
     
     const storageDir = getStorageDir(knowledgeBaseId);
@@ -45,7 +43,6 @@ export async function createOrUpdateIndex(
     // 删除旧的存储目录
     if (await fs.pathExists(storageDir)) {
       await fs.remove(storageDir);
-      console.log(`[LLM] Removed old storage dir: ${storageDir}`);
     }
     
     await fs.ensureDir(storageDir);
@@ -58,7 +55,6 @@ export async function createOrUpdateIndex(
     }
 
     // 加载文档
-    console.log(`[LLM] Loading documents from ${documentsPath}`);
     onProgress?.(20, '加载文档内容...');
     
     const reader = new SimpleDirectoryReader();
@@ -97,14 +93,11 @@ export async function createOrUpdateIndex(
         doc.text = `【文档: ${fileNameWithoutExt}】\n\n${doc.text}`;
       }
       
-      console.log(`[LLM] Document metadata: ${fileName} -> ${fileNameWithoutExt}`);
     }
 
-    console.log(`[LLM] Loaded ${documents.length} documents for KB ${knowledgeBaseId}`);
     onProgress?.(35, `已加载 ${documents.length} 个文档`);
 
     // 保存原文到数据库
-    console.log(`[LLM] Saving document content to database...`);
     onProgress?.(40, '保存文档原文到数据库...');
     
     const pdfParse = require('pdf-parse');
@@ -123,15 +116,12 @@ export async function createOrUpdateIndex(
           const buffer = await fs.readFile(filePath);
           const pdfData = await pdfParse(buffer);
           content = pdfData.text || '';
-          console.log(`[LLM] Extracted PDF content: ${fileName} (${content.length} chars)`);
         } else if (ext === '.docx') {
           const buffer = await fs.readFile(filePath);
           const result = await mammoth.extractRawText({ buffer });
           content = result.value || '';
-          console.log(`[LLM] Extracted DOCX content: ${fileName} (${content.length} chars)`);
         } else if (ext === '.txt' || ext === '.md') {
           content = await fs.readFile(filePath, 'utf-8');
-          console.log(`[LLM] Read text file: ${fileName} (${content.length} chars)`);
         }
       } catch (extractError) {
         console.error(`[LLM] Failed to extract content from ${fileName}:`, extractError);
@@ -161,14 +151,12 @@ export async function createOrUpdateIndex(
               wordCount: content.length,
             },
           });
-          console.log(`[LLM] ✅ Saved content for ${fileName} (${content.length} chars)`);
           
           documentContents.set(fileName, {
             content: content,
             chunks: [content],
           });
         } else {
-          console.log(`[LLM] ⚠️ Document not found in DB: ${searchName}`);
         }
       } catch (dbError) {
         console.error(`[LLM] Failed to save content for ${fileName}:`, dbError);
@@ -176,7 +164,6 @@ export async function createOrUpdateIndex(
     }
 
     // 索引到 Meilisearch
-    console.log(`[LLM] Indexing documents to Meilisearch...`);
     onProgress?.(45, '索引到 Meilisearch...');
     
     try {
@@ -209,10 +196,8 @@ export async function createOrUpdateIndex(
 
     // 注意：LightRAG 知识图谱需要用户手动触发构建（通过 /api/lightrag/index API）
     // 不再自动执行，避免处理时间过长
-    console.log(`[LLM] Skipping LightRAG auto-indexing (use manual trigger instead)`);
 
     // 创建存储上下文
-    console.log(`[LLM] Creating storage context at ${storageDir}`);
     onProgress?.(50, '创建存储上下文...');
     
     const storageContext = await storageContextFromDefaults({
@@ -220,7 +205,6 @@ export async function createOrUpdateIndex(
     });
 
     // 创建向量索引
-    console.log(`[LLM] Creating vector index for ${documents.length} documents...`);
     onProgress?.(60, `正在生成向量索引（${documents.length} 个文档）...`);
     
     const startTime = Date.now();
@@ -232,8 +216,6 @@ export async function createOrUpdateIndex(
     // 缓存索引
     indexCache.set(knowledgeBaseId, index);
 
-    console.log(`[LLM] ✅ Index created successfully for KB ${knowledgeBaseId}`);
-    console.log(`[LLM] Total time: ${duration}s, Average: ${(parseFloat(duration) / documents.length).toFixed(2)}s per document`);
     onProgress?.(100, '索引创建完成！');
   } catch (error) {
     console.error(`[LLM] ❌ Failed to create index for KB ${knowledgeBaseId}:`, error);
@@ -295,7 +277,6 @@ export async function loadIndex(knowledgeBaseId: string): Promise<VectorStoreInd
   // 缓存索引
   indexCache.set(knowledgeBaseId, index);
 
-  console.log(`Index loaded for KB ${knowledgeBaseId}`);
   return index;
 }
 
@@ -311,7 +292,6 @@ export async function deleteIndex(knowledgeBaseId: string): Promise<void> {
   // 删除存储目录
   if (await fs.pathExists(storageDir)) {
     await fs.remove(storageDir);
-    console.log(`Index deleted for KB ${knowledgeBaseId}`);
   }
 }
 

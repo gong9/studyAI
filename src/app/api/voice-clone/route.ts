@@ -80,13 +80,8 @@ export async function POST(request: NextRequest) {
     
     const apiKey = getApiKey();
     
-    console.log('[VoiceClone] 开始音色复刻...');
-    console.log('[VoiceClone] 文件名:', file.name);
-    console.log('[VoiceClone] 文件大小:', file.size, 'bytes');
-    console.log('[VoiceClone] 文件类型:', file.type);
     
     // 步骤 1: 上传音频文件
-    console.log('[VoiceClone] 步骤1: 上传音频文件...');
     
     const uploadFormData = new FormData();
     uploadFormData.append('purpose', 'voice_clone');
@@ -120,10 +115,8 @@ export async function POST(request: NextRequest) {
     }
     
     const fileId = uploadResult.file?.file_id;
-    console.log('[VoiceClone] 文件上传成功, file_id:', fileId);
     
     // 步骤 2: 创建复刻音色
-    console.log('[VoiceClone] 步骤2: 创建复刻音色...');
     
     // voice_id 格式要求：
     // 1. 首字符必须为英文字母
@@ -165,7 +158,6 @@ export async function POST(request: NextRequest) {
     }
     
     const voiceId = cloneResult.voice_id;
-    console.log('[VoiceClone] 音色复刻成功, voice_id:', voiceId);
     
     // 保存配置
     const config = {

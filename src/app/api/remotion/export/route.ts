@@ -56,7 +56,6 @@ export async function POST(request: Request) {
 
           child.stdout?.on('data', (data: Buffer) => {
             const text = data.toString();
-            console.log('[FFmpeg Script]', text);
             
             // 解析进度
             if (text.includes('截图幻灯片')) {

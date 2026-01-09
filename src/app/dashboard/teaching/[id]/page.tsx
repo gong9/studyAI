@@ -491,7 +491,6 @@ export default function TeachingDetailPage() {
   // 处理单个文档的索引构建（后台执行）
   const processDocumentIndex = async (documentId: string) => {
     try {
-      console.log(`[Teaching] Processing document index: ${documentId}`);
       
       // 调用文档处理 API（会建立向量索引）
       const response = await fetch(`/api/documents/${documentId}/process`);
@@ -522,10 +521,8 @@ export default function TeachingDetailPage() {
               if (!jsonStr) continue;
               
               const data = JSON.parse(jsonStr);
-              console.log(`[Teaching] Index progress: ${data.message}`);
               
               if (data.status === 'completed') {
-                console.log(`[Teaching] Document ${documentId} indexed successfully`);
                 fetchDocuments(); // 刷新状态
               }
             } catch (e) {
@@ -591,6 +588,32 @@ export default function TeachingDetailPage() {
       } catch (error: any) {
         console.error('主题聚类失败:', error);
         alert(error.message || '主题聚类失败');
+      } finally {
+        setExtracting(false);
+        setExtractProgress('');
+      }
+      return;
+    }
+    
+    // paper 模式：使用论文三阶段处理
+    if (sourceMode === 'paper') {
+      setExtractProgress('正在分析论文...');
+      try {
+        const res = await fetch('/api/teaching/extract-chapters', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ knowledgeBaseId: kbId }),
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          await fetchChapters();
+          await fetchDocuments();
+        } else {
+          throw new Error(data.error || '论文处理失败');
+        }
+      } catch (error: any) {
+        console.error('论文处理失败:', error);
+        alert(error.message || '论文处理失败');
       } finally {
         setExtracting(false);
         setExtractProgress('');
@@ -946,7 +969,8 @@ export default function TeachingDetailPage() {
                             <><Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />{extractProgress || '处理中...'}</>
                           ) : (
                             kb?.sourceMode === 'docs' ? '处理文档' : 
-                            kb?.sourceMode === 'fragments' ? '主题聚类' : '智能扫描'
+                            kb?.sourceMode === 'fragments' ? '主题聚类' : 
+                            kb?.sourceMode === 'paper' ? '论文分析' : '智能扫描'
                           )}
                         </Button>
                         {/* 知识图谱按钮 - 扫描后可用 */}

@@ -209,11 +209,9 @@ ${contentSummary}
     totalCount: number = 10,
     userId?: string
   ): Promise<GeneratedQuestion[]> {
-    console.log(`[EvalGenerator] Generating ${totalCount} questions for KB: ${knowledgeBaseId}`);
 
     // 1. 获取知识库内容（带用户权限验证）
     const { kbName, documents } = await this.getKnowledgeBaseContent(knowledgeBaseId, userId);
-    console.log(`[EvalGenerator] KB "${kbName}" has ${documents.length} documents`);
 
     // 2. 准备固定问题
     const fixedQuestions: GeneratedQuestion[] = [...FIXED_QUESTIONS];
@@ -222,7 +220,6 @@ ${contentSummary}
     const randomIndex = Math.floor(Math.random() * RANDOM_FIXED_QUESTIONS.length);
     fixedQuestions.push(RANDOM_FIXED_QUESTIONS[randomIndex]);
 
-    console.log(`[EvalGenerator] Fixed questions: ${fixedQuestions.length}`);
 
     // 3. 生成动态问题
     const dynamicCount = totalCount - fixedQuestions.length;
@@ -230,13 +227,11 @@ ${contentSummary}
 
     if (dynamicCount > 0) {
       dynamicQuestions = await this.generateDynamicQuestions(documents, dynamicCount);
-      console.log(`[EvalGenerator] Generated ${dynamicQuestions.length} dynamic questions`);
     }
 
     // 4. 合并问题（动态问题在前，固定问题在后）
     const allQuestions = [...dynamicQuestions, ...fixedQuestions];
 
-    console.log(`[EvalGenerator] Total questions: ${allQuestions.length}`);
     return allQuestions;
   }
 }

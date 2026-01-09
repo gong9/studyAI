@@ -13,13 +13,11 @@ import type { ToolContext } from './types';
 export function createGraphSearchTool(ctx: ToolContext) {
   return FunctionTool.from(
     async ({ query, mode }: { query: string; mode?: string }): Promise<string> => {
-      console.log(`[LLM] 🕸️ Graph search: "${query}" (mode: ${mode || 'hybrid'})`);
       
       try {
         // 检查 LightRAG 是否可用
         const available = await lightragClient.isAvailable();
         if (!available) {
-          console.log(`[LLM] 🕸️ LightRAG not available, falling back to hybrid search`);
           // 降级到混合搜索
           const results = await hybridSearch(ctx.index, ctx.knowledgeBaseId, query, {
             vectorTopK: 8,
@@ -44,7 +42,6 @@ export function createGraphSearchTool(ctx: ToolContext) {
           .replace(/\n["'`]{2,}\s*$/g, '')
           .trim();
         
-        console.log(`[LLM] 🕸️ Graph search result: ${cleanedAnswer.length} chars`);
         ctx.toolCalls.push({ tool: 'graph_search', input: query, output: cleanedAnswer.substring(0, 200) });
         return cleanedAnswer;
       } catch (error: any) {

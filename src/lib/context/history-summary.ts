@@ -85,7 +85,6 @@ export async function generateHistorySummary(
   const historyHash = hashHistory(toSummarize);
   const cached = summaryCache.get(sessionId);
   if (cached && cached.historyHash === historyHash) {
-    console.log('[HistorySummary] Using cached summary');
     return {
       summary: cached.summary,
       recentHistory,
@@ -93,7 +92,6 @@ export async function generateHistorySummary(
   }
   
   // 生成摘要
-  console.log(`[HistorySummary] Summarizing ${toSummarize.length} messages...`);
   
   const historyText = toSummarize
     .map(h => `${h.role === 'user' ? '用户' : 'AI'}: ${h.content}`)
@@ -118,7 +116,6 @@ export async function generateHistorySummary(
       createdAt: new Date(),
     });
     
-    console.log(`[HistorySummary] Generated summary: ${summary.substring(0, 100)}...`);
     
     return {
       summary,

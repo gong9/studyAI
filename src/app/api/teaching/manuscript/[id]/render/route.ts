@@ -2,12 +2,30 @@
  * POST /api/teaching/manuscript/[id]/render
  * 
  * 阶段6：课件渲染
- * 使用 Gemini 生成精美 HTML 幻灯片
+ * 
+ * 流程：
+ * 1. 如果启用 Python Agent，先调用处理手稿（智能分页布局）
+ * 2. 使用 Gemini 生成精美 HTML 幻灯片
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { generateHtmlSlides } from '@/lib/skills/slide-generation';
+import { 
+  isDeepAgentsEnabled, 
+  callPythonProcessManuscriptAPI 
+} from '@/lib/teaching/python-agent-client';
+
+// 根据知识库类型获取场景类型
+function getSceneTypeFromKbType(kbType: string): string {
+  const mapping: Record<string, string> = {
+    'k12': 'k12_teaching',
+    'tech': 'tech_training',
+    'policy': 'company_training',
+    'legal': 'legal_training',
+  };
+  return mapping[kbType] || 'general';
+}
 
 export async function POST(
   request: NextRequest,
@@ -15,13 +33,15 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
+    const body = await request.json().catch(() => ({}));
+    const { skipProcessing = false, user_manuscript = false } = body;
 
     const manuscript = await prisma.teachingManuscript.findUnique({
       where: { id },
       include: { 
         chapter: true,
         knowledgeBase: {
-          select: { type: true }
+          select: { id: true, type: true }
         }
       },
     });
@@ -33,8 +53,11 @@ export async function POST(
       );
     }
 
-    // 使用润色后内容，或回退到确认内容
-    const content = manuscript.enrichedContent || manuscript.confirmedContent;
+    // 使用润色后内容，或回退到确认内容/草稿内容
+    let content = manuscript.slidevMd || 
+                  manuscript.enrichedContent || 
+                  manuscript.confirmedContent ||
+                  manuscript.draftContent;
     
     if (!content) {
       return NextResponse.json(
@@ -43,23 +66,70 @@ export async function POST(
       );
     }
 
-    console.log('[API] Rendering slides:', id);
-
-    // 使用 Gemini 生成精美 HTML 幻灯片
-    // 根据知识库类型自动选择主题风格
     const kbType = manuscript.knowledgeBase?.type || 'tech';
-    console.log(`[API] Generating HTML slides with Gemini, KB type: ${kbType}`);
-    
+    let processedByAgent = false;
+    let processStats = null;
+    let traceId: string | null = null;
+
+    // 检查是否为用户手稿（从 teachingPlan 中的 source 标记判断）
+    let isUserManuscript = user_manuscript;
+    if (!isUserManuscript && manuscript.teachingPlan) {
+      try {
+        const plan = typeof manuscript.teachingPlan === 'string' 
+          ? JSON.parse(manuscript.teachingPlan) 
+          : manuscript.teachingPlan;
+        isUserManuscript = plan?.source === 'blank' || plan?.source === 'user_manuscript';
+      } catch {}
+    }
+
+    // Step 1: 如果启用 Python Agent，先处理手稿（智能分页布局）
+    // 对于用户手稿，强制使用 Python Agent 进行智能布局
+    const shouldProcess = !skipProcessing && isDeepAgentsEnabled() && (isUserManuscript || !manuscript.slidevMd);
+    if (shouldProcess) {
+      console.log(`[API] Processing ${isUserManuscript ? 'user manuscript' : 'AI manuscript'} with Python Agent...`);
+      
+      const sceneType = getSceneTypeFromKbType(kbType);
+      
+      try {
+        const processResult = await callPythonProcessManuscriptAPI({
+          knowledge_base_id: manuscript.knowledgeBase?.id || '',
+          manuscript_content: content,
+          scene_type: sceneType,
+        });
+
+        if (processResult.success && processResult.processed_content) {
+          content = processResult.processed_content;
+          processedByAgent = true;
+          processStats = processResult.stats;
+          traceId = processResult.trace_id || null;
+          
+          // 保存处理后的内容
+          await prisma.teachingManuscript.update({
+            where: { id },
+            data: {
+              slidevMd: content,
+            },
+          });
+          
+          console.log('[API] Manuscript processed:', processStats, 'trace_id:', traceId);
+        } else if (processResult.error) {
+          console.warn('[API] Python Agent processing failed, using original content:', processResult.error);
+        }
+      } catch (processError: any) {
+        console.warn('[API] Python Agent call failed, using original content:', processError.message);
+      }
+    }
+
+    // Step 2: 使用 Gemini 生成精美 HTML 幻灯片
     let htmlSlidesData = null;
     let slideCount = 0;
     try {
       const slideResult = await generateHtmlSlides({
-        slidevMd: content, // 直接使用内容，skill 内部会解析
+        slidevMd: content,
         knowledgeBaseType: kbType,
       });
       htmlSlidesData = JSON.stringify(slideResult.slides);
       slideCount = slideResult.totalCount;
-      console.log('[API] HTML slides generated:', slideResult.totalCount);
     } catch (slideError: any) {
       console.error('[API] Failed to generate HTML slides:', slideError);
       return NextResponse.json(
@@ -82,6 +152,9 @@ export async function POST(
       manuscriptId: id,
       slideCount,
       htmlSlidesGenerated: !!htmlSlidesData,
+      processedByAgent,
+      processStats,
+      trace_id: traceId,
     });
 
   } catch (error: any) {

@@ -26,94 +26,58 @@ export interface EnrichResult {
 
 // ==================== Prompt ====================
 
-const ENRICH_PROMPT = `你是一位专业的 PPT 课件编辑。请对以下教学手稿进行润色和分页排版，使其适合 PPT 展示。
+const ENRICH_PROMPT = `你是一位专业的 PPT 课件编辑。请对以下教学手稿进行**轻微润色**，使其适合 PPT 展示。
 
-## 原始教学手稿
+## 核心原则（必须遵守！）
+
+### ⚠️ 保持原文不变
+1. **保留原有的分页结构**：如果原文已有 \`---\` 分页符，保持不变
+2. **保留原有的标题和内容**：不要删除、重写或大幅改动
+3. **保留原有的表达方式**：用户的写作风格就是正确的
+4. **只做小修补**：错别字、语法、标点等
+
+### ❌ 禁止的操作
+- 禁止删除用户写的内容
+- 禁止重写或改述原文
+- 禁止合并或拆分页面
+- 禁止添加大段新内容
+- 禁止改变整体结构
+
+## 原始教学手稿（保持结构不变！）
 {content}
 
-## 审核意见参考
+## 审核意见参考（仅供参考）
 {comments}
 
-## 重要：PPT 分页排版规则
+## 分页处理规则
 
-### ⚠️ 内容筛选原则（最重要！）
-- **重点内容必须保留**：核心概念、关键定义、重要结论、例题解答等必须放入 PPT
-- **可以适当精简**：口语化的过渡语、重复的解释可以省略
-- **保留知识结构**：每个知识点的标题和核心要点都要有
-- 页数根据内容多少自动决定，不做硬性限制
+### 如果原文已有分页 \`---\`
+- **直接保持原有分页**，不要调整
 
-### ⚠️ 每页内容限制
-- 每页 **1 个主标题 + 若干要点**，内容适量即可
-- 如果一个知识点内容较多，可以分成多页
-- **禁止生成空页**：每页必须有实际内容，不要只有标题
-- **禁止连续使用 \`---\`**：两个分页符之间必须有内容
+### 如果原文没有分页
+- 添加 \`---\` 分页符，控制在 15-20 页
+- 每页 1 个主标题 + 3-5 个要点
 
-### 分页语法
-使用 \`---\` 作为分页符，每个 \`---\` 代表新的一页。
+## 允许的修改
 
-### 分页示例
-\`\`\`
-# 一次函数
+### 1. 错别字和语法
+- 修正明显的拼写错误
+- 修复不通顺的语句
 
-## 学习目标
-- 理解一次函数的定义
-- 掌握斜率的意义
-
----
-
-## 什么是一次函数？
-
-一次函数的形式：y = kx + b
-
-其中 k 是斜率，b 是截距。
-
----
-
-## 例题1
-
-已知函数 y = 2x + 1，求当 x = 3 时 y 的值。
-
-**解：** y = 2 × 3 + 1 = 7
-
----
-\`\`\`
-
-## 润色要求
-
-### 1. 语言润色
-- 使教学语言更自然、简洁
-- 保持教师授课的口吻
-
-### 2. 不要改动的内容
-- 核心教学概念
-- 例题和解答
+### 2. 格式优化
+- 如果原文没有分页，添加分页符
+- 确保 Markdown 格式正确
 
 ### 3. 不要引用图片
-- **不要说"这张图"、"请看图"、"如图所示"等**，PPT 中没有图片
-- **不要添加 \`> visual:\` 或 \`> diagram:\` 等图片标记**
-- **但要保持内容丰富**：用详细的文字描述来讲解概念，内容量不能减少
+- 不要说"这张图"、"请看图"、"如图所示"等
 
 ## 输出要求
-1. 直接输出润色、分页后的 Markdown
-2. 确保每页内容适合 PPT 一屏展示
-3. 不要添加任何解释
-4. **禁止使用任何 HTML 标签**（如 <br/>, <p>, <div> 等），只使用纯 Markdown 语法
-5. **禁止使用 Markdown 表格**（|---|---| 这种格式），如需对比内容，请使用以下格式：
+1. 直接输出 Markdown，保持原文结构
+2. 不要添加任何解释
+3. **禁止使用 HTML 标签**
+4. **禁止使用 Markdown 表格**
 
-### 对比展示示例（不要用表格！）
-\`\`\`
-**传统控制系统**
-- 依赖预设规则
-- 无法处理未知情况
-- 反应机械
-
-**认知系统**  
-- 具备学习能力
-- 可以推理和决策
-- 反应智能
-\`\`\`
-
-润色后的教学手稿：`;
+处理后的手稿：`;
 
 // ==================== 核心函数 ====================
 
@@ -131,7 +95,6 @@ export async function enrichManuscript(input: EnrichInput): Promise<EnrichResult
       apiKey: smartConfig.apiKey,
       baseURL: smartConfig.baseURL,
     });
-    console.log('[EnrichAgent] Using smart model:', smartConfig.model);
 
     const commentsStr = input.reviewComments && input.reviewComments.length > 0
       ? input.reviewComments.map((c, i) => `${i + 1}. ${c}`).join('\n')
@@ -141,7 +104,6 @@ export async function enrichManuscript(input: EnrichInput): Promise<EnrichResult
       .replace('{content}', input.confirmedContent)
       .replace('{comments}', commentsStr);
 
-    console.log('[EnrichAgent] Enriching manuscript...');
 
     const response = await llm.complete({ prompt });
     let enrichedContent = response.text.trim();
@@ -149,7 +111,6 @@ export async function enrichManuscript(input: EnrichInput): Promise<EnrichResult
     // 清理可能的 markdown 代码块包装
     enrichedContent = cleanMarkdown(enrichedContent);
 
-    console.log('[EnrichAgent] Enrichment completed, length:', enrichedContent.length);
 
     return {
       success: true,

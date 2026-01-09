@@ -13,11 +13,9 @@ export function createDiagramTool(ctx: ToolContext) {
   return FunctionTool.from(
     async (params: { description: string; chartType?: string }): Promise<string> => {
       const { description, chartType = 'flowchart' } = params;
-      console.log(`[LLM] 🎨 Generate diagram: "${description?.substring(0, 100)}...", type: ${chartType}`);
       
       // 校验：description 必须有有效内容
       if (!description || description === 'undefined' || description.length < 20) {
-        console.log(`[LLM] 🎨 ❌ Invalid description, length: ${description?.length || 0}`);
         const errMsg = `图表生成失败：description 参数无效或内容太短。请先使用 deep_search 或 summarize_topic 获取详细内容，然后将内容作为 description 传入。`;
         ctx.toolCalls.push({ tool: 'generate_diagram', input: description || '', output: errMsg });
         return errMsg;
@@ -46,10 +44,8 @@ ${description}
 
 请直接输出编号列表，不要其他内容：`;
 
-        console.log(`[LLM] 🎨 Step 1: Analyzing logic structure...`);
         const analysisResponse = await llm.complete({ prompt: analysisPrompt });
         const analysisResult = analysisResponse.text.trim();
-        console.log(`[LLM] 🎨 Analysis result:\n${analysisResult}`);
 
         // ========== 第二步：生成 Mermaid ==========
         const diagramPrompt = `你是一个 Mermaid 图表专家。请严格按照给定的步骤顺序生成流程图。
@@ -77,7 +73,6 @@ flowchart TD
 
 请直接输出 Mermaid（不要分类标签）：`;
 
-        console.log(`[LLM] 🎨 Step 2: Generating Mermaid...`);
         const diagramResponse = await llm.complete({ prompt: diagramPrompt });
         let mermaidSyntax = diagramResponse.text.trim();
         
@@ -85,14 +80,12 @@ flowchart TD
         const cleanResult = cleanMermaidSyntax(mermaidSyntax);
         
         if (!cleanResult.success) {
-          console.log(`[LLM] 🎨 Mermaid clean failed: ${cleanResult.error}`);
           const errMsg = `图表生成失败: ${cleanResult.error}`;
           ctx.toolCalls.push({ tool: 'generate_diagram', input: description.substring(0, 100), output: errMsg });
           return errMsg;
         }
         
         mermaidSyntax = cleanResult.data!;
-        console.log(`[LLM] 🎨 Generated Mermaid (${mermaidSyntax.length} chars):\n${mermaidSyntax}`);
         
         // 返回特殊格式，前端可以识别并渲染
         const result = `图表已生成成功！请直接将以下内容作为回答（不要修改）：

@@ -5,6 +5,7 @@
  * 每页幻灯片都是独立的 HTML 代码
  */
 
+//@ts-ignore
 import OpenAI from 'openai';
 
 // 使用 AIHubMix 的 Gemini
@@ -65,12 +66,12 @@ function parseMarkdownContent(content: string): ParsedSection[] {
       if (!trimmed) return null;
       
       // 跳过只有标题没有实际内容的 section（内容太少）
+      // 但保留第一页（封面页）- 封面页通常只有一个标题是正常的
       const lines = trimmed.split('\n').filter(l => l.trim());
-      if (lines.length < 2) {
-        // 只有1行或更少，检查是否只是一个标题
+      if (lines.length < 2 && index > 0) {
+        // 只有1行或更少，检查是否只是一个标题（但跳过第一页）
         const firstLine = lines[0] || '';
         if (firstLine.startsWith('#') && lines.length === 1) {
-          console.log(`[SlideGeneration] 跳过空页: "${firstLine}"`);
           return null;
         }
       }
@@ -400,10 +401,8 @@ ${section.content}
 export async function generateHtmlSlides(
   input: HtmlSlideGeneratorInput
 ): Promise<HtmlSlideGeneratorOutput> {
-  console.log('[SlideGeneration] 开始生成 HTML 幻灯片...');
   
   const sections = parseMarkdownContent(input.slidevMd);
-  console.log(`[SlideGeneration] 解析完成: ${sections.length} 页`);
   
   if (sections.length === 0) {
     throw new Error('没有可解析的幻灯片内容');
@@ -416,16 +415,13 @@ export async function generateHtmlSlides(
   const theme: SlideTheme = input.theme || getThemeFromKbType(input.knowledgeBaseType);
   
   if (useSmartStyle) {
-    console.log(`[SlideGeneration] 启用智能风格：AI 将根据每页内容自动选择最佳设计`);
   } else {
-    console.log(`[SlideGeneration] 使用固定主题: ${theme} (${THEME_CONFIGS[theme]?.name || '自动'})`);
   }
   
   const slides: HtmlSlide[] = [];
 
   // 逐页生成 HTML
   for (const section of sections) {
-    console.log(`[SlideGeneration] 生成第 ${section.index + 1}/${sections.length} 页: ${section.title}`);
     
     try {
       const html = await generateHtmlSlide(section, theme, sections.length, useSmartStyle);
@@ -450,7 +446,6 @@ export async function generateHtmlSlides(
     }
   }
   
-  console.log(`[SlideGeneration] 生成完成: ${slides.length} 页`);
   
   return {
     slides,

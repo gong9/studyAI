@@ -107,7 +107,6 @@ ${contextStr}
       };
     }
   } catch (error) {
-    console.log(`[Intent] Analysis error: ${error}`);
   }
   
   // 默认返回知识库查询

@@ -34,12 +34,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`[API] POST /api/eval/generate - KB: ${knowledgeBaseId}, Count: ${count}`);
 
     // 生成评估问题（内部会验证知识库归属）
     const questions = await EvalGenerator.generate(knowledgeBaseId, count, userId);
 
-    console.log(`[API] Generated ${questions.length} questions`);
 
     return NextResponse.json(questions);
   } catch (error: any) {

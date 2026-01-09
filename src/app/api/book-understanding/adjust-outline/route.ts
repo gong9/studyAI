@@ -137,7 +137,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '知识库不存在' }, { status: 404 });
     }
 
-    console.log(`[AdjustOutline] Starting for KB: ${knowledgeBaseId}, input type: ${hasImages ? `${images.length} images` : 'text'}`);
 
     // ========== 步骤1：识别新大纲结构 ==========
     const newChapters = await recognizeOutline({ text, images });
@@ -146,7 +145,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '无法识别目录结构' }, { status: 400 });
     }
 
-    console.log(`[AdjustOutline] Recognized ${newChapters.length} top-level chapters`);
 
     // ========== 步骤2：获取现有大纲 ==========
     const existingChapters = await prisma.teachingChapter.findMany({
@@ -156,7 +154,6 @@ export async function POST(request: NextRequest) {
 
     // ========== 步骤3：对比差异 ==========
     const diff = compareOutlines(existingChapters, newChapters);
-    console.log(`[AdjustOutline] Diff: added=${diff.added.length}, removed=${diff.removed.length}, modified=${diff.modified.length}, unchanged=${diff.unchanged.length}`);
 
     // 如果只是预览，返回差异信息
     if (!applyChanges) {
@@ -169,7 +166,6 @@ export async function POST(request: NextRequest) {
     }
 
     // ========== 步骤4：应用变更 ==========
-    console.log('[AdjustOutline] Applying changes...');
 
     // 获取书籍论点信息（用于角色分类）
     const thesis = await getBookThesis(knowledgeBaseId);
@@ -209,7 +205,6 @@ export async function POST(request: NextRequest) {
       chapters: allChapters,
     });
 
-    console.log(`[AdjustOutline] Completed: ${newChapters.length} chapters saved`);
 
     return NextResponse.json({
       success: true,
@@ -246,7 +241,6 @@ async function recognizeOutline(input: { text?: string; images?: string[] }): Pr
 
   if (input.images && input.images.length > 0) {
     // 多图片输入 - 使用多模态
-    console.log(`[AdjustOutline] Using vision model for ${input.images.length} image(s)`);
     
     // 构建多模态消息，包含所有图片
     const imageContents = input.images.map((img, index) => ({
@@ -269,7 +263,6 @@ async function recognizeOutline(input: { text?: string; images?: string[] }): Pr
     response = await llm.chat({ messages });
   } else {
     // 文字输入
-    console.log('[AdjustOutline] Using text input');
     const prompt = OUTLINE_RECOGNITION_PROMPT.replace('{input}', input.text || '');
     response = await llm.complete({ prompt });
   }
@@ -386,8 +379,9 @@ async function getBookThesis(knowledgeBaseId: string): Promise<BookThesis> {
     title: kb?.name || '未知书籍',
     topic: kb?.description || '',
     audience: '通用读者',
-    knowledgeType: 'technical',
+    knowledgeType: 'concept',
     summary: kb?.description || '',
+    keywords: [],
   };
 }
 

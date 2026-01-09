@@ -21,7 +21,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('[Music Recommend API] Analyzing content, scene:', sceneType);
 
     // 获取推荐
     const result = await recommendMusic(courseContent, sceneType);

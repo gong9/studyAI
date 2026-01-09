@@ -43,10 +43,6 @@ export function configureLLM(config?: Partial<LLMConfig>): void {
 
   const finalConfig = { ...getDefaultConfig(), ...config };
   
-  console.log('[LLM Config] Base URL:', finalConfig.baseURL);
-  console.log('[LLM Config] LLM Model:', finalConfig.llmModel);
-  console.log('[LLM Config] Embedding Model:', finalConfig.embeddingModel);
-  console.log('[LLM Config] API Key:', finalConfig.apiKey ? `${finalConfig.apiKey.substring(0, 10)}...` : 'NOT SET');
 
   if (!finalConfig.apiKey) {
     throw new Error('OPENAI_API_KEY is not set in environment variables');
@@ -71,10 +67,8 @@ export function configureLLM(config?: Partial<LLMConfig>): void {
     chunkSize: finalConfig.chunkSize,
     chunkOverlap: finalConfig.chunkOverlap,
   });
-  console.log(`[LLM Config] Node Parser: SentenceSplitter(chunkSize=${finalConfig.chunkSize}, chunkOverlap=${finalConfig.chunkOverlap})`);
 
   isConfigured = true;
-  console.log('[LLM Config] ✅ Configuration completed');
 }
 
 /**

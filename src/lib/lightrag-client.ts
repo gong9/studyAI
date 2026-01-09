@@ -105,13 +105,11 @@ class LightRAGClient {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        console.log(`[LightRAG] Health check failed: ${response.status}`);
         return null;
       }
 
       return await response.json();
     } catch (error: any) {
-      console.log(`[LightRAG] Health check error: ${error.message}`);
       return null;
     }
   }
@@ -209,7 +207,6 @@ class LightRAGClient {
         return status;
       }
 
-      console.log(`[LightRAG] Indexing progress: ${(status.progress * 100).toFixed(1)}% - ${status.message}`);
       await new Promise(resolve => setTimeout(resolve, pollInterval));
     }
 

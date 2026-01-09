@@ -9,12 +9,14 @@
  * - 根据知识库类型自动推断场景类型
  * - 递归合并子章节内容，覆盖更多知识点
  * - 章节过大时给出警告和建议
+ * - 支持 Python deepagents 服务（通过 USE_DEEPAGENTS 环境变量控制）
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { generateTeachingPlan, SceneType } from '@/lib/teaching/agents/teaching-planner';
 import { getMergedChapterContent, checkChapterSize } from '@/lib/teaching/utils/chapter-content-merger';
+import { isDeepAgentsEnabled, callPythonPlanAPI } from '@/lib/teaching/python-agent-client';
 
 /** 根据知识库类型推断场景类型 */
 function getSceneTypeFromKbType(kbType: string): SceneType {
@@ -59,7 +61,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('[API] Generating teaching plan for:', chapter.title);
 
     // 解析元数据
     let metadata: { grade?: string; subject?: string } = {};
@@ -74,7 +75,6 @@ export async function POST(request: NextRequest) {
     // 根据知识库类型推断场景类型（如果前端未传入）
     const inferredSceneType = getSceneTypeFromKbType(chapter.knowledgeBase.type);
     const finalSceneType = sceneType || inferredSceneType;
-    console.log(`[API] Scene type: requested=${sceneType}, inferred=${inferredSceneType}, final=${finalSceneType}`);
 
     // 获取合并后的章节内容（包含子章节）
     const mergedResult = await getMergedChapterContent(chapterId);
@@ -86,18 +86,36 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`[API] Merged content: ${mergedResult.chapterCount} chapters, ${mergedResult.totalLength} chars`);
     if (mergedResult.warning) {
-      console.log(`[API] Warning: ${mergedResult.warning}`);
     }
 
-    // 使用合并后的内容生成教学规划
-    const result = await generateTeachingPlan({
-      chapterTitle: chapter.title,
-      chapterContent: mergedResult.content,
-      sceneType: finalSceneType,
-      metadata,
-    });
+    // 生成教学规划
+    let result: { success: boolean; plan: any; error?: string };
+    
+    // 如果启用了 Python deepagents 服务，优先使用
+    if (isDeepAgentsEnabled()) {
+      console.log('[API] Using Python deepagents service for plan generation');
+      const pythonResult = await callPythonPlanAPI({
+        knowledge_base_id: chapter.knowledgeBaseId,
+        chapter_title: chapter.title,
+        chapter_content: mergedResult.content,
+        scene_type: finalSceneType,
+      });
+      
+      result = {
+        success: pythonResult.success,
+        plan: pythonResult.plan,
+        error: pythonResult.error,
+      };
+    } else {
+      // 使用原有的 TypeScript 实现
+      result = await generateTeachingPlan({
+        chapterTitle: chapter.title,
+        chapterContent: mergedResult.content,
+        sceneType: finalSceneType,
+        metadata,
+      });
+    }
 
     if (!result.success || !result.plan) {
       return NextResponse.json(
@@ -116,7 +134,6 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    console.log('[API] Manuscript created:', manuscript.id);
 
     // 构建响应，包含警告信息
     const response: any = {

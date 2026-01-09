@@ -35,7 +35,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`[API] AI action: ${action}, text length: ${text.length}, kbId: ${knowledgeBaseId}`);
 
     // 执行 AI 操作
     const result = await executeAIAction({

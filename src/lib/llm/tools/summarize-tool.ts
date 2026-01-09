@@ -12,8 +12,6 @@ import type { ToolContext } from './types';
 export function createSummarizeTool(ctx: ToolContext) {
   return FunctionTool.from(
     async ({ topic }: { topic: string }): Promise<string> => {
-      console.log(`[LLM] ────────────────────────────────────────────────────────`);
-      console.log(`[LLM] 📋 Summarize tool called with topic: "${topic}"`);
       
       // 1. 尝试从数据库直接读取原文（快速）
       try {
@@ -29,17 +27,13 @@ export function createSummarizeTool(ctx: ToolContext) {
         });
         
         if (doc?.content && doc.content.length > 100) {
-          console.log(`[LLM] 📋 Found document "${doc.name}" (${doc.wordCount} chars) in database`);
           // 返回原文给 Agent，让 Agent 自己总结
           const content = doc.content.length > 8000 
             ? doc.content.substring(0, 8000) + '\n\n...(内容截断，共' + doc.wordCount + '字)'
             : doc.content;
-          console.log(`[LLM] 📋 Returning raw content (${content.length} chars)`);
-          console.log(`[LLM] ────────────────────────────────────────────────────────`);
           return `【文档: ${doc.name}】\n\n${content}`;
         }
       } catch (dbError) {
-        console.log(`[LLM] 📋 Database lookup failed, falling back to retriever`);
       }
       
       // 2. Fallback: 使用 retriever 检索（不调用 LLM）
@@ -47,7 +41,6 @@ export function createSummarizeTool(ctx: ToolContext) {
       const nodes = await retriever.retrieve(topic);
       
       if (nodes.length === 0) {
-        console.log(`[LLM] 📋 No content found for topic: ${topic}`);
         return '未找到相关内容';
       }
       
@@ -56,8 +49,6 @@ export function createSummarizeTool(ctx: ToolContext) {
         .map((n, i) => `[片段${i + 1}] ${(n.node as any).text || ''}`)
         .join('\n\n');
       
-      console.log(`[LLM] 📋 Retrieved ${nodes.length} chunks (${contents.length} chars)`);
-      console.log(`[LLM] ────────────────────────────────────────────────────────`);
       return contents;
     },
     {

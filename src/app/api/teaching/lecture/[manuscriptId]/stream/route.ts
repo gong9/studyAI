@@ -139,7 +139,6 @@ export async function GET(
 
         sendEvent('progress', { stage: 'parsed', message: `已解析 ${slides.length} 页幻灯片`, percent: 15 });
 
-        console.log(`[Lecture SSE] 初始化讲解: ${manuscriptId}, ${slides.length} 页`);
 
         let scriptResult: { slides: { index: number; actions: any[] }[] };
         let fromCache = false;
@@ -151,7 +150,6 @@ export async function GET(
         });
         
         if (existingScript?.lectureScript) {
-          console.log(`[Lecture SSE] 从数据库加载已有讲解稿`);
           sendEvent('progress', { stage: 'loading', message: '正在加载已保存的讲解稿...', percent: 50 });
           scriptResult = JSON.parse(existingScript.lectureScript);
           fromCache = true;
@@ -162,7 +160,6 @@ export async function GET(
           };
 
           // 生成完整演讲稿（带进度回调和场景类型）
-          console.log(`[Lecture SSE] 使用场景类型: ${sceneType}`);
           scriptResult = await generateFullLectureScript(slides, onProgress, sceneType);
           
           // 保存到数据库
@@ -172,7 +169,6 @@ export async function GET(
               lectureScript: JSON.stringify(scriptResult),
             },
           });
-          console.log(`[Lecture SSE] 讲解稿已保存到数据库`);
         }
         
         // 初始化讲解状态
@@ -185,7 +181,6 @@ export async function GET(
         });
 
         const totalActions = scriptResult.slides.reduce((sum, s) => sum + s.actions.length, 0);
-        console.log(`[Lecture SSE] 演讲稿就绪: ${scriptResult.slides.length} 页, ${totalActions} 条指令`);
 
         // 提取所有 speak 文本，用于前端预加载 TTS
         const speakTexts: string[] = [];
@@ -196,7 +191,6 @@ export async function GET(
             }
           }
         }
-        console.log(`[Lecture SSE] 提取 ${speakTexts.length} 条语音文本`);
 
         // 发送完成事件（包含 speak 文本列表）
         sendEvent('complete', {

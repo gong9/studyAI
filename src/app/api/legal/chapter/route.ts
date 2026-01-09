@@ -46,7 +46,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '预置法律库不存在' }, { status: 404 });
     }
 
-    console.log(`[Legal Chapter] Creating chapter for topic: "${topic}" based on "${lawName}"`);
 
     // 1. 从预置法律库中检索相关法律条文
     let ragContent = '';
@@ -60,7 +59,6 @@ export async function POST(request: Request) {
       });
       
       ragContent = results.map(r => r.content).join('\n\n---\n\n');
-      console.log(`[Legal Chapter] Retrieved ${results.length} chunks, total ${ragContent.length} chars`);
     } catch (searchError) {
       console.error('[Legal Chapter] Search error:', searchError);
       // 继续执行，即使检索失败
@@ -90,7 +88,6 @@ export async function POST(request: Request) {
       },
     });
 
-    console.log(`[Legal Chapter] Chapter created: ${chapter.id}`);
 
     // 3. 生成教学规划
     const planResult = await generateTeachingPlan({
@@ -113,7 +110,6 @@ export async function POST(request: Request) {
       }, { status: 500 });
     }
 
-    console.log(`[Legal Chapter] Plan generated with ${planResult.plan.sections.length} sections`);
 
     // 4. 创建讲稿记录
     const manuscript = await prisma.teachingManuscript.create({
@@ -125,7 +121,6 @@ export async function POST(request: Request) {
       },
     });
 
-    console.log(`[Legal Chapter] Manuscript created: ${manuscript.id}`);
 
     // 5. 生成讲稿初稿
     const draftResult = await generateManuscript({
@@ -144,7 +139,6 @@ export async function POST(request: Request) {
           status: 'draft',
         },
       });
-      console.log(`[Legal Chapter] Draft generated, length: ${draftResult.markdown.length}`);
     } else {
       console.warn('[Legal Chapter] Draft generation failed:', draftResult.error);
     }

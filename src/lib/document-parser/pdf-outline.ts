@@ -49,7 +49,6 @@ export async function extractPdfOutline(buffer: Buffer): Promise<OutlineResult> 
     const outlinesRef = catalog.get(PDFName.of('Outlines'));
 
     if (!outlinesRef) {
-      console.log('[PdfOutline] No outlines found in PDF');
       return {
         success: true,
         hasOutline: false,
@@ -72,7 +71,6 @@ export async function extractPdfOutline(buffer: Buffer): Promise<OutlineResult> 
     // 提取书签树
     const items = extractOutlineItems(outlines, pdfDoc, pageMap, 1);
 
-    console.log(`[PdfOutline] Extracted ${countItems(items)} outline items`);
 
     return {
       success: true,

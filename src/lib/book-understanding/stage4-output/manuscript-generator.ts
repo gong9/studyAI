@@ -13,7 +13,9 @@ import type {
   BookThesis,
   ChapterMeta,
   ConceptGraph,
+  ConceptNode,
   DeepReadResult,
+  EnrichedConcept,
   Manuscript,
   ManuscriptSection,
   OutputResult
@@ -137,7 +139,6 @@ export function generateManuscript(input: ManuscriptGeneratorInput): ManuscriptG
     // 生成 Markdown
     const markdown = generateMarkdown(thesis, sections);
 
-    console.log('[ManuscriptGenerator] Generated', sections.length, 'sections, total', totalDuration, 'minutes');
 
     return {
       success: true,
@@ -198,8 +199,8 @@ ${roleText}，请大家认真听讲。`;
  * 生成概念讲解段落
  */
 function generateConceptSection(
-  concept: typeof import('../types').ConceptNode.prototype,
-  enriched?: typeof import('../types').EnrichedConcept.prototype
+  concept: ConceptNode,
+  enriched?: EnrichedConcept
 ): { content: string; duration: number; visualHints: string[] } {
   const visualHints: string[] = [];
   let content = `### ${concept.name}\n\n`;

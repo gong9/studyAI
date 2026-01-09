@@ -8,7 +8,7 @@ const createKBSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().max(500).optional(),
   type: z.enum(['document', 'teaching', 'k12', 'tech', 'policy', 'legal']).optional().default('tech'),
-  sourceMode: z.enum(['book', 'docs', 'fragments']).optional().default('book'),
+  sourceMode: z.enum(['book', 'docs', 'fragments', 'paper']).optional().default('book'),
 });
 
 export async function GET(request: Request) {

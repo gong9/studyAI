@@ -111,7 +111,6 @@ export class EvalService {
       },
     });
 
-    console.log(`[EvalService] Created EvalRun ${evalRun.id} for KB ${knowledgeBaseId} with ${questions.length} questions`);
     return evalRun.id;
   }
 
@@ -140,8 +139,6 @@ export class EvalService {
       quality: string;
     };
   } | null> {
-    console.log(`[EvalService] ──────────────────────────────────────────`);
-    console.log(`[EvalService] Evaluating: "${question.question}"`);
 
     try {
       // 1. 调用 Agentic RAG 获取回答
@@ -156,7 +153,6 @@ export class EvalService {
       // 直接从 ragResult.toolCalls 获取工具调用信息（更可靠）
       const toolsCalled = ragResult.toolCalls?.map((tc: any) => tc.tool) || [];
       
-      console.log(`[EvalService] Tools called: ${toolsCalled.join(', ') || 'none'}`);
 
       // 提取检索内容 - 优先使用 retrievedContent（预检索），其次使用 sourceNodes
       const retrievedContent = ragResult.retrievedContent 
@@ -204,7 +200,6 @@ export class EvalService {
         },
       });
 
-      console.log(`[EvalService] ✅ Question evaluated: avg=${scores.average}`);
 
       // 返回评估结果（用于 SSE 推送）
       return {
@@ -234,8 +229,6 @@ export class EvalService {
    * 运行完整评估
    */
   static async runEvaluation(evalRunId: string): Promise<EvalRunResult> {
-    console.log(`[EvalService] ════════════════════════════════════════════`);
-    console.log(`[EvalService] Starting evaluation run: ${evalRunId}`);
 
     // 获取评估运行信息
     const evalRun = await prisma.evalRun.findUnique({
@@ -288,14 +281,6 @@ export class EvalService {
         },
       });
 
-      console.log(`[EvalService] ════════════════════════════════════════════`);
-      console.log(`[EvalService] ✅ Evaluation completed!`);
-      console.log(`[EvalService] Average Scores:`);
-      console.log(`[EvalService]   Retrieval:   ${avgRetrievalScore.toFixed(2)}`);
-      console.log(`[EvalService]   Faithfulness: ${avgFaithScore.toFixed(2)}`);
-      console.log(`[EvalService]   Quality:     ${avgQualityScore.toFixed(2)}`);
-      console.log(`[EvalService]   Tool:        ${avgToolScore.toFixed(2)}`);
-      console.log(`[EvalService]   Overall:     ${avgOverallScore.toFixed(2)}`);
 
       return {
         id: updatedRun.id,
@@ -348,8 +333,6 @@ export class EvalService {
       };
     }) => void
   ): Promise<EvalRunResult> {
-    console.log(`[EvalService] ════════════════════════════════════════════`);
-    console.log(`[EvalService] Starting evaluation run (SSE mode): ${evalRunId}`);
 
     // 获取评估运行信息
     const evalRun = await prisma.evalRun.findUnique({
@@ -414,8 +397,6 @@ export class EvalService {
         },
       });
 
-      console.log(`[EvalService] ════════════════════════════════════════════`);
-      console.log(`[EvalService] ✅ Evaluation completed (SSE mode)!`);
 
       return {
         id: updatedRun.id,
@@ -525,7 +506,6 @@ export class EvalService {
       where: { id: evalRunId },
     });
 
-    console.log(`[EvalService] Deleted EvalRun ${evalRunId}`);
   }
 
   /**

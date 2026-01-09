@@ -165,7 +165,6 @@ export async function detectChapterBoundaries(
       baseURL: process.env.OPENAI_API_BASE || 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     });
 
-    console.log(`[BoundaryDetector] Analyzing ${totalPages} pages document`);
 
     // 步骤1：寻找目录页
     const tocResult = await findTableOfContents(document, llm, maxAnalysisPages);
@@ -174,21 +173,18 @@ export async function detectChapterBoundaries(
 
     if (tocResult.hasToc && tocResult.chapters.length > 0) {
       // 有目录：使用目录信息
-      console.log(`[BoundaryDetector] Found TOC at pages: ${tocResult.tocPages?.join(', ')}`);
       chapters = tocResult.chapters;
       
       // 步骤2：验证和修正边界
       chapters = await refineBoundaries(document, chapters, llm);
     } else {
       // 无目录：通过正文特征识别
-      console.log('[BoundaryDetector] No TOC found, detecting from content');
       chapters = await detectFromContent(document, llm);
     }
 
     // 步骤3：填充缺失的 endPage
     chapters = fillMissingEndPages(chapters, totalPages);
 
-    console.log(`[BoundaryDetector] Detected ${chapters.length} chapters`);
 
     return {
       success: true,
@@ -347,7 +343,6 @@ async function refineBoundaries(
     );
 
     if (pageWithTitle && pageWithTitle.pageNumber !== chapter.startPage) {
-      console.log(`[BoundaryDetector] Adjusting "${chapter.title}" start: ${chapter.startPage} -> ${pageWithTitle.pageNumber}`);
       chapter.startPage = pageWithTitle.pageNumber;
     }
 
@@ -412,7 +407,6 @@ function parseChaptersFromLLM(chaptersData: any[]): ChapterBoundary[] {
   
   // 如果 LLM 返回的是扁平列表（带 level 但无 sections），需要转换成嵌套结构
   if (!hasNestedSections && parsed.some(ch => ch.level > 1)) {
-    console.log('[BoundaryDetector] LLM returned flat list with levels, converting to nested structure...');
     return buildNestedStructure(parsed);
   }
 
@@ -475,7 +469,6 @@ function buildNestedStructure(flatChapters: ChapterBoundary[]): ChapterBoundary[
   };
   cleanSections(result);
 
-  console.log(`[BoundaryDetector] Converted to nested: ${result.length} top-level chapters`);
   return result;
 }
 
@@ -609,7 +602,6 @@ export function inferHierarchyFromPageGaps(
   // 重新计算每个章节的 endPage
   recalculateEndPages(result, sorted[sorted.length - 1]?.endPage || 100);
 
-  console.log(`[HierarchyInfer] Inferred hierarchy: ${result.length} top-level chapters`);
 
   return result;
 }

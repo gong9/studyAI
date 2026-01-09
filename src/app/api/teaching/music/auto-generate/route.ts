@@ -34,12 +34,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('[Auto Generate] Step 1: Analyzing course content...');
 
     // Step 1: 分析课程内容
     const analysis = await analyzeContentForMusic(courseContent, sceneType);
     
-    console.log('[Auto Generate] Analysis result:', analysis);
 
     // Step 2: 根据分析结果确定生成场景
     const generateScene = GENRE_TO_SCENE[analysis.genre] || 'teaching';
@@ -54,7 +52,6 @@ ABSOLUTELY NO VOCALS, NO SINGING, NO HUMMING. This is pure background music.
 Tempo: ${tempoDesc}. For educational video background.
 Instrumental only, like study music or lo-fi beats without any voice.`;
 
-    console.log('[Auto Generate] Step 2: Generating music with prompt:', customPrompt.substring(0, 100) + '...');
 
     // Step 3: 生成音乐
     const result = await generateBackgroundMusic({
@@ -73,7 +70,6 @@ Instrumental only, like study music or lo-fi beats without any voice.`;
       );
     }
 
-    console.log('[Auto Generate] Success! Generated:', result.filename);
 
     return NextResponse.json({
       success: true,

@@ -47,7 +47,6 @@ export default function DiagramMessage({ mermaidSyntax, className = '' }: Diagra
       setError(null);
 
       try {
-        console.log('[DiagramMessage] Parsing Mermaid syntax:', mermaidSyntax);
         
         // 动态导入 mermaid-to-excalidraw
         const { parseMermaidToExcalidraw } = await import('@excalidraw/mermaid-to-excalidraw');
@@ -60,7 +59,6 @@ export default function DiagramMessage({ mermaidSyntax, className = '' }: Diagra
           },
         });
 
-        console.log('[DiagramMessage] Mermaid elements:', mermaidElements);
 
         if (!mermaidElements || mermaidElements.length === 0) {
           throw new Error('Mermaid 解析结果为空');
@@ -69,7 +67,6 @@ export default function DiagramMessage({ mermaidSyntax, className = '' }: Diagra
         // 转换为 Excalidraw 元素
         let excalidrawElements = convertToExcalidrawElements(mermaidElements) as any[];
 
-        console.log('[DiagramMessage] Excalidraw elements:', excalidrawElements.length);
 
         // 为容器添加内边距
         excalidrawElements = addPaddingToContainers(excalidrawElements, 10);

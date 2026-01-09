@@ -55,7 +55,6 @@ async function loadCourseData(): Promise<{
 
   for (const path of paths) {
     try {
-      console.log('[Remotion] Trying to load data from:', path);
       const response = await fetch(path);
       if (!response.ok) continue;
       
@@ -65,7 +64,6 @@ async function loadCourseData(): Promise<{
         const duration = data.duration || data.totalDuration || 10000;
         const durationInFrames = Math.max(FPS * 10, Math.ceil((duration / 1000) * FPS));
         
-        console.log('[Remotion] Data loaded successfully:', data.slides.length, 'slides');
         
         return {
           props: {
@@ -79,11 +77,9 @@ async function loadCourseData(): Promise<{
         };
       }
     } catch (e) {
-      console.log('[Remotion] Failed to load from:', path);
     }
   }
   
-  console.log('[Remotion] No course data found, using default');
   return {
     props: defaultProps,
     durationInFrames: FPS * 10,

@@ -80,7 +80,6 @@ export async function generateBackgroundMusic(
 
   const prompt = request.customPrompt || BGM_PROMPT_TEMPLATES[request.sceneType] || BGM_PROMPT_TEMPLATES.teaching;
 
-  console.log('[MusicGenerator] Generating BGM with prompt:', prompt.substring(0, 100) + '...');
 
   try {
     const response = await fetch(MINIMAX_MUSIC_API, {
@@ -131,7 +130,6 @@ export async function generateBackgroundMusic(
     await fs.ensureDir(bgmDir);
     await fs.writeFile(outputPath, audioBuffer);
     
-    console.log('[MusicGenerator] Saved audio to:', outputPath);
 
     // 更新 music-library.json
     const libraryPath = path.join(bgmDir, 'music-library.json');
@@ -182,7 +180,6 @@ export async function generateBackgroundMusic(
     library.updatedAt = new Date().toISOString().split('T')[0];
     
     await fs.writeJson(libraryPath, library, { spaces: 2 });
-    console.log('[MusicGenerator] Updated music library');
 
     return {
       success: true,

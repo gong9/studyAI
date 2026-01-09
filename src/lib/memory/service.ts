@@ -59,7 +59,6 @@ export class MemoryService {
   }> {
     const { limit = 20, maxTokens, minRelevance = 0.5 } = options;  // 🔥 默认阈值改为 0.5
     
-    console.log(`[MemoryService] Getting context for: ${query.substring(0, 50)}... (minRelevance: ${minRelevance})`);
     
     // 1. 检索相关记忆（传入阈值）
     let memories = await this.store.retrieve(query, limit, minRelevance);
@@ -85,7 +84,6 @@ export class MemoryService {
     // 6. 统计信息
     const budgetStats = budgetManager.getBudgetStats(selected);
     
-    console.log(`[MemoryService] Selected ${selected.length}/${memories.length} memories, ${budgetStats.totalTokens} tokens`);
     
     return {
       memories: selected,
@@ -106,11 +104,9 @@ export class MemoryService {
   async processConversation(question: string, answer: string): Promise<Memory[]> {
     // 检查是否需要提取
     if (!this.config.autoExtract || !shouldExtractMemory(question, answer)) {
-      console.log('[MemoryService] Skipping memory extraction');
       return [];
     }
     
-    console.log('[MemoryService] Processing conversation for memory extraction');
     
     // 1. 提取记忆
     const extracted = await extractMemories(question, answer);
@@ -135,7 +131,6 @@ export class MemoryService {
     // 3. 保存
     if (toSave.length > 0) {
       const saved = await this.store.saveMany(toSave);
-      console.log(`[MemoryService] Saved ${saved.length} new memories`);
       return saved;
     }
     

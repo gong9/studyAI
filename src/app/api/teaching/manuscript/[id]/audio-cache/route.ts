@@ -99,7 +99,6 @@ export async function POST(
       data: { cachedAudio: JSON.stringify(newCache) },
     });
 
-    console.log(`[Audio Cache API] 保存 ${addedCount} 条音频，总计 ${Object.keys(newCache).length} 条`);
 
     return NextResponse.json({
       success: true,

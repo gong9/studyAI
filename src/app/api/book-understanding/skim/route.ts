@@ -81,7 +81,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '知识库中没有文档' }, { status: 400 });
     }
 
-    console.log(`[Skim] Starting for KB: ${knowledgeBaseId}`);
 
     // ========== 步骤1：按页解析文档 ==========
     const documents = await prisma.document.findMany({
@@ -100,7 +99,6 @@ export async function POST(request: NextRequest) {
         const parsed = await parsePdfBufferByPage(buffer, doc.name);
         parsedDocs.push(parsed);
         fullContent += `\n\n=== ${doc.name} ===\n\n${parsed.fullText}`;
-        console.log(`[Skim] Parsed ${doc.name}: ${parsed.totalPages} pages`);
       } else if ((ext === '.txt' || ext === '.md') && doc.path && await fs.pathExists(doc.path)) {
         const content = await fs.readFile(doc.path, 'utf-8');
         parsedDocs.push({
@@ -129,7 +127,6 @@ export async function POST(request: NextRequest) {
     const mainDoc = parsedDocs.reduce((a, b) => a.totalPages > b.totalPages ? a : b);
 
     // ========== 步骤2：分析全书主题 ==========
-    console.log('[Skim] Analyzing book theme...');
     const bookResult = await analyzeBook({ 
       knowledgeBaseId,
       content: fullContent,
@@ -148,13 +145,11 @@ export async function POST(request: NextRequest) {
     
     if (mainPdfDoc?.path && await fs.pathExists(mainPdfDoc.path)) {
       const pdfBuffer = await fs.readFile(mainPdfDoc.path);
-      console.log('[Skim] Trying to extract PDF outline/bookmarks...');
       
       const outlineResult = await extractPdfOutline(pdfBuffer);
       
       if (outlineResult.success && outlineResult.hasOutline && outlineResult.items.length > 0) {
         // 使用 PDF 书签
-        console.log(`[Skim] ✓ Found ${outlineResult.items.length} bookmarks in PDF, using them directly`);
         
         const chapters = outlineToChapterBoundaries(outlineResult.items, mainDoc.totalPages);
         boundaryResult = {
@@ -163,7 +158,6 @@ export async function POST(request: NextRequest) {
         };
       } else {
         // 没有书签，使用 LLM 分析
-        console.log('[Skim] No PDF bookmarks found, falling back to LLM analysis...');
         boundaryResult = await detectChapterBoundaries({
           document: mainDoc,
           maxAnalysisPages: 50,
@@ -171,7 +165,6 @@ export async function POST(request: NextRequest) {
       }
     } else {
       // 非 PDF 或文件不存在，使用 LLM 分析
-      console.log('[Skim] Detecting chapter boundaries with LLM...');
       boundaryResult = await detectChapterBoundaries({
         document: mainDoc,
         maxAnalysisPages: 50,
@@ -187,22 +180,17 @@ export async function POST(request: NextRequest) {
     const chaptersWithSections = boundaryResult.chapters.filter(ch => ch.sections && ch.sections.length > 0);
     const chaptersNotLevel1 = boundaryResult.chapters.filter(ch => ch.level !== 1);
     
-    console.log(`[Skim] Chapter analysis: total=${boundaryResult.chapters.length}, withSections=${chaptersWithSections.length}, notLevel1=${chaptersNotLevel1.length}`);
     
     // 如果 LLM 返回的是扁平结构（所有 level=1 且无 sections），用页码推断层级
     const needsHierarchyInference = chaptersWithSections.length === 0 && chaptersNotLevel1.length === 0;
     
     if (needsHierarchyInference && boundaryResult.chapters.length > 3) {
-      console.log('[Skim] All chapters are flat (level=1, no sections), inferring hierarchy from page gaps...');
       boundaryResult.chapters = inferHierarchyFromPageGaps(boundaryResult.chapters, 4);
     } else {
-      console.log('[Skim] LLM already provided hierarchy structure, skipping inference');
     }
 
-    console.log(`[Skim] Final structure: ${boundaryResult.chapters.length} top-level chapters`);
 
     // ========== 步骤4：分类章节角色 ==========
-    console.log('[Skim] Classifying chapter roles...');
     const rawChapters = convertBoundariesToRawChapters(mainDoc, boundaryResult.chapters);
     
     const roleResult = await classifyChapterRoles({
@@ -215,7 +203,6 @@ export async function POST(request: NextRequest) {
     }
 
     // ========== 步骤5：构建章节DAG ==========
-    console.log('[Skim] Building chapter DAG...');
     const dagResult = await buildChapterDAG({
       thesis: bookResult.thesis,
       chapters: roleResult.chapters,
@@ -226,11 +213,9 @@ export async function POST(request: NextRequest) {
     }
 
     // ========== 步骤6：保存到数据库 ==========
-    console.log('[Skim] Saving chapters to database...');
     await saveChaptersToDb(knowledgeBaseId, roleResult.chapters, bookResult.thesis);
 
     // ========== 返回结果 ==========
-    console.log(`[Skim] Completed: ${roleResult.chapters.length} chapters saved`);
 
     return NextResponse.json({
       success: true,
@@ -343,8 +328,6 @@ async function saveChaptersToDb(
   }
 
   // 第二遍：设置 parentId（根据 level 推断父子关系）
-  console.log(`[SaveChapters] Processing ${savedChapters.length} chapters for parent-child relationships`);
-  console.log(`[SaveChapters] Level distribution:`, savedChapters.map(c => c.level).join(','));
   
   let updatedCount = 0;
   for (let i = 0; i < savedChapters.length; i++) {
@@ -370,7 +353,6 @@ async function saveChaptersToDb(
       updatedCount++;
     }
   }
-  console.log(`[SaveChapters] Updated ${updatedCount} chapters with parentId`)
 
   // 更新知识库信息
   await prisma.knowledgeBase.update({

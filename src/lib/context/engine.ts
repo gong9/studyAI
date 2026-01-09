@@ -88,21 +88,18 @@ export class ContextEngine {
     } = options;
     
     const startTime = Date.now();
-    console.log(`[ContextEngine] Building context for: "${query.substring(0, 50)}..."`);
     
     // 确保 LLM 已配置
     configureLLM();
     
     // ========== 1. 意图检测（使用外部传入或自行分析）==========
     const intent: IntentResult = externalIntent || await analyzeIntent(query, chatHistory);
-    console.log(`[ContextEngine] Intent: ${intent.intent} (confidence: ${intent.confidence})`);
     
     // ========== 2. 检索决策 ==========
     const retrievalDecision = makeRetrievalDecision(query, {
       hasKnowledgeBase: true,
       chatHistoryLength: chatHistory.length,
     });
-    console.log(`[ContextEngine] Retrieval decision: ${retrievalDecision.shouldRetrieve ? 'YES' : 'NO'} - ${retrievalDecision.reason}`);
     
     // ========== 3. 统一检索（记忆 + 文档一起检索，用 RRF 融合）==========
     const [allResults, historySummaryResult, taskState] = await Promise.all([
@@ -126,7 +123,6 @@ export class ContextEngine {
     const memories = allResults.memories;
     const ragResults = allResults.documents;
     
-    console.log(`[ContextEngine] Unified search: ${memories.length} memories, ${ragResults.length} documents`);
     
     // ========== 4. 构建对话历史部分 ==========
     let historyContext = '';
@@ -173,7 +169,6 @@ export class ContextEngine {
     
     if (this.config.enableCompression && stats.usageRatio > this.config.compressionThreshold) {
       const targetLength = maxTokens * 3;  // 字符数约 token 的 3 倍
-      console.log(`[ContextEngine] 📦 Compressing context (usage: ${(stats.usageRatio * 100).toFixed(1)}% > ${this.config.compressionThreshold * 100}%)...`);
       
       if (this.config.useLLMCompression) {
         // LLM 语义压缩（效果更好）
@@ -185,7 +180,6 @@ export class ContextEngine {
             preserveKeywords: true,
           });
           const duration = Date.now() - startTime;
-          console.log(`[ContextEngine] 📦 LLM compression done in ${duration}ms (${finalContext.length} → ${outputContext.length} chars)`);
         } catch (error) {
           console.error('[ContextEngine] 📦 LLM compression failed, fallback to simple:', error);
           outputContext = compressSimple(finalContext, targetLength);
@@ -193,14 +187,12 @@ export class ContextEngine {
       } else {
         // 简单规则压缩
         outputContext = compressSimple(finalContext, targetLength);
-        console.log(`[ContextEngine] 📦 Simple compression done (${finalContext.length} → ${outputContext.length} chars)`);
       }
       
       compressionApplied = true;
     }
     
     const totalTime = Date.now() - startTime;
-    console.log(`[ContextEngine] Context built in ${totalTime}ms, ${stats.totalTokens} tokens`);
     
     return {
       context: outputContext,
@@ -283,7 +275,6 @@ export class ContextEngine {
         }
       }
       
-      console.log(`[ContextEngine] Unified search separated: ${memories.length} memories, ${documents.length} documents`);
       
       // 去重过滤文档
       const processedDocs = processResults(documents, query);

@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { 
   ArrowLeft, Save, CheckCircle, Loader2, FileCheck, 
-  Eye, Edit3, RefreshCw, AlertCircle, ChevronRight, MessageSquare
+  Eye, Edit3, RefreshCw, AlertCircle, ChevronRight, MessageSquare,
+  Sparkles, PenLine, Brain
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import dynamic from 'next/dynamic';
@@ -27,14 +28,22 @@ const AISidebar = dynamic(
   { ssr: false }
 );
 
-// 状态映射
+// 动态导入 Agent 执行追踪查看器
+const AgentTraceViewer = dynamic(
+  () => import('@/components/teaching/AgentTraceViewer'),
+  { ssr: false }
+);
+
+// 状态映射 - 区分 AI 生成和用户手稿
 const STATUS_MAP: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   draft: { label: 'LLM 初稿', color: 'bg-blue-100 text-blue-700', icon: <Edit3 className="h-3 w-3" /> },
+  user_draft: { label: '用户手稿', color: 'bg-emerald-100 text-emerald-700', icon: <PenLine className="h-3 w-3" /> },
   user_editing: { label: '编辑中', color: 'bg-yellow-100 text-yellow-700', icon: <Edit3 className="h-3 w-3" /> },
   confirmed: { label: '已确认', color: 'bg-green-100 text-green-700', icon: <CheckCircle className="h-3 w-3" /> },
   reviewing: { label: '审核中', color: 'bg-purple-100 text-purple-700', icon: <Loader2 className="h-3 w-3 animate-spin" /> },
   enriching: { label: '润色中', color: 'bg-indigo-100 text-indigo-700', icon: <Loader2 className="h-3 w-3 animate-spin" /> },
   rendering: { label: '渲染中', color: 'bg-pink-100 text-pink-700', icon: <Loader2 className="h-3 w-3 animate-spin" /> },
+  processing: { label: '智能布局中', color: 'bg-cyan-100 text-cyan-700', icon: <Sparkles className="h-3 w-3 animate-pulse" /> },
   completed: { label: '已完成', color: 'bg-zinc-100 text-zinc-700', icon: <CheckCircle className="h-3 w-3" /> },
 };
 
@@ -56,10 +65,31 @@ export default function ManuscriptEditorPage() {
   const [enriching, setEnriching] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [rendering, setRendering] = useState(false);
+  const [reviewEnriching, setReviewEnriching] = useState(false);
+  const [directGenerating, setDirectGenerating] = useState(false); // 直接生成课件
   const [hasChanges, setHasChanges] = useState(false);
   const [error, setError] = useState('');
   const [aiSidebarOpen, setAiSidebarOpen] = useState(true);  // 默认打开 AI 助手
   const [selectedText, setSelectedText] = useState('');
+  const [lastTraceId, setLastTraceId] = useState<string | null>(null); // 最后一次执行追踪 ID
+  const [showTraceViewer, setShowTraceViewer] = useState(false); // 是否显示追踪查看器
+  
+  // 判断是否为用户直接创作的手稿（而非 AI 生成）
+  const isUserManuscript = (() => {
+    if (!manuscript) return false;
+    // 检查 teachingPlan 中的 source 标记
+    try {
+      const plan = typeof manuscript.teachingPlan === 'string' 
+        ? JSON.parse(manuscript.teachingPlan) 
+        : manuscript.teachingPlan;
+      // 空白手稿创建时会带有特定标记
+      if (plan?.source === 'user_manuscript' || plan?.source === 'blank') return true;
+      // 检查章节描述是否为用户自主创作
+      if (manuscript.chapter?.contentPreview?.includes('用户自主创作')) return true;
+    } catch {}
+    // 如果 draftContent 为空或很短，也可能是用户手稿
+    return false;
+  })();
 
   useEffect(() => {
     fetchManuscript();
@@ -72,8 +102,20 @@ export default function ManuscriptEditorPage() {
       if (res.ok) {
         const data = await res.json();
         setManuscript(data);
-        // 优先使用确认版，其次初稿
-        const initialContent = data.confirmedContent || data.draftContent || '';
+        
+        // 根据状态决定显示哪个内容版本，保护用户编辑的内容
+        let initialContent = '';
+        if (data.status === 'completed' && data.enrichedContent) {
+          // 只有完成状态才显示润色后的内容
+          initialContent = data.enrichedContent;
+        } else if (data.status === 'confirmed' && data.confirmedContent) {
+          // 确认状态显示确认后的内容
+          initialContent = data.confirmedContent;
+        } else {
+          // draft/user_editing 状态显示草稿
+          initialContent = data.draftContent || '';
+        }
+        
         setContent(initialContent);
         setOriginalContent(initialContent);
         setHasChanges(false); // 重置变更状态
@@ -226,6 +268,29 @@ export default function ManuscriptEditorPage() {
     router.push(`/dashboard/teaching/${kbId}/manuscript/${manuscriptId}/presentation`);
   };
 
+  // 审阅润色（GPT-5.1 审阅 + RAG 智能润色）
+  const handleReviewEnrich = async () => {
+    setReviewEnriching(true);
+    try {
+      const res = await fetch(`/api/teaching/manuscript/${manuscriptId}/review-enrich`, {
+        method: 'POST',
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        alert(`审阅润色完成！\n评分：${data.review?.score || '-'}/10\n评价：${data.review?.overallAssessment || '-'}`);
+        fetchManuscript();
+      } else {
+        const err = await res.json();
+        alert(err.error || '审阅润色失败');
+      }
+    } catch (error: any) {
+      alert(error.message || '审阅润色失败');
+    } finally {
+      setReviewEnriching(false);
+    }
+  };
+
   const handleRegenerate = async () => {
     if (!confirm('确定要重新生成课件吗？这将覆盖现有的课件内容。')) {
       return;
@@ -269,8 +334,94 @@ export default function ManuscriptEditorPage() {
     }
   };
 
-  const statusInfo = STATUS_MAP[manuscript?.status] || STATUS_MAP.draft;
-  const isEditable = !['confirmed', 'reviewing', 'enriching', 'rendering', 'completed'].includes(manuscript?.status);
+  // 直接生成课件（用户手稿专用）- 使用 Python Agent 智能布局
+  const handleDirectGenerate = async () => {
+    // 如果有未保存的内容，先保存
+    if (hasChanges) {
+      setSaving(true);
+      try {
+        const saveRes = await fetch(`/api/teaching/manuscript/${manuscriptId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content }),
+        });
+        if (!saveRes.ok) {
+          const err = await saveRes.json();
+          alert(err.error || '保存失败');
+          return;
+        }
+        setHasChanges(false);
+      } catch (error: any) {
+        alert(error.message || '保存失败');
+        return;
+      } finally {
+        setSaving(false);
+      }
+    }
+
+    // 检查内容是否为空
+    if (!content.trim()) {
+      alert('请先编写手稿内容');
+      return;
+    }
+
+    setDirectGenerating(true);
+    try {
+      // 调用 render API，后端会自动检测用户手稿并调用 Python Agent 处理
+      const renderRes = await fetch(`/api/teaching/manuscript/${manuscriptId}/render`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          user_manuscript: true,  // 标记为用户手稿
+        }),
+      });
+
+      if (!renderRes.ok) {
+        const err = await renderRes.json();
+        alert(err.error || '生成课件失败');
+        return;
+      }
+
+      const result = await renderRes.json();
+      
+      // 保存追踪 ID
+      if (result.trace_id) {
+        setLastTraceId(result.trace_id);
+      }
+      
+      // 刷新手稿数据
+      await fetchManuscript();
+      
+      // 显示成功信息和追踪查看器
+      if (result.processedByAgent) {
+        // 不直接跳转，先显示执行追踪
+        if (result.trace_id) {
+          setShowTraceViewer(true);
+        } else {
+          // 跳转到预览页面
+          router.push(`/dashboard/teaching/${kbId}/manuscript/${manuscriptId}/presentation`);
+        }
+      } else {
+        // 没有 Agent 处理，直接跳转
+        router.push(`/dashboard/teaching/${kbId}/manuscript/${manuscriptId}/presentation`);
+      }
+    } catch (error: any) {
+      alert(error.message || '生成课件失败');
+    } finally {
+      setDirectGenerating(false);
+    }
+  };
+
+  // 根据手稿来源选择正确的状态显示
+  const getStatusInfo = () => {
+    const status = manuscript?.status;
+    if (isUserManuscript && status === 'draft') {
+      return STATUS_MAP.user_draft;
+    }
+    return STATUS_MAP[status] || STATUS_MAP.draft;
+  };
+  const statusInfo = getStatusInfo();
+  const isEditable = !['confirmed', 'reviewing', 'enriching', 'rendering', 'processing', 'completed'].includes(manuscript?.status);
 
   if (loading) {
     return (
@@ -328,8 +479,42 @@ export default function ManuscriptEditorPage() {
 
             <div className="w-px h-4 bg-slate-200 mx-2" />
 
-            {/* 操作按钮组 - 阿里高效 + 苹果圆润 */}
-            {isEditable && (
+            {/* ========== 用户手稿模式：简化按钮 ========== */}
+            {isUserManuscript && isEditable && (
+              <div className="flex items-center gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={handleSave}
+                  disabled={saving || !hasChanges}
+                  className="h-8 border-slate-200 text-slate-600 hover:bg-slate-50 rounded-lg text-xs"
+                >
+                  {saving ? <Loader2 className="h-3 w-3 animate-spin mr-1.5" /> : <Save className="h-3 w-3 mr-1.5" />}
+                  保存
+                </Button>
+                <Button 
+                  size="sm"
+                  onClick={handleDirectGenerate}
+                  disabled={directGenerating || !content.trim()}
+                  className="h-8 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-sm rounded-lg text-xs font-semibold px-4"
+                >
+                  {directGenerating ? (
+                    <>
+                      <Loader2 className="h-3 w-3 animate-spin mr-1.5" />
+                      智能布局中...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-3 w-3 mr-1.5" />
+                      生成课件
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
+
+            {/* ========== AI 生成手稿模式：完整流程按钮 ========== */}
+            {!isUserManuscript && isEditable && (
               <div className="flex items-center gap-2">
                 <Button 
                   variant="outline" 
@@ -351,6 +536,19 @@ export default function ManuscriptEditorPage() {
                   确认生成
                 </Button>
               </div>
+            )}
+
+            {/* draft 状态且非用户手稿：显示审阅润色按钮 */}
+            {!isUserManuscript && manuscript?.status === 'draft' && (
+              <Button 
+                size="sm"
+                onClick={handleReviewEnrich}
+                disabled={reviewEnriching || hasChanges}
+                className="h-8 bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm rounded-lg text-xs font-semibold px-4"
+              >
+                {reviewEnriching ? <Loader2 className="h-3 w-3 animate-spin mr-1.5" /> : <FileCheck className="h-3 w-3 mr-1.5" />}
+                {reviewEnriching ? '审阅润色中...' : '审阅润色'}
+              </Button>
             )}
 
             {manuscript?.status === 'confirmed' && (
@@ -451,8 +649,59 @@ export default function ManuscriptEditorPage() {
               </div>
             )}
 
-            {/* 审核建议 - 更紧凑 */}
-            {manuscript?.reviewComments && manuscript.reviewComments.length > 0 && (
+            {/* GPT-5.1 审阅结果 */}
+            {manuscript?.reviewComments && (() => {
+              try {
+                const review = typeof manuscript.reviewComments === 'string' 
+                  ? JSON.parse(manuscript.reviewComments) 
+                  : manuscript.reviewComments;
+                if (review?.score) {
+                  return (
+                    <div className="mb-4 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg border border-indigo-100 p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center">
+                            <span className="text-indigo-600 font-bold text-sm">{review.score}</span>
+                          </div>
+                          <div>
+                            <span className="text-xs text-indigo-500 font-medium">GPT-5.1 审阅评分</span>
+                            <p className="text-sm text-slate-700">{review.overallAssessment}</p>
+                          </div>
+                        </div>
+                        {manuscript.enrichedContent && (
+                          <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-medium">
+                            ✓ 已润色
+                          </span>
+                        )}
+                      </div>
+                      {review.suggestions && review.suggestions.length > 0 && (
+                        <div className="space-y-2">
+                          <p className="text-xs font-medium text-slate-500">改进建议：</p>
+                          <div className="grid gap-2">
+                            {review.suggestions.slice(0, 4).map((s: any, i: number) => (
+                              <div key={i} className={cn(
+                                "text-xs p-2 rounded border-l-2",
+                                s.severity === 'high' ? "bg-red-50 border-red-400 text-red-700" :
+                                s.severity === 'medium' ? "bg-amber-50 border-amber-400 text-amber-700" :
+                                "bg-slate-50 border-slate-300 text-slate-600"
+                              )}>
+                                <span className="font-medium">[{s.type}]</span> {s.issue}
+                                <span className="text-slate-500"> → {s.suggestion}</span>
+                              </div>
+                            ))}
+                            {review.suggestions.length > 4 && (
+                              <p className="text-xs text-slate-400">还有 {review.suggestions.length - 4} 条建议...</p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+              } catch { /* 旧格式或解析失败 */ }
+              // 兼容旧格式
+              if (Array.isArray(manuscript.reviewComments) && manuscript.reviewComments.length > 0) {
+                return (
               <div className="mb-4 bg-amber-50 rounded-lg border border-amber-100 px-4 py-3 flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
                 <div className="flex-1 text-sm">
@@ -463,7 +712,10 @@ export default function ManuscriptEditorPage() {
                   </span>
                 </div>
               </div>
-            )}
+                );
+              }
+              return null;
+            })()}
 
             {/* 编辑器容器 - 文档风格 */}
             <div className="bg-white rounded-lg shadow-sm border border-slate-200 min-h-[calc(100vh-180px)]">
@@ -547,6 +799,41 @@ export default function ManuscriptEditorPage() {
             }}
           />
         </div>
+
+        {/* Agent 执行追踪弹窗 */}
+        {showTraceViewer && lastTraceId && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div className="w-[600px] max-h-[80vh]">
+              <AgentTraceViewer 
+                traceId={lastTraceId} 
+                onClose={() => {
+                  setShowTraceViewer(false);
+                  // 关闭后跳转到预览页面
+                  router.push(`/dashboard/teaching/${kbId}/manuscript/${manuscriptId}/presentation`);
+                }} 
+              />
+              <div className="mt-4 flex justify-center gap-3">
+                <Button 
+                  variant="outline"
+                  onClick={() => setShowTraceViewer(false)}
+                  className="bg-white"
+                >
+                  继续编辑
+                </Button>
+                <Button 
+                  onClick={() => {
+                    setShowTraceViewer(false);
+                    router.push(`/dashboard/teaching/${kbId}/manuscript/${manuscriptId}/presentation`);
+                  }}
+                  className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white"
+                >
+                  <Eye className="w-4 h-4 mr-2" />
+                  预览课件
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

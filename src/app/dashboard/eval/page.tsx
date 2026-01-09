@@ -333,7 +333,6 @@ export default function EvalDashboardPage() {
           // 尝试重连
           if (retryCount < maxRetries) {
             retryCount++;
-            console.log(`SSE 连接断开，尝试重连 (${retryCount}/${maxRetries})...`);
             setLiveProgress(prev => prev ? {
               ...prev,
               currentQuestion: `连接断开，正在重连 (${retryCount}/${maxRetries})...`,
@@ -341,7 +340,6 @@ export default function EvalDashboardPage() {
             setTimeout(connectSSE, 2000); // 2秒后重连
           } else {
             // 重连失败，刷新状态查看后端是否完成
-            console.log('SSE 重连失败，刷新评估状态...');
             setRunning(false);
             setLiveProgress(null);
             fetchEvalRuns();

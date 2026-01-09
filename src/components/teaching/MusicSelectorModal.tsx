@@ -166,7 +166,6 @@ export const MusicSelectorModal: React.FC<MusicSelectorModalProps> = ({
         enabled: true,
         src: generated.audioUrl,
       };
-      console.log('Using generated music with config:', config);
       onSelect(config);
       onClose();
     }
@@ -182,7 +181,6 @@ export const MusicSelectorModal: React.FC<MusicSelectorModalProps> = ({
         enabled: true,
         src: `${MUSIC_BASE}/${selectedTrack.filename}`,
       };
-      console.log('Selecting music with config:', config);
       onSelect(config);
       onClose();
     }

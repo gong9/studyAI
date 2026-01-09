@@ -129,21 +129,15 @@ export async function query(
   chatHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
 ): Promise<any> {
   configureLLM();
-  console.log(`[LLM] Query: "${question}" in KB ${knowledgeBaseId}`);
-  console.log(`[LLM] Chat history: ${chatHistory.length} messages`);
   const startTime = Date.now();
   
-  console.log(`[LLM] Loading index...`);
   const t1 = Date.now();
   const index = await loadIndex(knowledgeBaseId);
-  console.log(`[LLM] Index loaded in ${Date.now() - t1}ms`);
   
-  console.log(`[LLM] Creating query engine with topK=2...`);
   const t2 = Date.now();
   const queryEngine = index.asQueryEngine({
     similarityTopK: 2,
   });
-  console.log(`[LLM] Query engine created in ${Date.now() - t2}ms`);
 
   // 处理对话历史
   let queryWithContext = question;
@@ -153,20 +147,14 @@ export async function query(
       .map(msg => `${msg.role === 'user' ? '用户' : 'AI'}: ${msg.content}`)
       .join('\n');
     queryWithContext = `以下是之前的对话历史：\n${historyContext}\n\n用户当前问题：${question}\n\n请根据对话上下文回答当前问题。`;
-    console.log(`[LLM] Query with context length: ${queryWithContext.length} chars`);
   }
 
-  console.log(`[LLM] Executing query...`);
   const t3 = Date.now();
   const response = await queryEngine.query({
     query: queryWithContext,
   });
-  console.log(`[LLM] Query executed in ${Date.now() - t3}ms`);
 
   const totalTime = ((Date.now() - startTime) / 1000).toFixed(2);
-  console.log(`[LLM] ✅ Query completed in ${totalTime}s`);
-  console.log(`[LLM] Response length: ${response.response?.length || 0} chars`);
-  console.log(`[LLM] Source nodes: ${response.sourceNodes?.length || 0}`);
 
   return {
     answer: response.response,
@@ -188,23 +176,14 @@ export async function agenticQuery(
   sessionId?: string,
 ): Promise<AgentQueryResult> {
   configureLLM();
-  console.log(`[LLM] Agentic Query: "${question}" in KB ${knowledgeBaseId}`);
-  console.log(`[LLM] Chat history: ${chatHistory.length} messages`);
   const startTime = Date.now();
 
   // ========== 第一步：意图判断 ==========
-  console.log(`[LLM 意图] ════════════════════════════════════════════════════════`);
-  console.log(`[LLM 意图] 🎯 Step 1: Intent Analysis...`);
   
   const intentResult = await analyzeIntent(question, chatHistory);
-  console.log(`[LLM 意图] 🎯 Intent: ${intentResult.intent}`);
-  console.log(`[LLM 意图] 🎯 Needs KB: ${intentResult.needsKnowledgeBase}`);
-  console.log(`[LLM 意图] 🎯 Keywords: ${intentResult.keywords.join(', ')}`);
-  console.log(`[LLM 意图] 🎯 Suggested Tool: ${intentResult.suggestedTool || 'none'}`);
   
   // 如果是闲聊/问候，使用上下文工程但跳过 Agent
   if (shouldSkipAgent(intentResult.intent)) {
-    console.log(`[LLM] 🎯 Direct response for ${intentResult.intent}, using ContextEngine but skipping Agent`);
     
     // 使用完整的上下文工程
     const contextEngine = getContextEngine();
@@ -220,9 +199,7 @@ export async function agenticQuery(
         maxTokens: 1500,  // 闲聊用中等预算（记忆+历史摘要，少量RAG）
         intent: intentResult,
       });
-      console.log(`[LLM] 🎯 Context built: ${contextResult.memories.length} memories, ${contextResult.ragResults.length} RAG, tokens: ${contextResult.stats.totalTokens}`);
     } catch (error) {
-      console.log(`[LLM] 🎯 Context build failed, using default response`);
     }
     
     // 提取上下文用于个性化回复
@@ -248,14 +225,12 @@ export async function agenticQuery(
     };
   }
   
-  console.log(`[LLM] ════════════════════════════════════════════════════════`);
 
   // ========== 第二步：上下文引擎构建智能上下文 ==========
   const contextEngine = getContextEngine();
   let contextResult: Awaited<ReturnType<typeof contextEngine.buildContext>> | null = null;
   let useContextEngine = false;
   
-  console.log(`[LLM] 🧠 Building intelligent context...`);
   try {
     contextResult = await contextEngine.buildContext({
       knowledgeBaseId,
@@ -266,8 +241,6 @@ export async function agenticQuery(
       maxTokens: 3000,
       intent: intentResult,  // 传入意图，避免重复分析
     });
-    console.log(`[LLM] 🧠 Context built: ${contextResult.memories.length} memories, ${contextResult.ragResults.length} RAG results`);
-    console.log(`[LLM] 🧠 Token usage: ${contextResult.stats.totalTokens}/${contextResult.stats.budgetTokens} (${(contextResult.stats.usageRatio * 100).toFixed(1)}%)`);
     // 🔥 ContextEngine 成功执行就用它，不管有没有结果
     // 0 条结果也是有效结果（说明没有相关内容），不应该回退到无过滤的预检索
     useContextEngine = true;
@@ -276,7 +249,6 @@ export async function agenticQuery(
   }
 
   // 加载索引
-  console.log(`[LLM] Loading index for agent...`);
   const index = await loadIndex(knowledgeBaseId);
 
   // 创建工具上下文和工具
@@ -288,7 +260,6 @@ export async function agenticQuery(
   let contextAwareToolContext: ContextAwareToolContext | null = null;
   
   if (contextResult) {
-    console.log(`[LLM] 🔄 Enabling adaptive context for complex knowledge/code explanation...`);
     
     // 创建自适应上下文管理器
     adaptiveManager = createAdaptiveContextManager({
@@ -315,10 +286,8 @@ export async function agenticQuery(
     
     // 包装所有工具，添加上下文感知能力
     tools = wrapAllTools(tools, contextAwareToolContext);
-    console.log(`[LLM] 🔄 Tools wrapped with context-awareness`);
   }
   
-  console.log(`[LLM 工具生成] Creating ReAct Agent with ${tools.length} tools...`);
 
   // ========== 初始化执行链路 ==========
   const trace: ExecutionTrace = {
@@ -343,7 +312,6 @@ export async function agenticQuery(
   
   if (useContextEngine) {
     // 上下文引擎已成功，使用其 RAG 结果
-    console.log(`[LLM] 📚 Using ContextEngine results, skipping legacy search`);
     trace.preSearch.executed = true;
     trace.preSearch.query = question;
     
@@ -368,13 +336,10 @@ export async function agenticQuery(
     }
   } else if (intentResult.needsKnowledgeBase) {
     // 回退：使用原有的预检索逻辑
-    console.log(`[LLM] ───────────────────正在预检索知识库（回退模式）─────────────────────────────────────`);
-    console.log(`[LLM 预检索] 📚 Pre-fetching from knowledge base...`);
     
     const searchQuery = intentResult.keywords.length > 0 
       ? intentResult.keywords.join(' ') + ' ' + question
       : question;
-    console.log(`[LLM 预检索] 📚 Search query: "${searchQuery}"`);
     
     trace.preSearch.executed = true;
     trace.preSearch.query = searchQuery;
@@ -388,13 +353,10 @@ export async function agenticQuery(
       // 保存到工具上下文
       toolContext.searchResults.push(...results);
       
-      console.log(`[LLM] 📚 Found ${results.length} 相关文档 (预检索结果)`);
       const sources = results.map((result: any, i: number) => {
         const text = result.content || '';
         const docName = result.documentName || '未知文档';
         const score = parseFloat(result.score?.toFixed(3) || '0');
-        console.log(`[LLM 预检索] 📚   [${i + 1}] ${docName} (score: ${score})`);
-        console.log(`[LLM 预检索] 📚       ${text.substring(0, 100).replace(/\n/g, ' ')}...`);
         
         trace.preSearch.results.push({
           docName,
@@ -406,11 +368,8 @@ export async function agenticQuery(
       });
       knowledgeContext = sources.join('\n\n');
     } else {
-      console.log(`[LLM 预检索] 📚 No relevant documents found in knowledge base`);
     }
-    console.log(`[LLM 预检索] ────────────────────────────────────────────────────────`);
   } else {
-    console.log(`[LLM] 📚 Skipping pre-fetch (intent: ${intentResult.intent})`);
   }
 
   // 构建背景知识增强问题
@@ -500,31 +459,17 @@ export async function agenticQuery(
   });
 
   // ========== 打印传给 Agent 的完整上下文 ==========
-  console.log(`[LLM Agentic] ════════════════════════════════════════════════════════`);
-  console.log(`[LLM Agentic] 📝 CONTEXT SENT TO AGENT:`);
-  console.log(`[LLM Agentic] ────────────────────────────────────────────────────────`);
   // 打印完整上下文（限制长度避免日志过长）
   const contextPreview = enrichedQuestion.length > 2000 
     ? enrichedQuestion.substring(0, 2000) + `\n... (truncated, total ${enrichedQuestion.length} chars)`
     : enrichedQuestion;
-  console.log(contextPreview);
-  console.log(`[LLM Agentic] ────────────────────────────────────────────────────────`);
-  console.log(`[LLM Agentic] 📊 Context stats: ${enrichedQuestion.length} chars, ~${Math.ceil(enrichedQuestion.length / 3)} tokens`);
-  console.log(`[LLM Agentic] ════════════════════════════════════════════════════════`);
 
   // 执行查询
-  console.log(`[LLM Agentic] thinking and executing...`);
   const response = await agent.chat({ message: enrichedQuestion });
 
   const totalTime = ((Date.now() - startTime) / 1000).toFixed(2);
-  console.log(`[LLM Agentic] ════════════════════════════════════════════════════════`);
-  console.log(`[LLM Agentic] ✅ Agentic Query completed in ${totalTime}s`);
   
   // 打印原始输出
-  console.log(`[LLM Agentic] ────────────────────────────────────────────────────────`);
-  console.log(`[LLM Agentic] 推理过程`);
-  console.log(`[LLM Agentic] ${response.response}`);
-  console.log(`[LLM Agentic] ────────────────────────────────────────────────────────`);
   
   // 打印检索到的文档
   // if (response.sourceNodes && response.sourceNodes.length > 0) {
@@ -546,15 +491,10 @@ export async function agenticQuery(
   trace.toolCalls = toolCalls;
   trace.answer = answer;
   
-  console.log(`[LLM Agentic] Thinking length: ${thinking.length}`);
-  console.log(`[LLM Agentic] Tool calls: ${toolCalls.length} (actual: ${actualToolCalls.length}, parsed: ${parsedToolCalls.length})`);
   toolCalls.forEach((call, i) => {
-    console.log(`[LLM Agentic]   🔧 [${i + 1}] ${call.tool}(${call.input.substring(0, 50)}${call.input.length > 50 ? '...' : ''})`);
     if (call.output) {
-      console.log(`[LLM Agentic]       → ${call.output.substring(0, 80)}${call.output.length > 80 ? '...' : ''}`);
     }
   });
-  console.log(`[LLM Agentic] Final answer: ${answer}`);
 
 
   // ========== 格式预检查 ==========
@@ -579,19 +519,15 @@ export async function agenticQuery(
   let lastIssue = '';
   
   while (!qualityPassed && retryCount < MAX_RETRIES) {
-    console.log(`[LLM] 📊 Quality check (attempt ${retryCount + 1}/${MAX_RETRIES})...`);
     const evalResult = await evaluateQuality(answer, evalContext);
     
     if (evalResult.pass) {
-      console.log(`[LLM] 📊 Quality: ✅ PASS`);
       qualityPassed = true;
     } else {
       lastIssue = evalResult.reason;
-      console.log(`[LLM] 📊 Quality: ❌ FAIL - ${lastIssue}`);
       
       retryCount++;
       if (retryCount < MAX_RETRIES) {
-        console.log(`[LLM] 📊 Retrying (${retryCount}/${MAX_RETRIES})...`);
         
         const retryMessage = `请改进你的回答。
 
@@ -618,13 +554,10 @@ ${knowledgeContext || '无预检索内容'}
           if (retryParsed.answer && retryParsed.answer.length > 50) {
             answer = retryParsed.answer;
             thinking = [...thinking, ...retryParsed.thinking];
-            console.log(`[LLM] 📊 Retry done, new answer length: ${answer.length} chars`);
           } else {
-            console.log(`[LLM] 📊 Retry failed, keeping previous answer`);
             break;
           }
         } catch (retryError: any) {
-          console.log(`[LLM] 📊 Retry error: ${retryError.message}, keeping previous answer`);
           break;
         }
       }
@@ -632,12 +565,10 @@ ${knowledgeContext || '无预检索内容'}
   }
   
   if (!qualityPassed) {
-    console.log(`[LLM] 📊 Max retries reached, using last answer`);
   }
   
   // 兜底：长度足够也通过
   if (!qualityPassed && answer.length > 100) {
-    console.log(`[LLM] 📊 Fallback pass: answer length ${answer.length} > 100`);
     qualityPassed = true;
   }
 
@@ -667,11 +598,6 @@ ${knowledgeContext || '无预检索内容'}
   // ========== 自适应上下文统计 ==========
   if (adaptiveManager) {
     const adaptiveStats = adaptiveManager.getStats();
-    console.log(`[LLM] 🔄 Adaptive context stats:`);
-    console.log(`[LLM]    - Tool calls: ${adaptiveStats.toolCallCount}`);
-    console.log(`[LLM]    - Context updates: ${adaptiveStats.updateCount}`);
-    console.log(`[LLM]    - Discovered entities: ${adaptiveStats.discoveredEntities}`);
-    console.log(`[LLM]    - Final tokens: ${adaptiveStats.currentTokens}`);
   }
   
   // ========== 记忆提取（异步，不阻塞返回）==========

@@ -247,7 +247,6 @@ export async function extractChapters(
     const promptTemplate = getSceneTocPrompt(type);
     const prompt = promptTemplate.replace('{content}', tocContent);
     
-    console.log('[ChapterExtractor] Using prompt for type:', type);
     
     const response = await llm.complete({ prompt });
     const text = response.text.trim();
