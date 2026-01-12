@@ -14,11 +14,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from '@/components/ui/input';
 import { 
   LogOut, Plus, Trash2, FileText, 
-  Clock, Sparkles, Cpu, FileCheck, ArrowRight, Scale, GraduationCap
+  Clock, Sparkles, Cpu, FileCheck, ArrowRight, Scale, GraduationCap, BookOpen
 } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 
-type ScenarioType = 'tech' | 'policy' | 'legal';
+type ScenarioType = 'tech' | 'policy' | 'legal' | 'storytelling';
 type SourceModeType = 'book' | 'docs' | 'fragments' | 'paper';
 
 interface SourceModeConfig {
@@ -100,6 +100,17 @@ const scenarios: ScenarioConfig[] = [
     accentBorder: 'group-hover:border-zinc-400',
     examples: ['劳动法', '民法典', '消费维权'],
     placeholder: '例如：劳动者权益保护',
+  },
+  {
+    id: 'storytelling',
+    name: '讲书',
+    desc: '书籍转有声评书，像单田芳一样讲故事',
+    icon: BookOpen,
+    accentColor: 'text-amber-600',
+    accentBg: 'bg-amber-50',
+    accentBorder: 'group-hover:border-amber-400',
+    examples: ['历史书', '古典小说', '名人传记'],
+    placeholder: '例如：明朝那些事儿',
   },
 ];
 
@@ -277,7 +288,7 @@ export default function DashboardPage() {
         </div>
 
         {/* 场景入口卡片 */}
-        <div className="flex-none grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="flex-none grid grid-cols-1 md:grid-cols-4 gap-4">
           {scenarios.map((scenario) => {
             const count = getScenarioCount(scenario.id);
             return (
@@ -287,6 +298,11 @@ export default function DashboardPage() {
                   // 普法讲座跳转到专门入口页
                   if (scenario.id === 'legal') {
                     router.push('/dashboard/legal');
+                    return;
+                  }
+                  // 讲书场景跳转到专门入口页
+                  if (scenario.id === 'storytelling') {
+                    router.push('/dashboard/storytelling');
                     return;
                   }
                   setSelectedScenario(scenario.id);
