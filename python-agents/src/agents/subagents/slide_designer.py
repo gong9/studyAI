@@ -505,9 +505,9 @@ async def fix_slide_issues(
 ## 修复建议
 {json.dumps(qa_result.get('suggestions', []), ensure_ascii=False, indent=2)}
 
-## 原始 HTML（有问题的）
+## 原始 HTML（有问题的，请完整保留所有内容！）
 ```html
-{slide.html[:1000]}
+{slide.html}
 ```
 
 请生成修复后的 HTML，确保：
