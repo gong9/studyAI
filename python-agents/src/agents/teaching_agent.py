@@ -20,7 +20,7 @@ from ..config import get_settings
 from ..prompts.teaching_planner import format_planner_prompt, get_scene_config
 from ..prompts.manuscript_generator import format_manuscript_prompt, get_scene_prompt
 from ..prompts.reviewer import format_review_prompt, format_enrich_prompt
-from ..tools.rag_client import rag_search
+from ..tools.rag_client import _call_rag_api, RAGSearchOptions
 from .hitl import (
     HITLManager,
     HITLConfig,
@@ -531,19 +531,22 @@ class TeachingAgent:
     async def _run_writer(self, input_data: dict) -> dict:
         """运行手稿生成子 Agent"""
         plan = input_data["plan"]
-        kb_id = input_data["knowledge_base_id"]
+        kb_id = input_data.get("knowledge_base_id")
         scene_type = plan.get("scene_type", "general")
 
-        # RAG 检索相关内容
+        # RAG 检索相关内容（仅当有知识库 ID 时）
         rag_content = ""
-        for section in plan.get("sections", [])[:3]:  # 取前3节检索
-            query = f"{section['title']} {' '.join(section.get('key_points', [])[:2])}"
-            try:
-                results = await rag_search(kb_id, query, vector_top_k=3)
-                for r in results[:2]:
-                    rag_content += f"\n---\n{r.get('text', r.get('content', ''))}\n"
-            except Exception as e:
-                logger.warning(f"RAG search failed: {e}")
+        if kb_id:
+            for section in plan.get("sections", [])[:3]:  # 取前3节检索
+                query = f"{section['title']} {' '.join(section.get('key_points', [])[:2])}"
+                try:
+                    options = RAGSearchOptions(vector_top_k=3, keyword_limit=2)
+                    results = await _call_rag_api(kb_id, query, options)
+                    for r in results[:2]:
+                        rag_content += f"\n---\n{r.get('text', r.get('content', ''))}\n"
+                except Exception as e:
+                    # 索引不存在等情况，静默跳过
+                    logger.debug(f"RAG search skipped: {e}")
 
         # 构建 Prompt
         prompt = format_manuscript_prompt(
@@ -572,20 +575,23 @@ class TeachingAgent:
 
     async def _run_enricher(self, input_data: dict) -> dict:
         """运行润色子 Agent"""
-        kb_id = input_data["knowledge_base_id"]
+        kb_id = input_data.get("knowledge_base_id")
         review = input_data["review"]
 
-        # 根据 missing_topics 进行补充检索
+        # 根据 missing_topics 进行补充检索（仅当有知识库 ID 时）
         supplement = ""
-        for topic in review.get("missing_topics", [])[:3]:
-            try:
-                results = await rag_search(kb_id, topic, vector_top_k=2)
-                for r in results[:1]:
-                    supplement += (
-                        f"\n---\n主题：{topic}\n{r.get('text', r.get('content', ''))}\n"
-                    )
-            except Exception as e:
-                logger.warning(f"Supplement RAG failed: {e}")
+        if kb_id and review.get("missing_topics"):
+            for topic in review.get("missing_topics", [])[:3]:
+                try:
+                    options = RAGSearchOptions(vector_top_k=2, keyword_limit=2)
+                    results = await _call_rag_api(kb_id, topic, options)
+                    for r in results[:1]:
+                        supplement += (
+                            f"\n---\n主题：{topic}\n{r.get('text', r.get('content', ''))}\n"
+                        )
+                except Exception as e:
+                    # 索引不存在等情况，静默跳过
+                    logger.debug(f"RAG supplement skipped: {e}")
 
         prompt = format_enrich_prompt(
             draft_content=input_data["draft_content"],
@@ -596,7 +602,41 @@ class TeachingAgent:
         response = await self.llm.ainvoke(prompt)
         markdown = response.content if hasattr(response, "content") else str(response)
 
+        # 清理可能的 prompt 泄露
+        markdown = self._clean_enriched_output(markdown)
+
         return {"enriched_markdown": markdown}
+    
+    def _clean_enriched_output(self, text: str) -> str:
+        """清理润色输出中可能的 prompt 泄露"""
+        import re
+        
+        # 移除开头的分隔符和标题
+        lines = text.strip().split('\n')
+        clean_lines = []
+        skip_until_content = True
+        
+        for line in lines:
+            # 跳过开头的分隔符和标题
+            if skip_until_content:
+                stripped = line.strip()
+                # 跳过空行、分隔符、特定标题
+                if not stripped:
+                    continue
+                if stripped.startswith('==='):
+                    continue
+                if stripped.startswith('---') and not clean_lines:
+                    continue
+                if re.match(r'^#+\s*(原始手稿|优化后手稿|待优化|输出|手稿内容)', stripped):
+                    continue
+                if stripped in ['原始手稿', '优化后手稿', '手稿内容']:
+                    continue
+                # 找到正文内容了
+                skip_until_content = False
+            
+            clean_lines.append(line)
+        
+        return '\n'.join(clean_lines).strip()
 
     async def _run_analyzer(self, input_data: dict) -> dict:
         """运行分析子 Agent - 识别手稿中的所有知识点"""

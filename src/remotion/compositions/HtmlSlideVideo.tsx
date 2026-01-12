@@ -7,10 +7,18 @@
 import React from 'react';
 import { AbsoluteFill, Sequence, Audio, useCurrentFrame, useVideoConfig, interpolate, Easing } from 'remotion';
 
+// 信息图数据类型
+export interface InfographicData {
+  syntax: string;
+  position: 'right' | 'bottom' | 'inline' | 'none';
+  size: 'small' | 'medium' | 'large' | 'auto';
+}
+
 export interface HtmlSlide {
   index: number;
   title: string;
   html: string;
+  infographic?: InfographicData;
 }
 
 export interface CourseFrame {
@@ -40,8 +48,8 @@ export interface HtmlSlideVideoProps {
   backgroundMusic?: BackgroundMusicConfig;  // 背景音乐
 }
 
-// 单个幻灯片渲染组件 - 支持 Remotion 帧同步动画
-const HtmlSlideRenderer: React.FC<{ slide: HtmlSlide; isEntering: boolean; durationInFrames: number }> = ({ 
+// Remotion 版幻灯片渲染器
+const RemotionSlideRenderer: React.FC<{ slide: HtmlSlide; isEntering: boolean; durationInFrames: number }> = ({ 
   slide, 
   isEntering,
   durationInFrames,
@@ -62,7 +70,6 @@ const HtmlSlideRenderer: React.FC<{ slide: HtmlSlide; isEntering: boolean; durat
       })
     : 0;
   
-  // 轻微缩放效果（入场时从 0.98 到 1）
   const scale = isEntering
     ? interpolate(frame, [0, enterDuration], [0.98, 1], { 
         extrapolateRight: 'clamp',
@@ -81,7 +88,7 @@ const HtmlSlideRenderer: React.FC<{ slide: HtmlSlide; isEntering: boolean; durat
       style={{
         opacity,
         transform: `translateY(${translateY}px) scale(${scale})`,
-        backgroundColor: '#0f0f23',
+        backgroundColor: '#FAFBFC',
       }}
     >
       <div
@@ -188,7 +195,7 @@ export const HtmlSlideVideo: React.FC<HtmlSlideVideoProps> = ({
             from={timing.startFrame}
             durationInFrames={timing.durationFrames}
           >
-            <HtmlSlideRenderer slide={slide} isEntering={true} durationInFrames={timing.durationFrames} />
+            <RemotionSlideRenderer slide={slide} isEntering={true} durationInFrames={timing.durationFrames} />
           </Sequence>
         );
       })}

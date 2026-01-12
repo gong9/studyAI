@@ -22,6 +22,8 @@ interface HtmlSlideRendererProps {
   slide: HtmlSlide;
   isFullscreen?: boolean;
   className?: string;
+  // 用于自动保存预渲染的信息图 SVG
+  manuscriptId?: string;
 }
 
 // 根据信息图尺寸计算布局比例
@@ -48,6 +50,7 @@ export const HtmlSlideRenderer: React.FC<HtmlSlideRendererProps> = ({
   slide,
   isFullscreen = false,
   className,
+  manuscriptId,
 }) => {
   const hasInfographic = !!slide.infographic;
   const infographicPosition = slide.infographic?.position || 'bottom';
@@ -161,11 +164,13 @@ export const HtmlSlideRenderer: React.FC<HtmlSlideRendererProps> = ({
         {/* 右侧：信息图区域 - 信息图自动填充 */}
         <div 
           style={{ width: ratios.infographic }} 
-          className="h-full p-4 bg-white/5"
+          className="h-full p-4 bg-white"
         >
           <InfographicRenderer 
             infographic={slide.infographic!}
             fillContainer={true}
+            manuscriptId={manuscriptId}
+            slideIndex={slide.index}
           />
         </div>
       </div>
@@ -192,11 +197,13 @@ export const HtmlSlideRenderer: React.FC<HtmlSlideRendererProps> = ({
         {/* 下方：信息图区域 - 信息图自动填充 */}
         <div 
           style={{ height: ratios.infographic }} 
-          className="w-full p-4 bg-white/5"
+          className="w-full p-4 bg-white"
         >
           <InfographicRenderer 
             infographic={slide.infographic!}
             fillContainer={true}
+            manuscriptId={manuscriptId}
+            slideIndex={slide.index}
           />
         </div>
       </div>
@@ -219,8 +226,13 @@ export const HtmlSlideRenderer: React.FC<HtmlSlideRendererProps> = ({
           sandbox="allow-same-origin"
         />
       </div>
-      <div className="h-[35%] w-full p-4 bg-white/5">
-        <InfographicRenderer infographic={slide.infographic!} fillContainer={true} />
+      <div className="h-[35%] w-full p-4 bg-white">
+        <InfographicRenderer 
+          infographic={slide.infographic!} 
+          fillContainer={true}
+          manuscriptId={manuscriptId}
+          slideIndex={slide.index}
+        />
       </div>
     </div>
   );

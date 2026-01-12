@@ -143,6 +143,30 @@ class ProcessManuscriptResponse(BaseModel):
     error: Optional[str] = None
 
 
+class RenderSlidesRequest(BaseModel):
+    """幻灯片渲染请求"""
+    slidev_md: str
+    kb_type: str = "tech"
+    enable_decoration: bool = True
+    enable_qa: bool = True  # 启用质量检查和自动修复
+    session_id: Optional[str] = None
+
+
+class RenderSlidesResponse(BaseModel):
+    """幻灯片渲染响应"""
+    success: bool
+    slides: Optional[list] = None
+    total_count: int = 0
+    decorated_count: int = 0
+    paginated_md: Optional[str] = None  # 智能分页后的 Markdown 内容
+    visual_plan: Optional[dict] = None
+    design_spec: Optional[dict] = None  # 设计规格书
+    qa_summary: Optional[dict] = None   # QA 检查结果
+    session_id: Optional[str] = None
+    trace_id: Optional[str] = None
+    error: Optional[str] = None
+
+
 # ==================== API 端点 ====================
 
 
@@ -243,6 +267,52 @@ async def enrich_draft(request: EnrichRequest) -> EnrichResponse:
     except Exception as e:
         logger.error(f"Enrich failed: {e}", exc_info=True)
         return EnrichResponse(success=False, error=str(e))
+
+
+@router.post("/render-slides", response_model=RenderSlidesResponse)
+async def render_slides_endpoint(request: RenderSlidesRequest) -> RenderSlidesResponse:
+    """
+    渲染幻灯片
+    
+    将 Markdown 手稿转换为精美的 HTML 幻灯片，并智能添加信息图装饰。
+    使用 SlideDesignerAgent 实现四阶段设计流程：
+    1. 全局理解
+    2. 视觉规划
+    3. 逐页设计
+    4. 整体检查
+    """
+    try:
+        logger.info(f"Rendering slides with decoration={request.enable_decoration}")
+        
+        session_id, agent = get_or_create_session(request.session_id)
+        
+        # 调用 SlideDesignerAgent
+        from ..agents.subagents.slide_designer import render_slides
+        
+        result = await render_slides(
+            slidev_md=request.slidev_md,
+            llm_client=agent.llm,
+            kb_type=request.kb_type,
+            enable_decoration=request.enable_decoration,
+            enable_qa=request.enable_qa,
+        )
+        
+        return RenderSlidesResponse(
+            success=True,
+            slides=result.get("slides"),
+            total_count=result.get("total_count", 0),
+            decorated_count=result.get("decorated_count", 0),
+            paginated_md=result.get("paginated_md"),  # 智能分页后的 Markdown
+            visual_plan=result.get("visual_plan"),
+            design_spec=result.get("design_spec"),
+            qa_summary=result.get("qa_summary"),
+            session_id=session_id,
+            trace_id=agent.current_trace_id if hasattr(agent, 'current_trace_id') else None,
+        )
+        
+    except Exception as e:
+        logger.error(f"Render slides failed: {e}", exc_info=True)
+        return RenderSlidesResponse(success=False, error=str(e))
 
 
 @router.post("/process-manuscript", response_model=ProcessManuscriptResponse)

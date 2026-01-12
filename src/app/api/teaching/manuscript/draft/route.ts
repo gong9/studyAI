@@ -19,7 +19,7 @@ import { generateManuscript } from '@/lib/teaching/agents/manuscript-generator';
 import type { TeachingPlan, SceneType } from '@/lib/teaching/agents/teaching-planner';
 import type { KeyPoint } from '@/lib/teaching/agents/chapter-analyzer';
 import { getMergedChapterContent } from '@/lib/teaching/utils/chapter-content-merger';
-import { isDeepAgentsEnabled, callPythonDraftAPI } from '@/lib/teaching/python-agent-client';
+import { callPythonDraftAPI } from '@/lib/teaching/python-agent-client';
 
 /** 根据知识库类型推断场景类型 */
 function getSceneTypeFromKbType(kbType: string): SceneType {
@@ -124,9 +124,9 @@ export async function POST(request: NextRequest) {
     // 生成手稿
     let result: { success: boolean; markdown: string | null; error?: string };
     
-    // 如果启用了 Python deepagents 服务，优先使用
-    if (isDeepAgentsEnabled()) {
-      console.log('[API] Using Python deepagents service for draft generation');
+    // 使用 Python DeepAgents 服务生成草稿
+    console.log('[API] Using Python DeepAgents service for draft generation');
+    try {
       const pythonResult = await callPythonDraftAPI({
         knowledge_base_id: manuscript.knowledgeBaseId,
         plan,
@@ -135,13 +135,25 @@ export async function POST(request: NextRequest) {
         chapter_content: chapterContent,
       });
       
-      result = {
-        success: pythonResult.success,
-        markdown: pythonResult.markdown || null,
-        error: pythonResult.error,
-      };
-    } else {
-      // 使用原有的 TypeScript 实现（带 RAG 检索）
+      if (pythonResult.success && pythonResult.markdown) {
+        result = {
+          success: true,
+          markdown: pythonResult.markdown,
+        };
+      } else {
+        console.warn('[API] Python DeepAgents draft failed, falling back to TypeScript:', pythonResult.error);
+        // 回退到 TypeScript
+        result = await generateManuscript({
+          plan,
+          knowledgeBaseId: manuscript.knowledgeBaseId,
+          chapterKeyPoints: keyPoints,
+          chapterSummary,
+          chapterContent,
+        });
+      }
+    } catch (pythonError: any) {
+      console.warn('[API] Python DeepAgents call failed, falling back to TypeScript:', pythonError.message);
+      // 回退到 TypeScript 实现
       result = await generateManuscript({
         plan,
         knowledgeBaseId: manuscript.knowledgeBaseId,

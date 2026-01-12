@@ -26,6 +26,7 @@ export async function GET(
         audioData: true,
         slideFormat: true,
         backgroundMusic: true,
+        manuscriptId: true,
       },
     });
 
@@ -72,6 +73,7 @@ export async function GET(
       title: course.title,
       description: course.description,
       duration: course.duration,
+      manuscriptId: course.manuscriptId,
       slides,
       frames,
       audioData,

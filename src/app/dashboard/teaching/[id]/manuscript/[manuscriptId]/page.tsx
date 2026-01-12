@@ -292,35 +292,22 @@ export default function ManuscriptEditorPage() {
   };
 
   const handleRegenerate = async () => {
-    if (!confirm('确定要重新生成课件吗？这将覆盖现有的课件内容。')) {
+    if (!confirm('确定要重新生成课件吗？这将重新渲染 PPT 幻灯片，但不会修改手稿内容。')) {
       return;
     }
 
     setRegenerating(true);
     try {
-      // 先调用 enrich API 重新生成 enrichedContent
-      const enrichRes = await fetch(`/api/teaching/manuscript/${manuscriptId}/enrich`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ force: true }), // 强制重新生成
-      });
-
-      if (!enrichRes.ok) {
-        const err = await enrichRes.json();
-        alert(err.error || '重新生成失败');
-        return;
-      }
-
-      // 再调用 render API 重新生成 slidevMd
+      // 只调用 render API 重新生成 HTML 幻灯片，不修改手稿内容
       const renderRes = await fetch(`/api/teaching/manuscript/${manuscriptId}/render`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ force: true }), // 强制重新生成
+        body: JSON.stringify({ force: true }), // 强制重新渲染
       });
 
       if (!renderRes.ok) {
         const err = await renderRes.json();
-        alert(err.error || '渲染失败');
+        alert(err.error || '重新生成失败');
         return;
       }
 

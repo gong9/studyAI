@@ -16,7 +16,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { generateTeachingPlan, SceneType } from '@/lib/teaching/agents/teaching-planner';
 import { getMergedChapterContent, checkChapterSize } from '@/lib/teaching/utils/chapter-content-merger';
-import { isDeepAgentsEnabled, callPythonPlanAPI } from '@/lib/teaching/python-agent-client';
+import { callPythonPlanAPI } from '@/lib/teaching/python-agent-client';
 
 /** 根据知识库类型推断场景类型 */
 function getSceneTypeFromKbType(kbType: string): SceneType {
@@ -89,12 +89,11 @@ export async function POST(request: NextRequest) {
     if (mergedResult.warning) {
     }
 
-    // 生成教学规划
+    // 生成教学规划 - 使用 Python DeepAgents
     let result: { success: boolean; plan: any; error?: string };
     
-    // 如果启用了 Python deepagents 服务，优先使用
-    if (isDeepAgentsEnabled()) {
-      console.log('[API] Using Python deepagents service for plan generation');
+    console.log('[API] Using Python DeepAgents service for plan generation');
+    try {
       const pythonResult = await callPythonPlanAPI({
         knowledge_base_id: chapter.knowledgeBaseId,
         chapter_title: chapter.title,
@@ -102,13 +101,24 @@ export async function POST(request: NextRequest) {
         scene_type: finalSceneType,
       });
       
-      result = {
-        success: pythonResult.success,
-        plan: pythonResult.plan,
-        error: pythonResult.error,
-      };
-    } else {
-      // 使用原有的 TypeScript 实现
+      if (pythonResult.success && pythonResult.plan) {
+        result = {
+          success: true,
+          plan: pythonResult.plan,
+        };
+      } else {
+        console.warn('[API] Python DeepAgents plan failed, falling back to TypeScript:', pythonResult.error);
+        // 回退到 TypeScript 实现
+        result = await generateTeachingPlan({
+          chapterTitle: chapter.title,
+          chapterContent: mergedResult.content,
+          sceneType: finalSceneType,
+          metadata,
+        });
+      }
+    } catch (pythonError: any) {
+      console.warn('[API] Python DeepAgents call failed, falling back to TypeScript:', pythonError.message);
+      // 回退到 TypeScript 实现
       result = await generateTeachingPlan({
         chapterTitle: chapter.title,
         chapterContent: mergedResult.content,

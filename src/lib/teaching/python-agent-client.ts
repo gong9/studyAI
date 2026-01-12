@@ -76,6 +76,48 @@ export interface PythonProcessManuscriptResponse {
   error?: string;
 }
 
+export interface PythonRenderSlidesRequest {
+  slidev_md: string;
+  kb_type: string;
+  enable_decoration?: boolean;
+}
+
+export interface SlideInfographic {
+  syntax: string;
+  position: 'right' | 'bottom' | 'inline';
+  size: 'small' | 'medium' | 'large';
+}
+
+export interface SlideWithInfographic {
+  index: number;
+  title: string;
+  html: string;
+  infographic?: SlideInfographic;
+}
+
+export interface VisualPlanDecision {
+  page: number;
+  title: string;
+  content_type: string;
+  needs_decoration: boolean;
+  reason: string;
+}
+
+export interface PythonRenderSlidesResponse {
+  success: boolean;
+  slides?: SlideWithInfographic[];
+  total_count?: number;
+  decorated_count?: number;
+  paginated_md?: string;  // 智能分页后的 Markdown 内容
+  visual_plan?: {
+    total_pages: number;
+    decorated_pages: number;
+    decisions: VisualPlanDecision[];
+  };
+  trace_id?: string;
+  error?: string;
+}
+
 // ==================== Trace 类型定义 ====================
 
 export interface TraceStep {
@@ -260,6 +302,34 @@ export async function callPythonProcessManuscriptAPI(
     return await response.json();
   } catch (error: any) {
     console.error('[PythonAgent] Process Manuscript API error:', error);
+    return { success: false, error: error.message || 'Python service call failed' };
+  }
+}
+
+/**
+ * 调用 Python 服务渲染幻灯片
+ * 
+ * 将 Markdown 手稿转换为精美的 HTML 幻灯片，并智能添加信息图装饰。
+ * 使用 SlideDesignerAgent 实现四阶段设计流程。
+ */
+export async function callPythonRenderSlidesAPI(
+  request: PythonRenderSlidesRequest
+): Promise<PythonRenderSlidesResponse> {
+  try {
+    const response = await fetch(`${PYTHON_SERVICE_URL}/api/v1/teaching/render-slides`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    });
+    
+    if (!response.ok) {
+      const error = await response.text();
+      return { success: false, error: `Python service error: ${response.status} - ${error}` };
+    }
+    
+    return await response.json();
+  } catch (error: any) {
+    console.error('[PythonAgent] Render Slides API error:', error);
     return { success: false, error: error.message || 'Python service call failed' };
   }
 }

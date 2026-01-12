@@ -46,8 +46,22 @@ interface Frame {
   timestamp: number;
 }
 
+interface InfographicData {
+  syntax: string;
+  position: 'right' | 'bottom' | 'inline' | 'none';
+  size: 'small' | 'medium' | 'large' | 'auto';
+  renderedSvg?: string; // 预渲染的 SVG 字符串
+}
+
+interface SlideData {
+  index: number;
+  title: string;
+  html: string;
+  infographic?: InfographicData;
+}
+
 interface CourseData {
-  slides: Array<{ index: number; title: string; html: string }>;
+  slides: SlideData[];
   frames: Frame[];
   audioData?: { [key: string]: string };
   language?: string;  // 'zh' | 'en' - 课程语言
@@ -300,6 +314,77 @@ async function analyzeAndCalculateTiming(data: CourseData): Promise<{
   return { timingData, totalDurationMs, audioSegments };
 }
 
+// 根据信息图尺寸和位置计算布局比例
+function getLayoutRatios(size: string, position: string) {
+  if (position === 'right') {
+    switch (size) {
+      case 'small': return { content: '70%', infographic: '30%' };
+      case 'large': return { content: '60%', infographic: '40%' };
+      default: return { content: '65%', infographic: '35%' };
+    }
+  } else {
+    switch (size) {
+      case 'small': return { content: '65%', infographic: '35%' };
+      case 'large': return { content: '50%', infographic: '50%' };
+      default: return { content: '55%', infographic: '45%' };
+    }
+  }
+}
+
+// 生成幻灯片 HTML（支持预渲染的信息图 SVG）
+function generateSlideHtml(slide: SlideData): string {
+  const hasRenderedSvg = slide.infographic?.renderedSvg;
+  
+  if (!hasRenderedSvg) {
+    // 没有预渲染的信息图，只渲染主内容
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+      *{margin:0;padding:0;box-sizing:border-box}
+      html,body{width:${SLIDE_WIDTH}px;height:${SLIDE_HEIGHT}px;overflow:hidden}
+      *,*::before,*::after{animation:none!important;transition:none!important}
+    </style></head><body>${slide.html}</body></html>`;
+  }
+
+  // 有预渲染的 SVG，生成包含信息图的布局
+  const infographic = slide.infographic!;
+  const position = infographic.position || 'bottom';
+  const size = infographic.size || 'medium';
+  const ratios = getLayoutRatios(size, position);
+
+  if (position === 'right') {
+    // 左右布局
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+      *{margin:0;padding:0;box-sizing:border-box}
+      html,body{width:${SLIDE_WIDTH}px;height:${SLIDE_HEIGHT}px;overflow:hidden}
+      *,*::before,*::after{animation:none!important;transition:none!important}
+      .container{display:flex;width:100%;height:100%}
+      .slide-content{width:${ratios.content};height:100%;overflow:hidden}
+      .infographic-area{width:${ratios.infographic};height:100%;padding:16px;background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden}
+      .infographic-area svg{width:100%;height:100%;max-width:100%;max-height:100%}
+    </style></head><body>
+    <div class="container">
+      <div class="slide-content">${slide.html}</div>
+      <div class="infographic-area">${infographic.renderedSvg}</div>
+    </div>
+    </body></html>`;
+  } else {
+    // 上下布局（bottom 或其他）
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+      *{margin:0;padding:0;box-sizing:border-box}
+      html,body{width:${SLIDE_WIDTH}px;height:${SLIDE_HEIGHT}px;overflow:hidden}
+      *,*::before,*::after{animation:none!important;transition:none!important}
+      .container{display:flex;flex-direction:column;width:100%;height:100%}
+      .slide-content{width:100%;height:${ratios.content};overflow:hidden}
+      .infographic-area{width:100%;height:${ratios.infographic};padding:16px;background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden}
+      .infographic-area svg{width:100%;height:100%;max-width:100%;max-height:100%}
+    </style></head><body>
+    <div class="container">
+      <div class="slide-content">${slide.html}</div>
+      <div class="infographic-area">${infographic.renderedSvg}</div>
+    </div>
+    </body></html>`;
+  }
+}
+
 async function captureSlides(slides: CourseData['slides']) {
   const browser = await puppeteer.launch({
     headless: true,
@@ -311,16 +396,13 @@ async function captureSlides(slides: CourseData['slides']) {
 
   for (const slide of slides) {
     const outPath = path.join(OUTPUT_DIR, 'slides', `${slide.index.toString().padStart(3, '0')}.png`);
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-      *{margin:0;padding:0;box-sizing:border-box}
-      html,body{width:${SLIDE_WIDTH}px;height:${SLIDE_HEIGHT}px;overflow:hidden}
-      *,*::before,*::after{animation:none!important;transition:none!important}
-    </style></head><body>${slide.html}</body></html>`;
+    const html = generateSlideHtml(slide);
+    const hasInfoSvg = !!slide.infographic?.renderedSvg;
     
     await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 10000 });
     await new Promise(r => setTimeout(r, 100));
     await page.screenshot({ path: outPath, type: 'png' });
-    console.log(`   ✅ ${slide.index + 1}/${slides.length}`);
+    console.log(`   ✅ ${slide.index + 1}/${slides.length}${hasInfoSvg ? ' (含信息图)' : ''}`);
   }
   await browser.close();
 }

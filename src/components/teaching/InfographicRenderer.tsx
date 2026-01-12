@@ -19,12 +19,18 @@ export interface InfographicData {
   syntax: string;
   position: 'right' | 'bottom' | 'inline' | 'none';
   size: 'small' | 'medium' | 'large' | 'auto';
+  renderedSvg?: string; // 预渲染的 SVG 字符串（用于导出视频）
 }
 
 interface InfographicRendererProps {
   infographic: InfographicData;
   className?: string;
   fillContainer?: boolean;
+  // 渲染完成后的回调，返回 SVG 字符串（用于保存预渲染结果）
+  onRendered?: (svgHtml: string) => void;
+  // 用于自动保存预渲染 SVG
+  manuscriptId?: string;
+  slideIndex?: number;
 }
 
 // 根据位置选择最佳的参考渲染尺寸
@@ -48,15 +54,59 @@ export function InfographicRenderer({
   infographic, 
   className,
   fillContainer = true,
+  onRendered,
+  manuscriptId,
+  slideIndex,
 }: InfographicRendererProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
-  const [rendered, setRendered] = useState(false);
+  const [isReady, setIsReady] = useState(false); // 控制显示时机，避免闪动
   const infographicInstanceRef = useRef<any>(null);
+  const hasSavedRef = useRef(false); // 避免重复保存
+
+  // 如果有预渲染的 SVG，直接显示（无需等待）
+  if (infographic.renderedSvg) {
+    return (
+      <div
+        className={cn(
+          'w-full h-full flex items-center justify-center',
+          className
+        )}
+        aria-label="信息图"
+        style={{ overflow: 'hidden' }}
+        dangerouslySetInnerHTML={{ __html: infographic.renderedSvg }}
+      />
+    );
+  }
+
+  // 保存预渲染的 SVG 到后端
+  const saveSvgToBackend = useCallback(async (svgHtml: string) => {
+    if (!manuscriptId || slideIndex === undefined || hasSavedRef.current) return;
+    
+    hasSavedRef.current = true;
+    try {
+      await fetch('/api/teaching/infographic/prerender', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          manuscriptId,
+          slideIndex,
+          renderedSvg: svgHtml,
+        }),
+      });
+      console.log(`[InfographicRenderer] Saved SVG for slide ${slideIndex}`);
+    } catch (err) {
+      console.error('[InfographicRenderer] Failed to save SVG:', err);
+      hasSavedRef.current = false; // 允许重试
+    }
+  }, [manuscriptId, slideIndex]);
 
   // 渲染信息图（只在语法变化时重新渲染）
   const renderInfographic = useCallback(async () => {
     if (!containerRef.current || !infographic.syntax) return;
+
+    // 开始渲染前隐藏，避免闪动
+    setIsReady(false);
 
     try {
       const { Infographic } = await import('@antv/infographic');
@@ -68,7 +118,6 @@ export function InfographicRenderer({
 
       // 清空容器
       containerRef.current.innerHTML = '';
-      setRendered(false);
 
       // 获取参考尺寸（根据位置优化）
       const refSize = getReferenceSize(infographic.position);
@@ -115,7 +164,18 @@ export function InfographicRenderer({
           // meet: 确保整个内容都可见（不裁剪）
           svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
           
-          setRendered(true);
+          const svgHtml = svg.outerHTML;
+          
+          // 回调：返回渲染后的 SVG（用于预渲染保存）
+          if (onRendered) {
+            onRendered(svgHtml);
+          }
+          
+          // 自动保存到后端（如果提供了 manuscriptId 和 slideIndex）
+          saveSvgToBackend(svgHtml);
+          
+          // SVG 修改完成，显示内容
+          setIsReady(true);
         }
       }, 50);
 
@@ -123,11 +183,13 @@ export function InfographicRenderer({
     } catch (err: any) {
       console.error('[InfographicRenderer] Render failed:', err);
       setError(err.message || '信息图渲染失败');
+      setIsReady(true); // 出错也要显示（显示错误状态）
     }
-  }, [infographic.syntax, infographic.position]);
+  }, [infographic.syntax, infographic.position, onRendered, saveSvgToBackend]);
 
   // 只在语法变化时重新渲染（不再监听容器尺寸变化）
   useEffect(() => {
+    hasSavedRef.current = false; // 重置保存状态
     renderInfographic();
 
     return () => {
@@ -150,15 +212,14 @@ export function InfographicRenderer({
       ref={containerRef}
       className={cn(
         'w-full h-full flex items-center justify-center',
-        // 渲染完成前隐藏，避免闪烁
-        !rendered && 'opacity-0',
-        'transition-opacity duration-200',
         className
       )}
       aria-label="信息图"
       style={{
-        // 确保容器不会溢出
         overflow: 'hidden',
+        // 关键：在 SVG 修改完成前隐藏，避免闪动
+        opacity: isReady ? 1 : 0,
+        transition: 'opacity 0.15s ease-in-out',
       }}
     />
   );

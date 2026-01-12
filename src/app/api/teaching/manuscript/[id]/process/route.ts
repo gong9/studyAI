@@ -9,10 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { 
-  isDeepAgentsEnabled, 
-  callPythonProcessManuscriptAPI 
-} from '@/lib/teaching/python-agent-client';
+import { callPythonProcessManuscriptAPI } from '@/lib/teaching/python-agent-client';
 
 export async function POST(
   request: NextRequest,
@@ -52,9 +49,9 @@ export async function POST(
       );
     }
 
-    // 如果跳过处理或未启用 Python Agent，直接返回原内容
-    if (skipProcessing || !isDeepAgentsEnabled()) {
-      console.log('[API] Skipping Python Agent processing');
+    // 如果跳过处理，直接返回原内容
+    if (skipProcessing) {
+      console.log('[API] Skipping Python Agent processing (skipProcessing=true)');
       return NextResponse.json({
         success: true,
         processed: false,
@@ -76,13 +73,10 @@ export async function POST(
 
     if (!result.success) {
       console.error('[API] Python Agent processing failed:', result.error);
-      // 失败时返回原内容，不阻断流程
-      return NextResponse.json({
-        success: true,
-        processed: false,
-        content: content,
-        warning: result.error,
-      });
+      return NextResponse.json(
+        { error: `手稿处理失败: ${result.error || '未知错误'}` },
+        { status: 500 }
+      );
     }
 
     // 处理成功，保存处理后的内容
@@ -93,13 +87,6 @@ export async function POST(
       where: { id },
       data: {
         slidevMd: processedContent,
-        metadata: JSON.stringify({
-          ...JSON.parse(manuscript.metadata || '{}'),
-          processedByAgent: true,
-          processedAt: new Date().toISOString(),
-          traceId: result.trace_id,
-          stats: result.stats,
-        }),
       },
     });
 

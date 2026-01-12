@@ -2,17 +2,14 @@
  * POST /api/teaching/manuscript/[id]/review-enrich
  * 
  * 手稿审阅 + 智能润色（一键完成）
- * 1. 使用 GPT-5.1 审阅手稿
- * 2. 根据审阅建议 + RAG 检索进行智能润色
- * 
- * 支持 Python deepagents 服务（通过 USE_DEEPAGENTS 环境变量控制）
+ * 使用 Python DeepAgents 服务进行审阅和润色
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { reviewManuscript } from '@/lib/teaching/agents/manuscript-reviewer';
 import { smartEnrichManuscript } from '@/lib/teaching/agents/smart-enrich-agent';
-import { isDeepAgentsEnabled, callPythonEnrichAPI } from '@/lib/teaching/python-agent-client';
+import { callPythonEnrichAPI } from '@/lib/teaching/python-agent-client';
 
 export async function POST(
   request: NextRequest,
@@ -95,65 +92,61 @@ export async function POST(
       contentType = 'legal';
     }
 
-    // ========== 如果启用 Python deepagents，使用一站式 API ==========
-    if (isDeepAgentsEnabled()) {
-      console.log('[API] Using Python deepagents service for review-enrich');
-      
-      // 解析教学规划
-      let plan = {};
-      if (manuscript.teachingPlan) {
-        try {
-          plan = JSON.parse(manuscript.teachingPlan);
-        } catch {
-          // ignore
-        }
+    // ========== 使用 Python DeepAgents 进行审阅润色 ==========
+    console.log('[API] Using Python DeepAgents service for review-enrich');
+    
+    // 解析教学规划
+    let plan = {};
+    if (manuscript.teachingPlan) {
+      try {
+        plan = JSON.parse(manuscript.teachingPlan);
+      } catch {
+        // ignore
       }
-      
+    }
+    
+    try {
       const pythonResult = await callPythonEnrichAPI({
         knowledge_base_id: manuscript.knowledgeBaseId,
         draft_content: contentToReview,
         plan,
       });
       
-      if (!pythonResult.success || !pythonResult.enriched_content) {
+      if (pythonResult.success && pythonResult.enriched_content) {
+        // Python Agent 成功，保存结果
         await prisma.teachingManuscript.update({
           where: { id },
-          data: { status: 'confirmed' },
+          data: {
+            reviewComments: JSON.stringify({
+              suggestions: pythonResult.review_notes || [],
+              reviewedAt: new Date().toISOString(),
+              source: 'python-deepagents',
+            }),
+            enrichedContent: pythonResult.enriched_content,
+            status: 'completed',
+          },
         });
-        return NextResponse.json(
-          { error: pythonResult.error || '润色失败' },
-          { status: 500 }
-        );
+        
+        return NextResponse.json({
+          success: true,
+          manuscriptId: id,
+          review: {
+            suggestionsCount: (pythonResult.review_notes || []).length,
+          },
+          enrich: {
+            contentLength: pythonResult.enriched_content.length,
+          },
+          enrichedContent: pythonResult.enriched_content,
+        });
       }
       
-      // 保存结果
-      await prisma.teachingManuscript.update({
-        where: { id },
-        data: {
-          reviewComments: JSON.stringify({
-            suggestions: pythonResult.review_notes || [],
-            reviewedAt: new Date().toISOString(),
-            source: 'python-deepagents',
-          }),
-          enrichedContent: pythonResult.enriched_content,
-          status: 'completed',
-        },
-      });
-      
-      return NextResponse.json({
-        success: true,
-        manuscriptId: id,
-        review: {
-          suggestionsCount: (pythonResult.review_notes || []).length,
-        },
-        enrich: {
-          contentLength: pythonResult.enriched_content.length,
-        },
-        enrichedContent: pythonResult.enriched_content,
-      });
+      // Python Agent 返回失败，回退到 TypeScript
+      console.warn('[API] Python DeepAgents failed, falling back to TypeScript:', pythonResult.error);
+    } catch (pythonError: any) {
+      console.warn('[API] Python DeepAgents call failed, falling back to TypeScript:', pythonError.message);
     }
 
-    // ========== 原有实现：阶段1 GPT-5.1 审阅 ==========
+    // ========== 回退：使用 TypeScript 实现 ==========
     
     const reviewResult = await reviewManuscript({
       manuscriptContent: contentToReview,

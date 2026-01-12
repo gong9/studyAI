@@ -1,20 +1,20 @@
 'use client';
 
 /**
- * 课程视频编辑器页面
+ * 课程播放页面
  * 
- * 嵌入 Remotion Studio 服务，提供完整的视频编辑功能
- * 
- * 部署时需要同时运行 Remotion Studio 服务
+ * 使用 SimpleCoursePlayer 播放课程，支持导出视频（FFmpeg）
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { 
-  ArrowLeft, Loader2, RefreshCw, AlertCircle, Film, Music, Volume2, Download, CheckCircle, Globe, ChevronDown, ExternalLink
+  ArrowLeft, Loader2, Film, Music, Volume2, Download, CheckCircle, Globe, ChevronDown, ExternalLink
 } from 'lucide-react';
 import { MusicSelectorModal } from '@/components/teaching/MusicSelectorModal';
+import { SimpleCoursePlayer, type CourseFrame } from '@/components/teaching/SimpleCoursePlayer';
+import { type HtmlSlide } from '@/components/teaching/HtmlSlideRenderer';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,20 +23,21 @@ import {
 } from '@/components/ui/dropdown-menu';
 import type { BackgroundMusicConfig } from '@/lib/teaching/music/types';
 
-// Remotion Studio 服务地址（可通过环境变量配置）
-const REMOTION_STUDIO_URL = process.env.NEXT_PUBLIC_REMOTION_STUDIO_URL || 'http://localhost:3002';
-
-interface CourseInfo {
+interface CourseData {
   id: string;
   title: string;
+  manuscriptId?: string;
   slideCount: number;
   duration: number;
-  content?: string;           // 课程内容（用于音乐推荐）
-  sceneType?: string;         // 场景类型
+  slides: HtmlSlide[];
+  frames: CourseFrame[];
+  audioData: { [key: number]: string };
+  content?: string;
+  sceneType?: string;
   backgroundMusic?: BackgroundMusicConfig;
 }
 
-export default function CourseEditorPage() {
+export default function CoursePlayerPage() {
   const params = useParams();
   const router = useRouter();
   const courseId = params.courseId as string;
@@ -44,8 +45,7 @@ export default function CourseEditorPage() {
 
   // 状态
   const [loading, setLoading] = useState(true);
-  const [studioReady, setStudioReady] = useState(false);
-  const [courseInfo, setCourseInfo] = useState<CourseInfo | null>(null);
+  const [courseData, setCourseData] = useState<CourseData | null>(null);
   const [musicModalOpen, setMusicModalOpen] = useState(false);
   const [backgroundMusic, setBackgroundMusic] = useState<BackgroundMusicConfig | null>(null);
   
@@ -61,49 +61,33 @@ export default function CourseEditorPage() {
   const [englishProgress, setEnglishProgress] = useState<{ percent: number; message: string } | null>(null);
   const [exportingEnglish, setExportingEnglish] = useState(false);
   const [englishExportProgress, setEnglishExportProgress] = useState<{ percent: number; message: string } | null>(null);
-  
-  // 检查 Remotion Studio 服务状态
-  const checkStudioStatus = useCallback(async () => {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-      
-      await fetch(REMOTION_STUDIO_URL, {
-        method: 'HEAD',
-        mode: 'no-cors',
-        signal: controller.signal,
-      });
-      
-      clearTimeout(timeoutId);
-      setStudioReady(true);
-    } catch {
-      setStudioReady(false);
-    }
-  }, []);
 
   // 加载课程数据
-  const prepareCourseData = useCallback(async () => {
+  const loadCourseData = useCallback(async () => {
     try {
-      const infoRes = await fetch(`/api/remotion/course/${courseId}`);
-      if (!infoRes.ok) throw new Error('无法加载课程数据');
+      const res = await fetch(`/api/remotion/course/${courseId}`);
+      if (!res.ok) throw new Error('无法加载课程数据');
       
-      const data = await infoRes.json();
-      setCourseInfo({
+      const data = await res.json();
+      setCourseData({
         id: data.id,
         title: data.title,
+        manuscriptId: data.manuscriptId,
         slideCount: data.slideCount,
         duration: data.duration,
+        slides: data.slides || [],
+        frames: data.frames || [],
+        audioData: data.audioData || {},
         content: data.content,
         sceneType: data.sceneType,
         backgroundMusic: data.backgroundMusic,
       });
 
-      // 恢复背景音乐配置
       if (data.backgroundMusic) {
         setBackgroundMusic(data.backgroundMusic);
       }
 
-      // 将数据保存到 public 目录供 Remotion Studio 读取
+      // 同时准备 FFmpeg 导出数据
       await fetch('/api/remotion/prepare-data', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -111,7 +95,7 @@ export default function CourseEditorPage() {
       });
 
     } catch (err: any) {
-      console.error('准备课程数据失败:', err);
+      console.error('加载课程数据失败:', err);
     }
   }, [courseId]);
 
@@ -148,7 +132,6 @@ export default function CourseEditorPage() {
         throw new Error(error.error || '创建失败');
       }
       
-      // 使用 SSE 获取进度
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
       
@@ -205,14 +188,12 @@ export default function CourseEditorPage() {
     setEnglishExportProgress({ percent: 0, message: '准备导出英文版...' });
     
     try {
-      // 先准备英文版课程数据
       await fetch('/api/remotion/prepare-data', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ courseId: englishCourseId }),
       });
 
-      // 调用导出 API
       const response = await fetch('/api/remotion/export', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -224,7 +205,6 @@ export default function CourseEditorPage() {
         throw new Error(error.error || '导出失败');
       }
       
-      // 使用 SSE 获取进度
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
       
@@ -245,11 +225,10 @@ export default function CourseEditorPage() {
               if (data.complete) {
                 setEnglishExportProgress({ percent: 100, message: '英文版导出完成！' });
                 
-                // 下载视频
                 if (data.downloadUrl) {
                   const a = document.createElement('a');
                   a.href = data.downloadUrl;
-                  a.download = `${courseInfo?.title || 'course'}_English.mp4`;
+                  a.download = `${courseData?.title || 'course'}_English.mp4`;
                   a.click();
                 }
               }
@@ -271,7 +250,6 @@ export default function CourseEditorPage() {
   const handleMusicSelect = async (config: BackgroundMusicConfig) => {
     setBackgroundMusic(config);
     
-    // 保存到后端
     try {
       await fetch(`/api/teaching/course/${courseId}`, {
         method: 'PATCH',
@@ -279,19 +257,11 @@ export default function CourseEditorPage() {
         body: JSON.stringify({ backgroundMusic: config }),
       });
       
-      // 重新准备数据供 Remotion 读取
       await fetch('/api/remotion/prepare-data', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ courseId }),
       });
-      
-      
-      // 刷新 Remotion Studio iframe 以加载新数据
-      const iframe = document.getElementById('remotion-studio-iframe') as HTMLIFrameElement;
-      if (iframe) {
-        iframe.src = iframe.src; // 刷新 iframe
-      }
     } catch (err) {
       console.error('Failed to save music config:', err);
     }
@@ -302,20 +272,14 @@ export default function CourseEditorPage() {
     const init = async () => {
       setLoading(true);
       await Promise.all([
-        checkStudioStatus(),
-        prepareCourseData(),
+        loadCourseData(),
         checkEnglishVersion(),
       ]);
       setLoading(false);
     };
     
     init();
-    
-    const interval = setInterval(checkStudioStatus, 10000);
-    return () => clearInterval(interval);
-  }, [checkStudioStatus, prepareCourseData, checkEnglishVersion]);
-
-
+  }, [loadCourseData, checkEnglishVersion]);
 
   // 格式化时长
   const formatDuration = (ms: number) => {
@@ -325,7 +289,7 @@ export default function CourseEditorPage() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // 导出视频
+  // 导出视频 (FFmpeg)
   const handleExportVideo = async () => {
     if (exporting || !courseId) return;
     
@@ -334,7 +298,6 @@ export default function CourseEditorPage() {
     setExportComplete(false);
     
     try {
-      // 调用 FFmpeg 渲染 API
       const response = await fetch('/api/remotion/export', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -346,7 +309,6 @@ export default function CourseEditorPage() {
         throw new Error(error.error || '导出失败');
       }
       
-      // 使用 SSE 获取进度
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
       
@@ -368,11 +330,10 @@ export default function CourseEditorPage() {
                 setExportComplete(true);
                 setExportProgress({ percent: 100, message: '导出完成！' });
                 
-                // 下载视频
                 if (data.downloadUrl) {
                   const a = document.createElement('a');
                   a.href = data.downloadUrl;
-                  a.download = `${courseInfo?.title || 'course'}.mp4`;
+                  a.download = `${courseData?.title || 'course'}.mp4`;
                   a.click();
                 }
               }
@@ -396,15 +357,15 @@ export default function CourseEditorPage() {
         <div className="text-center">
           <Loader2 className="h-8 w-8 animate-spin text-purple-400 mx-auto mb-4" />
           <p className="text-zinc-400">加载课程...</p>
-      </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 flex flex-col">
+    <div className="h-screen bg-zinc-950 flex flex-col overflow-hidden">
       {/* 顶部控制栏 */}
-      <header className="bg-zinc-900 border-b border-zinc-800 px-4 py-2 flex items-center gap-3 h-14 flex-shrink-0">
+      <header className="bg-zinc-900 border-b border-zinc-800 px-4 py-2 flex items-center gap-3 h-14 shrink-0">
         <Button
           variant="ghost"
           size="sm"
@@ -419,15 +380,15 @@ export default function CourseEditorPage() {
           <Film className="h-5 w-5 text-purple-400" />
           <div>
             <h1 className="text-lg font-semibold text-white">
-              {courseInfo?.title || '课程视频'}
+              {courseData?.title || '课程播放'}
             </h1>
-            {courseInfo && (
+            {courseData && (
               <p className="text-xs text-zinc-500">
-                {courseInfo.slideCount} 页 · {formatDuration(courseInfo.duration)}
+                {courseData.slideCount} 页 · {formatDuration(courseData.duration)}
               </p>
             )}
-                </div>
-              </div>
+          </div>
+        </div>
         
         {/* 背景音乐按钮 */}
         <Button
@@ -454,7 +415,6 @@ export default function CourseEditorPage() {
         
         {/* 英文版按钮 */}
         {hasEnglishVersion ? (
-          // 已有英文版：显示下拉菜单
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -496,12 +456,11 @@ export default function CourseEditorPage() {
             </DropdownMenuContent>
           </DropdownMenu>
         ) : (
-          // 未创建英文版：显示创建按钮
           <Button
             size="sm"
             variant="outline"
             onClick={handleCreateEnglishVersion}
-            disabled={creatingEnglish || !courseInfo}
+            disabled={creatingEnglish || !courseData}
             className="border-blue-500/50 text-blue-400 hover:bg-blue-500/10"
           >
             {creatingEnglish ? (
@@ -522,7 +481,7 @@ export default function CourseEditorPage() {
         <Button
           size="sm"
           onClick={handleExportVideo}
-          disabled={exporting || !courseInfo}
+          disabled={exporting || !courseData}
           className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white border-0"
         >
           {exporting ? (
@@ -544,43 +503,30 @@ export default function CourseEditorPage() {
         </Button>
       </header>
               
-      {/* Remotion Studio iframe */}
-      <div className="flex-1 relative overflow-hidden" style={{ minHeight: 'calc(100vh - 56px)' }}>
-        {studioReady ? (
-          <iframe
-            id="remotion-studio-iframe"
-            src={REMOTION_STUDIO_URL}
-            className="absolute inset-0 w-full h-full border-0"
-            title="Remotion Studio"
-            allow="autoplay; fullscreen"
+      {/* 课程播放器 - 占满剩余空间 */}
+      <div className="flex-1 min-h-0">
+        {courseData && courseData.slides.length > 0 ? (
+          <SimpleCoursePlayer
+            slides={courseData.slides}
+            frames={courseData.frames}
+            audioData={courseData.audioData}
+            className="h-full"
+            manuscriptId={courseData.manuscriptId}
           />
         ) : (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-900">
-            <AlertCircle className="h-16 w-16 text-zinc-600 mb-4" />
-            <h2 className="text-xl font-semibold text-white mb-2">
-              视频编辑器未启动
-            </h2>
-            <p className="text-zinc-400 mb-6 text-center max-w-md">
-              Remotion Studio 服务需要运行才能使用编辑功能。
-              <span className="block mt-2 text-sm text-zinc-500">
-                开发环境会通过 <code className="bg-zinc-800 px-2 py-0.5 rounded">pnpm dev</code> 自动启动
-              </span>
-            </p>
-            <Button onClick={checkStudioStatus} variant="outline">
-              <RefreshCw className="h-4 w-4 mr-2" />
-              重新检测
-                </Button>
-              </div>
-          )}
-        </div>
+          <div className="h-full flex items-center justify-center text-zinc-400">
+            暂无课程内容
+          </div>
+        )}
+      </div>
         
       {/* 背景音乐选择弹窗 */}
       <MusicSelectorModal
         isOpen={musicModalOpen}
         onClose={() => setMusicModalOpen(false)}
         onSelect={handleMusicSelect}
-        courseContent={courseInfo?.content || courseInfo?.title || ''}
-        sceneType={courseInfo?.sceneType}
+        courseContent={courseData?.content || courseData?.title || ''}
+        sceneType={courseData?.sceneType}
         currentConfig={backgroundMusic}
       />
     </div>

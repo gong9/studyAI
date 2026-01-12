@@ -101,6 +101,10 @@ async def _call_rag_api(
             return results
             
         except httpx.HTTPStatusError as e:
+            # 404 表示索引不存在，返回空结果而不是抛出异常
+            if e.response.status_code == 404:
+                logger.debug(f"RAG index not found for kb {knowledge_base_id}, returning empty results")
+                return []
             logger.error(f"RAG API HTTP error: {e.response.status_code}")
             raise Exception(f"RAG API error: {e.response.status_code}")
         except httpx.RequestError as e:
