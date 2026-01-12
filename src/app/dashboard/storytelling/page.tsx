@@ -487,7 +487,7 @@ export default function StorytellingCanvasPage() {
   const containerRef = useRef<HTMLDivElement>(null);
 
   // 画布状态
-  const [zoom, setZoom] = useState(0.9);
+  const [zoom, setZoom] = useState(1.08);
   const [panX, setPanX] = useState(0);
   const [panY, setPanY] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
@@ -666,16 +666,6 @@ export default function StorytellingCanvasPage() {
             <span className="text-sm">返回工作台</span>
           </button>
           
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center">
-              <Sparkles className="w-4 h-4 text-white" />
-            </div>
-            <div>
-              <h1 className="text-sm font-bold text-zinc-100">讲书工作流</h1>
-              <p className="text-[10px] text-zinc-500">上传书籍开始生成评书</p>
-            </div>
-          </div>
-
           <div className="w-24" />
         </div>
       </nav>
@@ -796,11 +786,11 @@ export default function StorytellingCanvasPage() {
         onZoomIn={() => setZoom(z => Math.min(z * 1.2, 2))}
         onZoomOut={() => setZoom(z => Math.max(z * 0.8, 0.3))}
         onReset={() => {
-          setZoom(0.9);
+          setZoom(1.08);
           if (containerRef.current) {
             const { width, height } = containerRef.current.getBoundingClientRect();
-            setPanX((width - 1700 * 0.9) / 2);
-            setPanY((height - 800 * 0.9) / 2);
+            setPanX((width - 1700 * 1.08) / 2);
+            setPanY((height - 800 * 1.08) / 2);
           }
         }}
       />

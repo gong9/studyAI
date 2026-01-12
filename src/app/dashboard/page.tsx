@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 
-type ScenarioType = 'tech' | 'policy' | 'legal' | 'storytelling';
+type ScenarioType = 'tech' | 'legal' | 'storytelling';
 type SourceModeType = 'book' | 'docs' | 'fragments' | 'paper';
 
 interface SourceModeConfig {
@@ -78,17 +78,6 @@ const scenarios: ScenarioConfig[] = [
     accentBorder: 'group-hover:border-zinc-500',
     examples: ['技术入门', '产品功能', '接口讲解'],
     placeholder: '例如：Python 入门教程',
-  },
-  {
-    id: 'policy',
-    name: '制度培训',
-    desc: '规章制度一键生成合规培训',
-    icon: FileCheck,
-    accentColor: 'text-stone-600',
-    accentBg: 'bg-stone-50',
-    accentBorder: 'group-hover:border-stone-400',
-    examples: ['入职培训', '安全规范', '流程宣贯'],
-    placeholder: '例如：新员工入职手册',
   },
   {
     id: 'legal',
@@ -164,7 +153,7 @@ export default function DashboardPage() {
       if (response.ok) {
         const data = await response.json();
         const scenarioKBs = data.filter((kb: any) => 
-          ['tech', 'policy', 'legal', 'teaching', 'k12'].includes(kb.type)
+          ['tech', 'legal', 'teaching', 'k12'].includes(kb.type)
         );
         setKnowledgeBases(scenarioKBs);
       }
