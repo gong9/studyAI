@@ -277,7 +277,7 @@ export default function DashboardPage() {
         </div>
 
         {/* 场景入口卡片 */}
-        <div className="flex-none grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="flex-none grid grid-cols-1 md:grid-cols-3 gap-5">
           {scenarios.map((scenario) => {
             const count = getScenarioCount(scenario.id);
             return (
