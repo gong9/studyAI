@@ -131,12 +131,13 @@ font-family: {design_spec.font_family}
 
 ```html
 <div class="slide" style="
-  width: 100%;
-  height: 100%;
+  width: 1280px;
+  height: 720px;
   background: {colors.background};
-  padding: 56px 72px;
+  padding: 48px 64px;
   box-sizing: border-box;
   position: relative;
+  overflow: hidden;
   font-family: {design_spec.font_family};
 ">
   <!-- 左侧装饰条 -->
@@ -187,10 +188,11 @@ font-family: {design_spec.font_family}
 
 ## ✅ 输出要求
 
+- **固定尺寸**：幻灯片必须是 1280px × 720px，使用 overflow: hidden
 - 字体必须大：标题 44px，正文 22px，列表 20px
 - 必须有左侧装饰条
-- 只输出 `<div class="slide" ...>...</div>`
-- **完整展示所有内容**
+- 只输出 `<div class="slide" style="width: 1280px; height: 720px; overflow: hidden; ...">...</div>`
+- **内容必须在一页内显示完整，不能溢出！如果内容过多，精简或缩小字体**
 """
 
 
@@ -537,6 +539,43 @@ async def fix_slide_issues(
     return slide
 
 
+def _create_fallback_slide(section: ParsedSection, design_spec: DesignSpec) -> str:
+    """创建一个简单的后备幻灯片（当生成失败时使用）"""
+    colors = design_spec.colors
+    
+    # 简单转换 Markdown 内容
+    content = section.content
+    # 移除 Markdown 标题符号
+    content = re.sub(r'^#+\s*', '', content, flags=re.MULTILINE)
+    # 转换列表
+    content = re.sub(r'^\s*[-*]\s*', '• ', content, flags=re.MULTILINE)
+    # 转换粗体
+    content = re.sub(r'\*\*([^*]+)\*\*', r'\1', content)
+    
+    # 分割成段落
+    paragraphs = content.strip().split('\n\n')
+    content_html = '\n'.join([f'<p style="margin: 0 0 16px; font-size: 20px; line-height: 1.6;">{p.strip()}</p>' for p in paragraphs if p.strip()])
+    
+    return f'''<div class="slide" style="
+  width: 1280px;
+  height: 720px;
+  background: {colors.background};
+  padding: 48px 64px;
+  box-sizing: border-box;
+  position: relative;
+  overflow: hidden;
+  font-family: {design_spec.font_family};
+">
+  <div style="position: absolute; left: 0; top: 56px; bottom: 56px; width: 5px; background: {colors.primary}; border-radius: 2px;"></div>
+  <h1 style="margin: 0 0 28px 0; font-size: 44px; font-weight: 700; color: {colors.text_primary}; letter-spacing: -0.02em;">
+    {section.title}
+  </h1>
+  <div style="color: {colors.text_secondary}; font-size: 20px; line-height: 1.6;">
+    {content_html}
+  </div>
+</div>'''
+
+
 def _simple_fix(html: str) -> str:
     """简单的规则修复"""
     # 移除常见的 prompt 泄露内容
@@ -596,6 +635,8 @@ async def render_slides(
     kb_type: str = "tech",
     enable_decoration: bool = True,
     enable_qa: bool = True,
+    tracer=None,  # 可选的 tracer 用于记录思考过程
+    trace_id: str = None,  # 可选的 trace_id
 ) -> Dict[str, Any]:
     """
     主入口：渲染幻灯片（使用完整的多阶段架构）
@@ -609,6 +650,9 @@ async def render_slides(
     logger.info("[SlideDesigner] Starting slide rendering with DesignSpec...")
     
     # Phase 0: 智能分页（如果内容没有 --- 分页标记）
+    if tracer and trace_id:
+        tracer.add_reasoning(trace_id, "开始分析内容结构，判断是否需要智能分页...")
+    
     paginated_content = await smart_paginate(slidev_md, llm_client)
     
     # 解析内容
@@ -618,62 +662,122 @@ async def render_slides(
     
     logger.info(f"[SlideDesigner] Parsed {len(sections)} slides")
     
-    # Phase 1 & 2: 创建 DesignSpec
+    if tracer and trace_id:
+        tracer.add_decision(trace_id, f"分页完成：共 {len(sections)} 页幻灯片")
+    
+    # Phase 1 & 2: 创建 DesignSpec（内容分析 + 设计规划）
+    # LLM 会返回真实的分析推理，由 create_design_spec_from_content 记录到 tracer
     sections_dict = [s.to_dict() for s in sections]
     design_spec = await create_design_spec_from_content(
         content=paginated_content,  # 使用分页后的内容
         sections=sections_dict,
         llm_client=llm_client,
         kb_type=kb_type,
+        tracer=tracer,
+        trace_id=trace_id,
     )
     
     logger.info(f"[SlideDesigner] DesignSpec created: theme={design_spec.theme}")
     
-    # Phase 3: 逐页设计
+    # 统计需要信息图的页面
+    decorated_pages = [d for d in design_spec.layout_decisions if d.infographic_position != "none"]
+    
+    # Phase 3: 逐页设计（带容错）
+    if tracer and trace_id:
+        # 记录设计规划摘要（真实的 LLM 决策已在 ppt_master.py 中记录）
+        tracer.add_decision(
+            trace_id, 
+            f"设计规划完成。主题：{design_spec.theme_name}，"
+            f"受众：{design_spec.audience}，调性：{design_spec.tone}。"
+            f"共 {len(sections)} 页，其中 {len(decorated_pages)} 页需要信息图装饰。开始逐页生成 HTML..."
+        )
+    
     slides = []
+    failed_pages = []
     for section in sections:
         logger.info(f"[SlideDesigner] Phase 3: Designing slide {section.index + 1}/{len(sections)}")
         
-        # 获取该页的布局决策
-        layout = None
-        for d in design_spec.layout_decisions:
-            if d.page_index == section.index:
-                layout = d
-                break
-        
-        # 生成 HTML
-        html = await generate_html_slide_v2(section, design_spec, llm_client)
-        
-        # 生成信息图（如果需要）
-        infographic = None
-        if enable_decoration and layout and layout.infographic_position != "none":
-            infographic = await generate_infographic_v2(section, layout, llm_client)
-        
-        slides.append(SlideResult(
-            index=section.index,
-            title=section.title,
-            html=html,
-            infographic=infographic,
-        ))
+        try:
+            # 获取该页的布局决策
+            layout = None
+            for d in design_spec.layout_decisions:
+                if d.page_index == section.index:
+                    layout = d
+                    break
+            
+            # 生成 HTML
+            html = await generate_html_slide_v2(section, design_spec, llm_client)
+            
+            # 生成信息图（如果需要）
+            infographic = None
+            if enable_decoration and layout and layout.infographic_position != "none":
+                if tracer and trace_id:
+                    tracer.add_reasoning(
+                        trace_id, 
+                        f"第 {section.index + 1} 页需要 {layout.infographic_type} 类型信息图，"
+                        f"位置: {layout.infographic_position}"
+                    )
+                try:
+                    infographic = await generate_infographic_v2(section, layout, llm_client)
+                    if tracer and trace_id and infographic:
+                        tracer.add_decision(trace_id, f"第 {section.index + 1} 页信息图生成完成")
+                except Exception as e:
+                    logger.warning(f"[SlideDesigner] Infographic failed for page {section.index + 1}: {e}, continuing without it")
+            
+            slides.append(SlideResult(
+                index=section.index,
+                title=section.title,
+                html=html,
+                infographic=infographic,
+            ))
+        except Exception as e:
+            logger.error(f"[SlideDesigner] Failed to generate page {section.index + 1}: {e}")
+            failed_pages.append(section.index + 1)
+            # 创建一个简单的占位 HTML
+            fallback_html = _create_fallback_slide(section, design_spec)
+            slides.append(SlideResult(
+                index=section.index,
+                title=section.title,
+                html=fallback_html,
+                infographic=None,
+                qa_issues=[f"生成失败: {str(e)}"],
+            ))
     
-    # Phase 4 & 5: 质量检查和修复
+    if failed_pages:
+        logger.warning(f"[SlideDesigner] {len(failed_pages)} pages failed: {failed_pages}")
+    
+    # Phase 4 & 5: 质量检查和修复（带容错）
     if enable_qa:
         logger.info("[SlideDesigner] Phase 4 & 5: Quality check and optimization...")
         
         for i, slide in enumerate(slides):
-            # 获取对应的原始 Markdown 内容
-            original_content = sections[i].content if i < len(sections) else ""
-            qa_result = await check_slide_quality(slide, original_content, design_spec, llm_client)
-            
-            if qa_result.get("has_issues", False):
-                logger.info(f"[SlideDesigner] Page {slide.index + 1} has issues, fixing...")
-                slides[i] = await fix_slide_issues(slide, qa_result, design_spec, llm_client)
+            try:
+                # 获取对应的原始 Markdown 内容
+                original_content = sections[i].content if i < len(sections) else ""
+                qa_result = await check_slide_quality(slide, original_content, design_spec, llm_client)
+                
+                if qa_result.get("has_issues", False):
+                    logger.info(f"[SlideDesigner] Page {slide.index + 1} has issues, fixing...")
+                    try:
+                        slides[i] = await fix_slide_issues(slide, qa_result, design_spec, llm_client)
+                    except Exception as fix_err:
+                        logger.warning(f"[SlideDesigner] Failed to fix page {slide.index + 1}: {fix_err}, keeping original")
+            except Exception as qa_err:
+                logger.warning(f"[SlideDesigner] QA check failed for page {slide.index + 1}: {qa_err}, skipping")
     
     # 统计结果
     decorated_count = sum(1 for s in slides if s.infographic)
     fixed_count = sum(1 for s in slides if s.qa_issues)
     
-    logger.info(f"[SlideDesigner] Complete: {len(slides)} slides, {decorated_count} with infographics, {fixed_count} fixed")
+    logger.info(f"[SlideDesigner] Complete: {len(slides)} slides, {decorated_count} with infographics, {fixed_count} fixed, {len(failed_pages)} failed")
+    
+    # 记录完成
+    if tracer and trace_id:
+        tracer.add_decision(
+            trace_id,
+            f"PPT 渲染完成：{len(slides)} 页幻灯片，{decorated_count} 个信息图，"
+            f"{fixed_count} 页经过修复"
+        )
     
     # 构建返回结果
     result = {
@@ -685,7 +789,9 @@ async def render_slides(
         "qa_summary": {
             "checked": enable_qa,
             "fixed_count": fixed_count,
+            "failed_pages": failed_pages,  # 新增：记录失败的页面
         },
+        "trace_id": trace_id,  # 返回 trace_id 供前端获取思考过程
     }
     
     return result

@@ -315,12 +315,19 @@ export async function callPythonProcessManuscriptAPI(
 export async function callPythonRenderSlidesAPI(
   request: PythonRenderSlidesRequest
 ): Promise<PythonRenderSlidesResponse> {
+  // PPT 渲染可能需要较长时间（每页需要 LLM 调用），设置 10 分钟超时
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10 * 60 * 1000); // 10 minutes
+  
   try {
     const response = await fetch(`${PYTHON_SERVICE_URL}/api/v1/teaching/render-slides`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(request),
+      signal: controller.signal,
     });
+    
+    clearTimeout(timeoutId);
     
     if (!response.ok) {
       const error = await response.text();
@@ -329,6 +336,11 @@ export async function callPythonRenderSlidesAPI(
     
     return await response.json();
   } catch (error: any) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      console.error('[PythonAgent] Render Slides API timeout (10 min)');
+      return { success: false, error: 'PPT 生成超时，请稍后重试' };
+    }
     console.error('[PythonAgent] Render Slides API error:', error);
     return { success: false, error: error.message || 'Python service call failed' };
   }

@@ -286,16 +286,37 @@ async def render_slides_endpoint(request: RenderSlidesRequest) -> RenderSlidesRe
         
         session_id, agent = get_or_create_session(request.session_id)
         
-        # 调用 SlideDesignerAgent
-        from ..agents.subagents.slide_designer import render_slides
-        
-        result = await render_slides(
-            slidev_md=request.slidev_md,
-            llm_client=agent.llm,
-            kb_type=request.kb_type,
-            enable_decoration=request.enable_decoration,
-            enable_qa=request.enable_qa,
+        # 开始 trace 记录
+        trace_id = agent.tracer.start_trace(
+            name="render_slides",
+            input_data={
+                "kb_type": request.kb_type,
+                "enable_decoration": request.enable_decoration,
+                "content_length": len(request.slidev_md),
+            },
         )
+        agent.current_trace_id = trace_id
+        
+        try:
+            # 调用 SlideDesignerAgent，传入 tracer
+            from ..agents.subagents.slide_designer import render_slides
+            
+            result = await render_slides(
+                slidev_md=request.slidev_md,
+                llm_client=agent.llm,
+                kb_type=request.kb_type,
+                enable_decoration=request.enable_decoration,
+                enable_qa=request.enable_qa,
+                tracer=agent.tracer,
+                trace_id=trace_id,
+            )
+            
+            # 结束 trace
+            agent.tracer.end_trace(trace_id, output={"success": True}, status="completed")
+            
+        except Exception as e:
+            agent.tracer.end_trace(trace_id, status="failed")
+            raise
         
         return RenderSlidesResponse(
             success=True,
@@ -307,7 +328,7 @@ async def render_slides_endpoint(request: RenderSlidesRequest) -> RenderSlidesRe
             design_spec=result.get("design_spec"),
             qa_summary=result.get("qa_summary"),
             session_id=session_id,
-            trace_id=agent.current_trace_id if hasattr(agent, 'current_trace_id') else None,
+            trace_id=trace_id,
         )
         
     except Exception as e:

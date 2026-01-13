@@ -529,13 +529,12 @@ export default function StorytellingCanvasPage() {
     }
   }, []);
 
-  // 画布交互
+  // 画布交互 - 禁用缩放，只允许拖拽
   const handleWheel = useCallback((e: WheelEvent) => {
     const target = e.target as HTMLElement;
     if (target.closest('[data-scrollable]')) return;
     e.preventDefault();
-    const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    setZoom(z => Math.min(Math.max(z * delta, 0.3), 2));
+    // 缩放已禁用
   }, []);
 
   useEffect(() => {
@@ -780,20 +779,6 @@ export default function StorytellingCanvasPage() {
         </motion.div>
       </div>
 
-      {/* 画布控制 */}
-      <CanvasControls
-        zoom={zoom}
-        onZoomIn={() => setZoom(z => Math.min(z * 1.2, 2))}
-        onZoomOut={() => setZoom(z => Math.max(z * 0.8, 0.3))}
-        onReset={() => {
-          setZoom(1.08);
-          if (containerRef.current) {
-            const { width, height } = containerRef.current.getBoundingClientRect();
-            setPanX((width - 1700 * 1.08) / 2);
-            setPanY((height - 800 * 1.08) / 2);
-          }
-        }}
-      />
     </div>
   );
 }

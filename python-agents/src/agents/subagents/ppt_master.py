@@ -285,6 +285,8 @@ async def plan_design(
     sections: List[Dict[str, Any]],
     content_analysis: Dict[str, Any],
     llm_client,
+    tracer=None,  # 可选的 tracer
+    trace_id: str = None,
 ) -> List[LayoutDecision]:
     """
     Phase 2: 设计规划
@@ -334,14 +336,24 @@ async def plan_design(
     
     decisions = []
     for d in result["decisions"]:
+        reason = d.get("reason", "")
+        page_idx = d.get("page_index", 0)
+        
+        # 记录 AI 真实的布局决策推理
+        if tracer and trace_id and reason:
+            tracer.add_decision(
+                trace_id,
+                f"【第{page_idx + 1}页布局】{reason}"
+            )
+        
         decisions.append(LayoutDecision(
-            page_index=d.get("page_index", 0),
+            page_index=page_idx,
             layout_mode=d.get("layout_mode", "full_text"),
             infographic_position=d.get("infographic_position", "none"),
             infographic_size=d.get("infographic_size", "none"),
             infographic_type=d.get("infographic_type", "none"),
             content_ratio=d.get("content_ratio", 1.0),
-            reason=d.get("reason", ""),
+            reason=reason,
         ))
     
     # 确保覆盖所有页面（LLM 可能没有为所有页面生成决策）
@@ -434,6 +446,8 @@ async def create_design_spec_from_content(
     sections: List[Dict[str, Any]],
     llm_client,
     kb_type: str = "tech",
+    tracer=None,  # 可选的 tracer 用于记录 AI 推理
+    trace_id: str = None,
 ) -> DesignSpec:
     """
     执行 Phase 1 和 Phase 2，生成完整的 DesignSpec
@@ -443,6 +457,8 @@ async def create_design_spec_from_content(
         sections: 解析后的页面列表
         llm_client: LLM 客户端
         kb_type: 知识库类型
+        tracer: 可选的 tracer
+        trace_id: 可选的 trace_id
         
     Returns:
         DesignSpec: 完整的设计规格书
@@ -452,8 +468,15 @@ async def create_design_spec_from_content(
     # Phase 1: 内容分析
     content_analysis = await analyze_content(content, llm_client, kb_type)
     
+    # 记录 AI 真实的内容分析推理
+    if tracer and trace_id and content_analysis.get("analysis"):
+        tracer.add_reasoning(
+            trace_id,
+            f"【内容分析】{content_analysis.get('analysis')}"
+        )
+    
     # Phase 2: 设计规划
-    layout_decisions = await plan_design(sections, content_analysis, llm_client)
+    layout_decisions = await plan_design(sections, content_analysis, llm_client, tracer, trace_id)
     
     # 构建 DesignSpec
     theme = content_analysis.get("theme", "business")

@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
-from .routes import teaching, hitl, trace, storytelling
+from .routes import teaching, hitl, trace, storytelling, render_stream
 
 # 配置日志
 logging.basicConfig(
@@ -45,6 +45,7 @@ app.add_middleware(
 
 # 注册路由
 app.include_router(teaching.router, prefix="/api/v1/teaching", tags=["teaching"])
+app.include_router(render_stream.router, prefix="/api/v1/teaching", tags=["teaching"])
 app.include_router(hitl.router, prefix="/api/v1/hitl", tags=["hitl"])
 app.include_router(trace.router, prefix="/api/v1/trace", tags=["trace"])
 app.include_router(storytelling.router, tags=["storytelling"])

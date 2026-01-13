@@ -1,109 +1,70 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { 
-  ArrowLeft, Upload, FileText, ChevronRight, ChevronDown, 
-  Sparkles, Loader2, CheckCircle, 
-  BookOpen, ListTree, Play, Eye, Plus, LayoutGrid, Clock,
-  Target, Book, Settings2, Zap, Cpu, FileCheck, Scale, X, Network, Edit3, ClipboardPaste, PenLine
+  ArrowLeft, Loader2, ZoomIn, ZoomOut, Maximize2,
+  Cpu, FileCheck, Scale, X, Network, Edit3, Terminal, ChevronUp, ChevronDown
 } from 'lucide-react';
-// BookUnderstandingPanel 已简化，使用左侧智能扫描按钮
 import BookKnowledgeGraph from '@/components/teaching/BookKnowledgeGraph';
 import { OutlineAdjustModal } from '@/components/teaching/OutlineAdjustModal';
 import type { ChapterDAG, BookThesis } from '@/lib/book-understanding/types';
 import { cn } from '@/lib/utils';
 
-// 根据项目类型配置不同的文案和图标
+// 工作流组件
+import {
+  BaseNode,
+  ConnectionLine,
+  ConnectionLineDefs,
+  ModeNode,
+  InputNode,
+  ParseNode,
+  SelectNode,
+  ScriptNode,
+  PPTNode,
+  CourseNode,
+  DocumentsModal,
+  ChaptersModal,
+  ManuscriptModal,
+  ManuscriptEditorModal,
+  PPTPreviewModal,
+  type NodeStatus,
+  type NodePosition,
+  type SourceMode,
+} from '@/components/teaching/workflow';
+
+// ==================== 类型定义 ====================
+
+// 日志条目类型 - 支持 AI Agent 完整思考过程
+interface LogEntry {
+  id: string;
+  timestamp: Date;
+  level: 'info' | 'success' | 'warning' | 'error' | 'thinking' | 'planning' | 'executing' | 'step';
+  message: string;
+  details?: string;
+  // AI 思考过程扩展字段
+  reasoning?: string;      // AI 推理过程
+  decision?: string;       // AI 决策
+  progress?: number;       // 进度百分比
+  phase?: string;          // 当前阶段
+  subSteps?: string[];     // 子步骤列表
+}
+
 type ProjectType = 'tech' | 'policy' | 'legal' | 'teaching' | 'k12';
 
 interface TypeConfig {
   icon: React.ComponentType<{ className?: string }>;
-  docLibTitle: string;
-  addDocText: string;
-  emptyDocText: string;
-  indexTitle: string;
-  emptyIndexText: string;
-  workbenchTitle: string;
-  generateBtnText: string;
-  generatingText: string;
-  selectHint: string;
   headerSubtitle: string;
 }
 
 const TYPE_CONFIGS: Record<ProjectType, TypeConfig> = {
-  tech: {
-    icon: Cpu,
-    docLibTitle: '技术文档库',
-    addDocText: '添加文档',
-    emptyDocText: '暂无文档，请先上传',
-    indexTitle: '内容章节索引',
-    emptyIndexText: '请上传文档后点击"智能扫描"',
-    workbenchTitle: '培训工作台',
-    generateBtnText: '生成培训内容',
-    generatingText: '正在生成培训讲稿...',
-    selectHint: '请在左侧选择章节开始创作',
-    headerSubtitle: '技术培训',
-  },
-  policy: {
-    icon: FileCheck,
-    docLibTitle: '制度文档',
-    addDocText: '添加制度',
-    emptyDocText: '暂无制度文档，请先上传',
-    indexTitle: '制度条款索引',
-    emptyIndexText: '请上传制度文档后点击"智能扫描"',
-    workbenchTitle: '培训工作台',
-    generateBtnText: '生成培训内容',
-    generatingText: '正在生成培训讲稿...',
-    selectHint: '请在左侧选择条款开始创作',
-    headerSubtitle: '制度培训',
-  },
-  legal: {
-    icon: Scale,
-    docLibTitle: '法律文档',
-    addDocText: '添加法律',
-    emptyDocText: '暂无法律文档，请先上传',
-    indexTitle: '法律条文索引',
-    emptyIndexText: '请上传法律文档后点击"智能扫描"',
-    workbenchTitle: '普法工作台',
-    generateBtnText: '生成普法讲座',
-    generatingText: '正在生成普法讲稿...',
-    selectHint: '请在左侧选择法律条文开始创作',
-    headerSubtitle: '普法讲座',
-  },
-  // 兼容旧数据 k12 和 teaching，映射到 tech
-  teaching: {
-    icon: Cpu,
-    docLibTitle: '技术文档库',
-    addDocText: '添加文档',
-    emptyDocText: '暂无文档，请先上传',
-    indexTitle: '内容章节索引',
-    emptyIndexText: '请上传文档后点击"智能扫描"',
-    workbenchTitle: '培训工作台',
-    generateBtnText: '生成培训内容',
-    generatingText: '正在生成培训讲稿...',
-    selectHint: '请在左侧选择章节开始创作',
-    headerSubtitle: '技术培训',
-  },
-  k12: {
-    icon: Cpu,
-    docLibTitle: '技术文档库',
-    addDocText: '添加文档',
-    emptyDocText: '暂无文档，请先上传',
-    indexTitle: '内容章节索引',
-    emptyIndexText: '请上传文档后点击"智能扫描"',
-    workbenchTitle: '培训工作台',
-    generateBtnText: '生成培训内容',
-    generatingText: '正在生成培训讲稿...',
-    selectHint: '请在左侧选择章节开始创作',
-    headerSubtitle: '技术培训',
-  },
-};
-
-const getTypeConfig = (type: string): TypeConfig => {
-  return TYPE_CONFIGS[type as ProjectType] || TYPE_CONFIGS.tech;
+  tech: { icon: Cpu, headerSubtitle: '技术培训' },
+  policy: { icon: FileCheck, headerSubtitle: '制度培训' },
+  legal: { icon: Scale, headerSubtitle: '普法讲座' },
+  teaching: { icon: Cpu, headerSubtitle: '技术培训' },
+  k12: { icon: Cpu, headerSubtitle: '技术培训' },
 };
 
 interface ChapterNode {
@@ -128,197 +89,409 @@ interface Manuscript {
   updatedAt: string;
 }
 
-export default function TeachingDetailPage() {
+interface Course {
+  id: string;
+  title: string;
+  duration?: number;
+}
+
+// ==================== 节点位置配置 ====================
+// 采用两行交错布局：上下波浪形，更美观
+// 第一行(上): 输入、选择、PPT
+// 第二行(下): 模式、解析、手稿、课程
+
+const NODE_POSITIONS: Record<string, NodePosition> = {
+  mode: { x: 60, y: 200 },       // 下
+  input: { x: 320, y: 60 },      // 上
+  parse: { x: 580, y: 240 },     // 下
+  select: { x: 880, y: 60 },     // 上
+  script: { x: 1160, y: 240 },   // 下
+  ppt: { x: 1420, y: 60 },       // 上
+  course: { x: 1680, y: 200 },   // 下
+};
+
+const NODE_DIMENSIONS: Record<string, { width: number; height: number }> = {
+  mode: { width: 200, height: 160 },
+  input: { width: 260, height: 180 },
+  parse: { width: 260, height: 180 },
+  select: { width: 240, height: 180 },
+  script: { width: 280, height: 200 },
+  ppt: { width: 240, height: 160 },
+  course: { width: 260, height: 200 },
+};
+
+// 连接配置 - 线性流程，波浪形连接
+const CONNECTIONS = [
+  { from: 'mode', to: 'input' },
+  { from: 'input', to: 'parse' },
+  { from: 'parse', to: 'select' },
+  { from: 'select', to: 'script' },
+  { from: 'script', to: 'ppt' },
+  { from: 'ppt', to: 'course' },
+];
+
+// 碎片模式跳过连接
+const SKIP_CONNECTION = { from: 'input', to: 'script', label: '直接创作' };
+
+// ==================== 画布控制组件 ====================
+
+function CanvasControls({ 
+  zoom, 
+  onZoomIn, 
+  onZoomOut, 
+  onReset 
+}: {
+  zoom: number;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onReset: () => void;
+}) {
+  return (
+    <div className="absolute bottom-6 right-6 flex items-center gap-2 z-20">
+      <div className="flex items-center bg-white/90 backdrop-blur border border-zinc-200 rounded-xl overflow-hidden shadow-lg">
+        <button
+          onClick={onZoomOut}
+          className="p-2 hover:bg-zinc-100 text-zinc-500 hover:text-zinc-900 transition-colors"
+        >
+          <ZoomOut className="w-4 h-4" />
+        </button>
+        <span className="px-3 text-xs text-zinc-600 font-mono border-x border-zinc-200">
+          {Math.round(zoom * 100)}%
+        </span>
+        <button
+          onClick={onZoomIn}
+          className="p-2 hover:bg-zinc-100 text-zinc-500 hover:text-zinc-900 transition-colors"
+        >
+          <ZoomIn className="w-4 h-4" />
+        </button>
+      </div>
+      <button
+        onClick={onReset}
+        className="p-2 bg-white/90 backdrop-blur border border-zinc-200 rounded-xl hover:bg-zinc-100 text-zinc-500 hover:text-zinc-900 transition-colors shadow-lg"
+      >
+        <Maximize2 className="w-4 h-4" />
+      </button>
+    </div>
+  );
+}
+
+// ==================== 终端日志面板（简洁版） ====================
+
+function LogPanel({ 
+  logs, 
+  isExpanded, 
+  onToggle,
+  onClear 
+}: { 
+  logs: LogEntry[];
+  isExpanded: boolean;
+  onToggle: () => void;
+  onClear: () => void;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  
+  // 自动滚动到底部
+  useEffect(() => {
+    if (scrollRef.current && isExpanded) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [logs, isExpanded]);
+  
+  const getLevelInfo = (level: LogEntry['level']) => {
+    switch (level) {
+      case 'success': return { color: 'text-emerald-400', label: '完成' };
+      case 'warning': return { color: 'text-amber-400', label: '警告' };
+      case 'error': return { color: 'text-red-400', label: '错误' };
+      case 'thinking': return { color: 'text-purple-400', label: '推理' };
+      case 'planning': return { color: 'text-blue-400', label: '决策' };
+      case 'executing': return { color: 'text-cyan-400', label: '执行' };
+      case 'step': return { color: 'text-zinc-400', label: '步骤' };
+      default: return { color: 'text-zinc-400', label: '' };
+    }
+  };
+  
+  const formatTime = (date: Date) => {
+    return date.toLocaleTimeString('zh-CN', { 
+      hour: '2-digit', 
+      minute: '2-digit', 
+      second: '2-digit' 
+    });
+  };
+
+  // 获取显示内容（优先显示 reasoning/decision，否则显示 message）
+  const getDisplayContent = (log: LogEntry) => {
+    if (log.reasoning) return log.reasoning;
+    if (log.decision) return log.decision;
+    // 移除消息中的重复 emoji
+    return log.message.replace(/^[🧠📋⚡→✓✗⚠🚀]\s*/, '');
+  };
+
+  // 渲染单条日志 - Grid 布局确保完美对齐
+  const renderLogEntry = (log: LogEntry) => {
+    const { color, label } = getLevelInfo(log.level);
+    const content = getDisplayContent(log);
+    
+    return (
+      <div key={log.id} className="py-1 font-mono text-sm leading-relaxed">
+        <div 
+          className="grid items-start gap-x-3"
+          style={{ gridTemplateColumns: '70px 36px 1fr auto' }}
+        >
+          {/* 时间戳 */}
+          <span className="text-zinc-600 text-xs">
+            {formatTime(log.timestamp)}
+          </span>
+          
+          {/* 中文类型标签 */}
+          <span className={cn("text-xs", color)}>
+            {label}
+          </span>
+          
+          {/* 内容 */}
+          <span className={cn("whitespace-pre-wrap", color)}>
+            {content}
+          </span>
+          
+          {/* 进度 */}
+          <span className="text-zinc-500 text-xs">
+            {log.progress !== undefined && log.progress < 100 ? `${log.progress}%` : ''}
+          </span>
+        </div>
+        
+        {/* 详情 */}
+        {log.details && (
+          <div 
+            className="text-xs text-zinc-500 mt-0.5"
+            style={{ marginLeft: '118px' }}
+          >
+            {log.details}
+          </div>
+        )}
+        
+        {/* 子步骤 */}
+        {log.subSteps && log.subSteps.length > 0 && (
+          <div className="mt-1 space-y-0.5" style={{ marginLeft: '118px' }}>
+            {log.subSteps.map((step, i) => (
+              <div key={i} className="text-xs text-zinc-500">
+                - {step}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className={cn(
+      "bg-gradient-to-b from-zinc-800 to-zinc-900 border-t border-zinc-700/50 transition-all duration-300 ease-out flex flex-col shadow-2xl",
+      isExpanded ? "h-[280px]" : "h-10"
+    )}>
+      {/* 标题栏 - Agent 控制台风格 */}
+      <div 
+        className="h-10 px-4 flex items-center justify-between cursor-pointer hover:bg-white/5 transition-colors flex-shrink-0 border-b border-zinc-700/30"
+        onClick={onToggle}
+      >
+        <div className="flex items-center gap-3">
+          {/* macOS 风格的红绿灯按钮 */}
+          <div className="flex items-center gap-1.5">
+            <div className="w-3 h-3 rounded-full bg-red-500/80 hover:bg-red-500 transition-colors" />
+            <div className="w-3 h-3 rounded-full bg-amber-500/80 hover:bg-amber-500 transition-colors" />
+            <div className="w-3 h-3 rounded-full bg-emerald-500/80 hover:bg-emerald-500 transition-colors" />
+          </div>
+          <div className="w-px h-4 bg-zinc-700/50 mx-1" />
+          <Terminal className="w-3.5 h-3.5 text-zinc-500" />
+          <span className="text-xs font-medium text-zinc-400 tracking-wide">AI Agent 控制台</span>
+          {logs.length > 0 && (
+            <span className="px-1.5 py-0.5 text-[10px] font-mono bg-emerald-500/20 text-emerald-400 rounded">
+              {logs.length}
+            </span>
+          )}
+          {/* 正在执行指示器 */}
+          {logs.some(l => l.level === 'executing' || l.level === 'thinking') && (
+            <span className="flex items-center gap-1.5 px-2 py-0.5 text-[10px] bg-purple-500/20 text-purple-400 rounded">
+              <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />
+              Agent 运行中
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {isExpanded && logs.length > 0 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onClear(); }}
+              className="text-[10px] text-zinc-500 hover:text-zinc-300 px-2 py-0.5 rounded hover:bg-white/10 transition-colors font-mono"
+            >
+              clear
+            </button>
+          )}
+          {isExpanded ? (
+            <ChevronDown className="w-4 h-4 text-zinc-600" />
+          ) : (
+            <ChevronUp className="w-4 h-4 text-zinc-600" />
+          )}
+        </div>
+      </div>
+      
+      {/* 日志内容 - AI Agent 风格 */}
+      {isExpanded && (
+        <div 
+          ref={scrollRef}
+          className="flex-1 overflow-y-auto font-mono text-[12px] p-3 space-y-0.5"
+          style={{ 
+            background: 'linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.2) 100%)'
+          }}
+        >
+          {logs.length === 0 ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center">
+                <div className="text-4xl mb-3 opacity-20">🤖</div>
+                <div className="text-zinc-500 mb-1">AI Agent 待命中</div>
+                <div className="text-zinc-600 text-xs">执行操作时将显示 AI 思考过程和执行日志</div>
+              </div>
+            </div>
+          ) : (
+            logs.map(renderLogEntry)
+          )}
+          {/* 光标闪烁效果 */}
+          <div className="flex items-center gap-2 pt-2 pl-3">
+            <span className="text-emerald-500">$</span>
+            <span className="w-2 h-4 bg-emerald-500/70 animate-pulse" />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ==================== 主页面 ====================
+
+export default function TeachingWorkflowPage() {
   const params = useParams();
   const router = useRouter();
   const kbId = params.id as string;
+  const containerRef = useRef<HTMLDivElement>(null);
 
+  // 画布状态
+  const [zoom, setZoom] = useState(0.8);
+  const [panX, setPanX] = useState(100);
+  const [panY, setPanY] = useState(50);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [canvasReady, setCanvasReady] = useState(true);
+
+  // 数据状态
   const [kb, setKb] = useState<any>(null);
   const [chapters, setChapters] = useState<ChapterNode[]>([]);
   const [documents, setDocuments] = useState<any[]>([]);
+  const [manuscripts, setManuscripts] = useState<Manuscript[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // 操作状态
   const [uploading, setUploading] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [generatingPPT, setGeneratingPPT] = useState(false);
+  const [publishingCourse, setPublishingCourse] = useState(false);
+  const [extractProgress, setExtractProgress] = useState(0);
+  const [generateProgress, setGenerateProgress] = useState(0);
+
+  // 选中状态
   const [selectedChapter, setSelectedChapter] = useState<ChapterNode | null>(null);
-  const [expandedChapters, setExpandedChapters] = useState<Set<string>>(new Set());
-  const [manuscripts, setManuscripts] = useState<Manuscript[]>([]);
-  const [progress, setProgress] = useState({ status: '', message: '', percent: 0 });
-  const [activeTab, setActiveTab] = useState<'workbench' | 'records'>('workbench');
-  
-  // 知识图谱相关状态
+  const [selectedManuscript, setSelectedManuscript] = useState<Manuscript | null>(null);
+
+  // 弹窗状态
+  const [showDocumentsModal, setShowDocumentsModal] = useState(false);
+  const [showChaptersModal, setShowChaptersModal] = useState(false);
+  const [showManuscriptModal, setShowManuscriptModal] = useState(false);
+  const [showManuscriptEditor, setShowManuscriptEditor] = useState(false);
+  const [editingManuscriptId, setEditingManuscriptId] = useState<string | null>(null);
+  const [showKnowledgeGraph, setShowKnowledgeGraph] = useState(false);
+  const [showOutlineAdjust, setShowOutlineAdjust] = useState(false);
+  const [showPasteModal, setShowPasteModal] = useState(false);
+  const [showPPTPreview, setShowPPTPreview] = useState(false);
+
+  // 知识图谱
   const [chapterDAG, setChapterDAG] = useState<ChapterDAG | null>(null);
   const [bookThesis, setBookThesis] = useState<BookThesis | null>(null);
-  const [showKnowledgeGraph, setShowKnowledgeGraph] = useState(false);
-  
-  // 大纲调整弹窗
-  const [showOutlineAdjust, setShowOutlineAdjust] = useState(false);
-  
-  // 粘贴手稿弹窗
-  const [showPasteModal, setShowPasteModal] = useState(false);
+
+  // 粘贴手稿
   const [pasteTitle, setPasteTitle] = useState('');
   const [pasteContent, setPasteContent] = useState('');
   const [pasting, setPasting] = useState(false);
   
-  // 创建空白手稿
-  const [creatingBlank, setCreatingBlank] = useState(false);
+  // 日志面板
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [logPanelExpanded, setLogPanelExpanded] = useState(true);
   
-  // 章节大小检查状态
-  const [chapterSizeInfo, setChapterSizeInfo] = useState<{
-    hasChildren: boolean;
-    childCount: number;
-    isTooLarge: boolean;
-    suggestion?: string;
-  } | null>(null);
+  // 添加日志的辅助函数 - 支持 AI Agent 完整思考过程
+  const addLog = useCallback((
+    level: LogEntry['level'], 
+    message: string, 
+    options?: {
+      details?: string;
+      reasoning?: string;
+      decision?: string;
+      progress?: number;
+      phase?: string;
+      subSteps?: string[];
+    }
+  ) => {
+    const newLog: LogEntry = {
+      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      timestamp: new Date(),
+      level,
+      message,
+      details: options?.details,
+      reasoning: options?.reasoning,
+      decision: options?.decision,
+      progress: options?.progress,
+      phase: options?.phase,
+      subSteps: options?.subSteps,
+    };
+    setLogs(prev => [...prev, newLog]);
+  }, []);
   
-  // 合并结果警告信息
-  const [mergeWarning, setMergeWarning] = useState<{
-    warning: string;
-    suggestion: string;
-    childTitles: string[];
-  } | null>(null);
-
-  // 获取当前项目类型的配置
-  const typeConfig = getTypeConfig(kb?.type || 'tech');
+  const clearLogs = useCallback(() => {
+    setLogs([]);
+  }, []);
+  
+  // 配置
+  const sourceMode = (kb?.sourceMode || 'book') as SourceMode;
+  const typeConfig = TYPE_CONFIGS[(kb?.type || 'tech') as ProjectType] || TYPE_CONFIGS.tech;
   const TypeIcon = typeConfig.icon;
 
-  // 根据项目类型自动确定场景类型
-  const getSceneTypeFromKbType = (kbType: string): string => {
-    switch (kbType) {
-      case 'tech':
-      case 'k12':
-      case 'teaching':
-        return 'tech_training';
-      case 'policy':
-        return 'company_training';
-      case 'legal':
-        return 'legal_training';
-      default:
-        return 'general';
-    }
-  };
+  // ==================== 数据获取 ====================
 
-  const sceneType = getSceneTypeFromKbType(kb?.type || 'tech');
-
-  useEffect(() => {
-    fetchKnowledgeBase();
-    fetchChapters();
-    fetchDocuments();
-    fetchManuscripts();
-  }, [kbId]);
-
-  const fetchKnowledgeBase = async () => {
+  const fetchKnowledgeBase = useCallback(async () => {
     try {
       const res = await fetch(`/api/knowledge-bases/${kbId}`);
       if (res.ok) {
         const data = await res.json();
         setKb(data);
+        setDocuments(data.documents || []);
       }
     } catch (error) {
       console.error('获取知识库失败:', error);
     }
-  };
+  }, [kbId]);
 
-  const fetchChapters = async () => {
+  const fetchChapters = useCallback(async () => {
     try {
       const res = await fetch(`/api/teaching/chapters/${kbId}`);
       if (res.ok) {
         const data = await res.json();
-        const chaptersData = data.chapters || [];
-        setChapters(chaptersData);
-        
-        // 如果有章节且包含角色信息，自动构建 DAG 用于知识图谱展示
-        if (chaptersData.length > 0) {
-          fetchDocuments();
-          buildDAGFromChapters(chaptersData);
+        setChapters(data.chapters || []);
+        if (data.chapters?.length > 0) {
+          buildDAGFromChapters(data.chapters);
         }
       }
     } catch (error) {
       console.error('获取章节失败:', error);
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [kbId]);
 
-  // 从章节数据构建知识图谱 DAG
-  const buildDAGFromChapters = (chaptersData: ChapterNode[]) => {
-    // 展平章节树
-    const flattenChapters = (nodes: ChapterNode[]): ChapterNode[] => {
-      const result: ChapterNode[] = [];
-      for (const node of nodes) {
-        result.push(node);
-        if (node.children && node.children.length > 0) {
-          result.push(...flattenChapters(node.children));
-        }
-      }
-      return result;
-    };
-
-    const allChapters = flattenChapters(chaptersData);
-    
-    if (allChapters.length === 0) return;
-    
-    // 构建 DAG nodes（即使没有角色信息也构建，使用默认值）
-    const nodes = allChapters.map((ch, idx) => ({
-      id: ch.id,
-      title: ch.title,
-      role: (ch.metadata?.role || 'core') as 'core' | 'foundation' | 'extension' | 'reference',
-      weight: ch.metadata?.role === 'core' ? 1 : 
-              ch.metadata?.role === 'foundation' ? 0.8 : 
-              ch.metadata?.role === 'extension' ? 0.6 : 0.5,
-    }));
-
-    // 构建 DAG edges（从 dependencies，或按顺序连接）
-    const edges: Array<{ from: string; to: string; type: 'prerequisite' | 'parallel' | 'supplement' }> = [];
-    
-    // 先检查是否有任何依赖信息
-    const hasDependencyInfo = allChapters.some(ch => 
-      ch.metadata?.dependencies && ch.metadata.dependencies.length > 0
-    );
-    
-    if (hasDependencyInfo) {
-      // 使用显式的依赖关系
-      for (const ch of allChapters) {
-        const deps = ch.metadata?.dependencies || [];
-        for (const depId of deps) {
-          if (allChapters.some(c => c.id === depId)) {
-            edges.push({
-              from: depId,
-              to: ch.id,
-              type: 'prerequisite',
-            });
-          }
-        }
-      }
-    } else {
-      // 没有依赖信息时，按阅读顺序连接（前后章节相连）
-      for (let i = 1; i < allChapters.length; i++) {
-        const prevCh = allChapters[i - 1];
-        const currCh = allChapters[i];
-        edges.push({
-          from: prevCh.id,
-          to: currCh.id,
-          type: 'prerequisite',
-        });
-      }
-    }
-
-    setChapterDAG({ nodes, edges });
-  };
-
-  const fetchDocuments = async () => {
-    try {
-      const res = await fetch(`/api/knowledge-bases/${kbId}`);
-      if (res.ok) {
-        const data = await res.json();
-        setDocuments(data.documents || []);
-      }
-    } catch (error) {
-      console.error('获取文档失败:', error);
-    }
-  };
-
-  const fetchManuscripts = async () => {
+  const fetchManuscripts = useCallback(async () => {
     try {
       const res = await fetch(`/api/teaching/manuscripts/${kbId}`);
       if (res.ok) {
@@ -328,155 +501,303 @@ export default function TeachingDetailPage() {
     } catch (error) {
       console.error('获取手稿列表失败:', error);
     }
+  }, [kbId]);
+
+  const fetchCourses = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/teaching/courses/${kbId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setCourses(data.courses || []);
+      }
+    } catch (error) {
+      // 课程API可能不存在，忽略错误
+    }
+  }, [kbId]);
+
+  useEffect(() => {
+    Promise.all([
+      fetchKnowledgeBase(),
+      fetchChapters(),
+      fetchManuscripts(),
+      fetchCourses(),
+    ]).finally(() => setLoading(false));
+  }, [fetchKnowledgeBase, fetchChapters, fetchManuscripts, fetchCourses]);
+
+  // ==================== 知识图谱构建 ====================
+
+  const buildDAGFromChapters = (chaptersData: ChapterNode[]) => {
+    const flattenChapters = (nodes: ChapterNode[]): ChapterNode[] => {
+      const result: ChapterNode[] = [];
+      for (const node of nodes) {
+        result.push(node);
+        if (node.children?.length > 0) {
+          result.push(...flattenChapters(node.children));
+        }
+      }
+      return result;
+    };
+
+    const allChapters = flattenChapters(chaptersData);
+    if (allChapters.length === 0) return;
+    
+    const nodes = allChapters.map((ch) => ({
+      id: ch.id,
+      title: ch.title,
+      role: (ch.metadata?.role || 'core') as 'core' | 'foundation' | 'extension' | 'reference',
+      weight: ch.metadata?.role === 'core' ? 1 : ch.metadata?.role === 'foundation' ? 0.8 : 0.6,
+    }));
+
+    const edges: Array<{ from: string; to: string; type: 'prerequisite' | 'parallel' | 'supplement' }> = [];
+      for (let i = 1; i < allChapters.length; i++) {
+      edges.push({ from: allChapters[i - 1].id, to: allChapters[i].id, type: 'prerequisite' });
+    }
+
+    setChapterDAG({ nodes, edges });
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
+  // ==================== 操作处理 ====================
 
-    const sourceMode = kb?.sourceMode || 'book';
-
-    // book 模式：只允许上传一本书
-    if (sourceMode === 'book') {
-      if (documents.length > 0) {
-        alert('书籍模式只支持一本书，请先删除现有文档后再上传新书');
-        e.target.value = '';
+  const handleFileUpload = async (files: FileList) => {
+    if (sourceMode === 'book' && documents.length > 0) {
+      alert('书籍模式只支持一本书，请先删除现有文档');
         return;
-      }
-      if (files.length > 1) {
-        alert('书籍模式只支持上传一个文件');
-        e.target.value = '';
-        return;
-      }
     }
 
     setUploading(true);
     try {
-      const uploadedDocs: any[] = [];
-      
-      // 1. 上传所有文件
       for (const file of Array.from(files)) {
         const formData = new FormData();
         formData.append('file', file);
         formData.append('knowledgeBaseId', kbId);
-        const res = await fetch('/api/documents/upload', {
-          method: 'POST',
-          body: formData,
-        });
+        const res = await fetch('/api/documents/upload', { method: 'POST', body: formData });
         if (!res.ok) throw new Error('上传失败');
         const doc = await res.json();
-        uploadedDocs.push(doc);
+        
+        // 使用 SSE 监听文档处理进度
+        startDocumentProcessingSSE(doc.id);
       }
-      
-      // 2. 为每个文档建立索引（后台执行，不阻塞用户）
-      for (const doc of uploadedDocs) {
-        processDocumentIndex(doc.id);
-      }
-      
-      fetchDocuments();
-      
-      // 3. 根据项目类型决定后续操作
-      const currentType = kb?.type || 'tech';
-      if (currentType === 'policy') {
-        // 制度培训：直接为每个文档创建一个"章节"条目
-        await createChaptersFromDocuments(uploadedDocs);
-      }
-      // 技术培训：不自动扫描，等用户手动点击"智能扫描"按钮
-      // 因为索引还在后台创建中，需要等索引完成后才能扫描
+      await fetchKnowledgeBase();
+      setShowDocumentsModal(false);
     } catch (error) {
       console.error('上传失败:', error);
       alert('上传失败，请重试');
     } finally {
       setUploading(false);
-      e.target.value = ''; // 重置 input，允许重复上传相同文件
     }
   };
 
-  // 制度培训专用：直接将文档作为章节
-  const createChaptersFromDocuments = async (docs: any[]) => {
-    try {
-      const res = await fetch('/api/teaching/chapters/create-from-docs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          knowledgeBaseId: kbId, 
-          documents: docs.map(d => ({ id: d.id, name: d.name }))
-        }),
-      });
-      if (res.ok) {
-        await fetchChapters();
+  // SSE 监听文档处理进度
+  const startDocumentProcessingSSE = (docId: string) => {
+    const eventSource = new EventSource(`/api/documents/${docId}/process`);
+    
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        console.log('[SSE] Document processing:', data);
+        
+        // 更新文档状态
+        if (data.status === 'completed' || data.type === 'complete') {
+          // 处理完成，更新文档列表
+          setDocuments(prev => prev.map(d => 
+            d.id === docId ? { ...d, status: 'completed' } : d
+          ));
+          eventSource.close();
+        } else if (data.status === 'processing') {
+          // 处理中，更新进度（可选）
+          setDocuments(prev => prev.map(d => 
+            d.id === docId ? { ...d, status: 'processing', progress: data.progress } : d
+          ));
+        } else if (data.status === 'error' || data.type === 'error') {
+          // 处理失败
+          setDocuments(prev => prev.map(d => 
+            d.id === docId ? { ...d, status: 'error' } : d
+          ));
+          eventSource.close();
+        }
+      } catch (e) {
+        console.error('[SSE] Parse error:', e);
       }
-    } catch (error) {
-      console.error('创建章节失败:', error);
-    }
+    };
+    
+    eventSource.onerror = (error) => {
+      console.error('[SSE] Connection error:', error);
+      eventSource.close();
+      // 连接错误时刷新状态
+      fetchKnowledgeBase();
+    };
   };
 
-  // 直接创作（创建空白手稿）
-  const handleCreateBlank = async () => {
-    setCreatingBlank(true);
+  const handleExtractChapters = async () => {
+    setExtracting(true);
+    setExtractProgress(10);
+
     try {
-      const res = await fetch('/api/teaching/manuscript/create-blank', {
+      const endpoint = sourceMode === 'book' 
+        ? '/api/book-understanding/skim'
+        : '/api/teaching/extract-chapters';
+      
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          knowledgeBaseId: kbId,
-        }),
+        body: JSON.stringify({ knowledgeBaseId: kbId }),
       });
 
-      if (!res.ok) {
+      setExtractProgress(80);
         const data = await res.json();
-        throw new Error(data.error || '创建失败');
-      }
-      
-      const data = await res.json();
-      
-      // 刷新章节和手稿列表
+
+      if (res.ok && data.success) {
+        if (data.chapterDAG) setChapterDAG(data.chapterDAG);
+        if (data.thesis) setBookThesis(data.thesis);
       await fetchChapters();
-      await fetchManuscripts();
-      
-      // 跳转到手稿编辑页面
-      router.push(`/dashboard/teaching/${kbId}/manuscript/${data.manuscriptId}`);
+        setExtractProgress(100);
+      } else {
+        throw new Error(data.error || '解析失败');
+      }
     } catch (error: any) {
-      console.error('创建空白手稿失败:', error);
-      alert(error.message || '创建失败');
+      console.error('解析失败:', error);
+      alert(error.message || '解析失败');
     } finally {
-      setCreatingBlank(false);
+      setExtracting(false);
+      setExtractProgress(0);
     }
   };
 
-  // 处理粘贴手稿
+  const handleSelectChapter = (chapter: ChapterNode) => {
+    setSelectedChapter(chapter);
+    setShowChaptersModal(false);
+  };
+
+  const getSceneType = () => {
+    const kbType = kb?.type || 'tech';
+    if (kbType === 'policy') return 'company_training';
+    if (kbType === 'legal') return 'legal_training';
+    return 'tech_training';
+  };
+
+  const handleGenerate = async () => {
+    if (!selectedChapter) {
+      alert('请先选择章节');
+        return;
+      }
+      
+    setGenerating(true);
+    setGenerateProgress(10);
+    setLogPanelExpanded(true);
+    
+    // Phase 1: 启动
+    addLog('executing', '📝 启动 TeachingAgent 手稿生成', {
+      details: `章节: ${selectedChapter.title}`,
+      progress: 10,
+      phase: 'initialization'
+    });
+
+    try {
+      // Phase 2: 规划阶段
+      addLog('thinking', '分析章节内容...', {
+        reasoning: '识别核心知识点、教学目标、内容难度',
+        subSteps: [
+          '提取章节关键概念',
+          '分析知识点依赖关系',
+          '评估内容复杂度'
+        ],
+        phase: 'content_analysis'
+      });
+      
+      addLog('planning', '制定教学规划', {
+        reasoning: '基于内容分析，规划手稿结构和讲解策略',
+        phase: 'teaching_plan'
+      });
+      
+      const planRes = await fetch('/api/teaching/manuscript/plan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chapterId: selectedChapter.id, sceneType: getSceneType() }),
+      });
+      if (!planRes.ok) throw new Error('规划失败');
+      const planData = await planRes.json();
+      setGenerateProgress(40);
+
+      addLog('step', '教学规划完成', {
+        progress: 40,
+        decision: `将生成 ${planData.pageCount || '?'} 页幻灯片手稿`,
+        phase: 'plan_complete'
+      });
+
+      // Phase 3: 内容生成
+      addLog('executing', '生成手稿内容', {
+        reasoning: '根据教学规划，逐页生成 Slidev 格式的手稿内容',
+        progress: 50,
+        phase: 'content_generation'
+      });
+      
+      const draftRes = await fetch('/api/teaching/manuscript/draft', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ manuscriptId: planData.manuscriptId }),
+      });
+      if (!draftRes.ok) throw new Error('生成失败');
+      setGenerateProgress(100);
+      
+      addLog('success', '✨ 手稿生成完成', {
+        progress: 100,
+        subSteps: [
+          '教学结构规划完成',
+          '内容生成完成',
+          '可进入编辑器进行调整'
+        ],
+        phase: 'completed'
+      });
+
+      await fetchManuscripts();
+      setEditingManuscriptId(planData.manuscriptId);
+      setShowManuscriptEditor(true);
+      } catch (error: any) {
+      console.error('生成失败:', error);
+      addLog('error', '手稿生成失败', { details: error.message });
+      alert(error.message || '生成失败');
+      } finally {
+      setGenerating(false);
+      setGenerateProgress(0);
+      }
+  };
+    
+  const handleCreateBlank = async () => {
+      try {
+      const res = await fetch('/api/teaching/manuscript/create-blank', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ knowledgeBaseId: kbId }),
+        });
+      if (!res.ok) throw new Error('创建失败');
+        const data = await res.json();
+      await fetchManuscripts();
+      // 打开编辑器弹窗而不是跳转页面
+      setEditingManuscriptId(data.manuscriptId);
+      setShowManuscriptEditor(true);
+      } catch (error: any) {
+      console.error('创建失败:', error);
+      alert(error.message || '创建失败');
+    }
+  };
+
   const handlePasteSubmit = async () => {
     if (!pasteContent.trim()) {
       alert('请输入内容');
       return;
     }
-
+    
     setPasting(true);
     try {
       const title = pasteTitle.trim() || `手稿_${new Date().toLocaleDateString()}`;
       const res = await fetch('/api/documents/paste', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          knowledgeBaseId: kbId,
-          title,
-          content: pasteContent,
-        }),
+        body: JSON.stringify({ knowledgeBaseId: kbId, title, content: pasteContent }),
       });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || '保存失败');
-      }
-      const doc = await res.json();
+      if (!res.ok) throw new Error('保存失败');
       
-      // 后台处理索引
-      processDocumentIndex(doc.id);
-      
-      // 刷新文档列表
-      await fetchDocuments();
-      
-      // 关闭弹窗并清空
+      await fetchKnowledgeBase();
       setShowPasteModal(false);
       setPasteTitle('');
       setPasteContent('');
@@ -488,867 +809,701 @@ export default function TeachingDetailPage() {
     }
   };
 
-  // 处理单个文档的索引构建（后台执行）
-  const processDocumentIndex = async (documentId: string) => {
-    try {
-      
-      // 调用文档处理 API（会建立向量索引）
-      const response = await fetch(`/api/documents/${documentId}/process`);
-      
-      if (!response.ok) {
-        console.error(`[Teaching] Failed to process document ${documentId}`);
-        return;
-      }
-      
-      // 读取 SSE 流
-      const reader = response.body?.getReader();
-      if (!reader) return;
-      
-      const decoder = new TextDecoder();
-      
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        
-        const text = decoder.decode(value);
-        // 解析 SSE 事件
-        const lines = text.split('\n');
-        for (const line of lines) {
-          if (line.startsWith('data:')) {
-            try {
-              // 去掉 'data:' 前缀和可能的空格
-              const jsonStr = line.replace(/^data:\s*/, '');
-              if (!jsonStr) continue;
-              
-              const data = JSON.parse(jsonStr);
-              
-              if (data.status === 'completed') {
-                fetchDocuments(); // 刷新状态
-              }
-            } catch (e) {
-              // ignore parse errors
-            }
-          }
-        }
-      }
-    } catch (error) {
-      console.error(`[Teaching] Error processing document ${documentId}:`, error);
+  // ==================== 节点状态计算 ====================
+
+  // 检查所有文档是否都已处理完成
+  const allDocumentsReady = documents.length > 0 && documents.every(d => d.status === 'completed');
+  const hasDocumentsProcessing = documents.some(d => d.status !== 'completed');
+
+  const getNodeStatus = (nodeId: string): NodeStatus => {
+    switch (nodeId) {
+      case 'mode':
+        return 'completed';
+      case 'input':
+        if (uploading) return 'processing';
+        if (documents.length === 0) return 'ready';
+        // 有文档但未全部就绪 = processing，全部就绪 = completed
+        return hasDocumentsProcessing ? 'processing' : 'completed';
+      case 'parse':
+        if (extracting) return 'processing';
+        if (chapters.length > 0) return 'completed';
+        // 只有当所有文档都就绪后才可以解析
+        return allDocumentsReady ? 'ready' : 'pending';
+      case 'select':
+        // 有手稿说明章节已经选过了
+        if (manuscripts.length > 0) return 'completed';
+        if (selectedChapter) return 'completed';
+        return chapters.length > 0 ? 'ready' : 'pending';
+      case 'script':
+        if (generating) return 'processing';
+        // 有手稿就显示为 completed，用户可以选择
+        if (manuscripts.length > 0) return 'completed';
+        return chapters.length > 0 ? 'ready' : 'pending';
+      case 'ppt':
+        // 基于选择的手稿判断状态
+        if (generatingPPT) return 'processing';
+        if (selectedManuscript?.hasSlidev) return 'completed';
+        return selectedManuscript ? 'ready' : 'pending';
+      case 'course':
+        if (publishingCourse) return 'processing';
+        if (courses.length > 0) return 'completed';
+        return selectedManuscript?.hasSlidev ? 'ready' : 'pending';
+      default:
+        return 'pending';
     }
   };
 
-  const [extractProgress, setExtractProgress] = useState('');
-  
-  const handleExtractChapters = async () => {
-    setExtracting(true);
-    const sourceMode = kb?.sourceMode || 'book';
-    
-    // 根据 sourceMode 选择不同的扫描方式
-    if (sourceMode === 'docs') {
-      // docs 模式：使用简化的章节提取（每个文件=一个章节）
-      setExtractProgress('正在处理文档...');
-      try {
-        const res = await fetch('/api/teaching/extract-chapters', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ knowledgeBaseId: kbId, useLLM: false }),
-        });
-        const data = await res.json();
-        if (res.ok && data.success) {
-          await fetchChapters();
-          await fetchDocuments();
-        } else {
-          throw new Error(data.error || '处理文档失败');
-        }
-      } catch (error: any) {
-        console.error('处理文档失败:', error);
-        alert(error.message || '处理文档失败');
-      } finally {
-        setExtracting(false);
-        setExtractProgress('');
+  // ==================== 画布交互 ====================
+
+  useEffect(() => {
+    // 延迟计算画布位置，确保容器已挂载
+    const timer = setTimeout(() => {
+      if (containerRef.current) {
+        const { width, height } = containerRef.current.getBoundingClientRect();
+        setPanX(Math.max(20, (width - 2000 * zoom) / 2));
+        setPanY(Math.max(20, (height - 500 * zoom) / 2));
       }
-      return;
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [zoom]);
+
+  const handleWheel = useCallback((e: WheelEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-scrollable]')) return;
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    setZoom(z => Math.min(Math.max(z * delta, 0.3), 1.5));
+  }, []);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (container) {
+      container.addEventListener('wheel', handleWheel, { passive: false });
+      return () => container.removeEventListener('wheel', handleWheel);
     }
-    
-    // fragments 模式：使用主题聚类
-    if (sourceMode === 'fragments') {
-      setExtractProgress('正在进行主题聚类...');
-      try {
-        const res = await fetch('/api/teaching/extract-chapters', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ knowledgeBaseId: kbId, useLLM: true }),
-        });
-        const data = await res.json();
-        if (res.ok && data.success) {
-          await fetchChapters();
-          await fetchDocuments();
-        } else {
-          throw new Error(data.error || '主题聚类失败');
-        }
-      } catch (error: any) {
-        console.error('主题聚类失败:', error);
-        alert(error.message || '主题聚类失败');
-      } finally {
-        setExtracting(false);
-        setExtractProgress('');
-      }
-      return;
-    }
-    
-    // paper 模式：使用论文三阶段处理
-    if (sourceMode === 'paper') {
-      setExtractProgress('正在分析论文...');
-      try {
-        const res = await fetch('/api/teaching/extract-chapters', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ knowledgeBaseId: kbId }),
-        });
-        const data = await res.json();
-        if (res.ok && data.success) {
-          await fetchChapters();
-          await fetchDocuments();
-        } else {
-          throw new Error(data.error || '论文处理失败');
-        }
-      } catch (error: any) {
-        console.error('论文处理失败:', error);
-        alert(error.message || '论文处理失败');
-      } finally {
-        setExtracting(false);
-        setExtractProgress('');
-      }
-      return;
-    }
-    
-    // book 模式：使用智能扫描
-    setExtractProgress('正在智能扫描...');
-    try {
-      // 使用新的全书理解 skim API
-      const res = await fetch('/api/book-understanding/skim', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ knowledgeBaseId: kbId }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        // 保存知识图谱数据
-        if (data.chapterDAG) {
-          setChapterDAG(data.chapterDAG);
-        }
-        if (data.thesis) {
-          setBookThesis(data.thesis);
-        }
-        // 提取成功后，重新从数据库获取章节
-        await fetchChapters();
-        await fetchDocuments();
-      } else {
-        throw new Error(data.error || '智能扫描失败');
-      }
-    } catch (error: any) {
-      console.error('智能扫描失败:', error);
-      alert(error.message || '智能扫描失败');
-    } finally {
-      setExtracting(false);
-      setExtractProgress('');
+  }, [handleWheel]);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (e.button === 0) {
+      setIsDragging(true);
+      setDragStart({ x: e.clientX - panX, y: e.clientY - panY });
     }
   };
 
-  // 检查章节大小
-  const checkChapterSize = async (chapterId: string) => {
-    try {
-      const res = await fetch(`/api/teaching/chapter/check-size?chapterId=${chapterId}`);
-      if (res.ok) {
-        const data = await res.json();
-        setChapterSizeInfo({
-          hasChildren: data.hasChildren,
-          childCount: data.childCount,
-          isTooLarge: data.isTooLarge,
-          suggestion: data.suggestion,
-        });
-      }
-    } catch (error) {
-      console.error('检查章节大小失败:', error);
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (isDragging) {
+      setPanX(e.clientX - dragStart.x);
+      setPanY(e.clientY - dragStart.y);
     }
   };
 
-  // 选择章节时检查大小
-  const handleSelectChapter = (chapter: ChapterNode) => {
-    setSelectedChapter(chapter);
-    setChapterSizeInfo(null);
-    setMergeWarning(null);
-    // 异步检查章节大小
-    checkChapterSize(chapter.id);
-  };
+  const handleMouseUp = () => setIsDragging(false);
 
-  // 查找章节对应的手稿
-  const getChapterManuscript = (chapterId: string) => {
-    return manuscripts.find(m => m.chapterId === chapterId);
-  };
+  // ==================== 渲染 ====================
 
-  // 过滤掉空白手稿创建的虚拟章节（递归处理）
-  const filterBlankChapters = (nodes: ChapterNode[]): ChapterNode[] => {
-    return nodes
-      .filter(ch => {
-        try {
-          const meta = ch.metadata ? (typeof ch.metadata === 'string' ? JSON.parse(ch.metadata) : ch.metadata) : {};
-          return !meta.isBlank;
-        } catch {
-          return true;
-        }
-      })
-      .map(ch => ({
-        ...ch,
-        children: ch.children ? filterBlankChapters(ch.children) : [],
-      }));
-  };
-
-  const handleGenerate = async () => {
-    if (!selectedChapter) {
-      alert('请先选择章节');
-      return;
-    }
-    setGenerating(true);
-    setMergeWarning(null);
-    
-    // 根据是否有子章节显示不同的进度提示
-    const hasChildren = chapterSizeInfo?.hasChildren || selectedChapter.children?.length > 0;
-    setProgress({ 
-      status: 'starting', 
-      message: hasChildren ? '正在合并子章节内容...' : '正在规划教学方案...', 
-      percent: 10 
-    });
-    
-    try {
-      const planRes = await fetch('/api/teaching/manuscript/plan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chapterId: selectedChapter.id, sceneType }),
-      });
-      if (!planRes.ok) throw new Error('规划失败');
-      const planData = await planRes.json();
-      const manuscriptId = planData.manuscriptId;
-      
-      // 检查是否有警告信息
-      if (planData.warning) {
-        setMergeWarning({
-          warning: planData.warning,
-          suggestion: planData.suggestion || '',
-          childTitles: planData.mergeStats?.childTitles || [],
-        });
-      }
-      
-      // 显示合并统计信息
-      if (planData.mergeStats?.chapterCount > 1) {
-        setProgress({ 
-          status: 'merged', 
-          message: `已合并 ${planData.mergeStats.chapterCount} 个章节（${planData.mergeStats.totalLength} 字）`, 
-          percent: 30 
-        });
-        await new Promise(resolve => setTimeout(resolve, 800));
-      }
-      
-      setProgress({ status: 'draft', message: '正在编写教学手稿...', percent: 50 });
-      const draftRes = await fetch('/api/teaching/manuscript/draft', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ manuscriptId }),
-      });
-      if (!draftRes.ok) throw new Error('编写失败');
-      setProgress({ status: 'completed', message: '生成成功！', percent: 100 });
-      fetchManuscripts();
-      setTimeout(() => {
-        router.push(`/dashboard/teaching/${kbId}/manuscript/${manuscriptId}`);
-      }, 800);
-    } catch (error: any) {
-      console.error('生成失败:', error);
-      setProgress({ status: 'failed', message: error.message || '生成失败', percent: 0 });
-    } finally {
-      setGenerating(false);
-    }
-  };
-
-  const toggleChapter = (id: string) => {
-    setExpandedChapters(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const renderChapterTree = (nodes: ChapterNode[], depth = 0) => {
-    return nodes.map(node => {
-      const hasChildren = node.children && node.children.length > 0;
-      const isExpanded = expandedChapters.has(node.id);
-      const isSelected = selectedChapter?.id === node.id;
-
+  if (loading) {
       return (
-        <div key={node.id} className="select-none">
-          <div
-            className={cn(
-              "flex items-center gap-2.5 px-3 py-2.5 rounded-md cursor-pointer text-sm transition-all relative group",
-              isSelected 
-                ? "bg-zinc-100 text-zinc-900 font-semibold" 
-                : "text-zinc-700 hover:bg-zinc-50",
-              node.level === 1 && "font-medium"
-            )}
-            onClick={() => {
-              handleSelectChapter(node);
-              if (hasChildren) toggleChapter(node.id);
-            }}
-            style={{ paddingLeft: `${depth * 16 + 12}px` }}
-          >
-            {/* 选中指示条 */}
-            {isSelected && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-zinc-900 rounded-r" />}
-            
-            {hasChildren ? (
-              isExpanded ? (
-                <ChevronDown className="w-4 h-4 text-zinc-400" />
-              ) : (
-                <ChevronRight className="w-4 h-4 text-zinc-400" />
-              )
-            ) : (
-              <div className="w-4" />
-            )}
-            <BookOpen className={cn("w-4 h-4 transition-colors", isSelected ? "text-zinc-700" : "text-zinc-400 group-hover:text-zinc-500")} />
-            <span className="flex-1 truncate leading-tight">
-              {node.title}
-            </span>
-          </div>
-          {hasChildren && isExpanded && (
-            <div className="mt-0.5">
-              {renderChapterTree(node.children, depth + 1)}
-            </div>
-          )}
+      <div className="min-h-screen bg-zinc-50 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-zinc-400" />
         </div>
       );
-    });
-  };
+  }
 
   return (
-    <div className="h-screen flex flex-col bg-zinc-50/50 overflow-hidden font-sans">
-      {/* Header */}
-      <header className="flex-shrink-0 z-30 w-full bg-white/80 backdrop-blur-xl border-b border-zinc-200">
-        <div className="container mx-auto px-6 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-6">
-            <Button
-              variant="ghost"
-              size="icon"
+    <div className="h-screen flex flex-col bg-zinc-100 text-zinc-900 overflow-hidden">
+      {/* 顶部导航 - 简洁版 */}
+      <nav className="relative z-20 border-b border-zinc-200 bg-white/80 backdrop-blur-xl flex-shrink-0">
+        <div className="max-w-full px-6 h-14 flex items-center">
+          <button 
               onClick={() => router.push('/dashboard')}
-              className="text-zinc-500 hover:text-zinc-900 h-9 w-9"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-zinc-900 rounded-lg flex items-center justify-center shadow-sm">
-                <TypeIcon className="w-5 h-5 text-white" />
+            className="flex items-center gap-2 text-zinc-500 hover:text-zinc-900 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span className="text-sm">返回</span>
+          </button>
+          
+          {/* 居中标题 */}
+          <div className="flex-1 flex items-center justify-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-zinc-900 flex items-center justify-center">
+              <TypeIcon className="w-4 h-4 text-white" />
               </div>
-              <div className="flex flex-col">
-                <span className="text-base font-semibold text-zinc-900 tracking-tight">
-                  {kb?.name || '项目详情'}
-                </span>
-                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
-                  {typeConfig.headerSubtitle}
-                </span>
-              </div>
+            <div>
+              <h1 className="text-sm font-bold text-zinc-900">{kb?.name || '项目详情'}</h1>
+              <p className="text-[10px] text-zinc-500 uppercase tracking-wider">{typeConfig.headerSubtitle}</p>
             </div>
           </div>
           
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-zinc-500 bg-zinc-100 px-3 py-1 rounded-full border border-zinc-200">
-              <span className="w-2 h-2 inline-block bg-zinc-900 rounded-full mr-2 animate-pulse" />
-              AI 助手就绪
-            </span>
+          {/* 右侧占位保持平衡 */}
+          <div className="w-16" />
           </div>
-        </div>
-      </header>
+      </nav>
 
-      <main className="flex-1 overflow-hidden">
-        <div className="container mx-auto h-full px-6 py-6">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full">
-            {/* 左侧：资源与目录 */}
-            <div className="lg:col-span-4 flex flex-col gap-6 h-full overflow-hidden">
-              <div className="flex-1 bg-white border border-zinc-200 rounded-xl shadow-sm flex flex-col overflow-hidden">
-                {/* 顶部：文档库 */}
-                <div className="p-5 border-b border-zinc-100 flex-shrink-0 bg-white">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-sm font-bold text-zinc-900 flex items-center gap-2">
-                      <FileText className="w-4 h-4 text-zinc-600" />
-                      {typeConfig.docLibTitle}
-                    </h3>
-                    <div className="flex items-center gap-1.5">
-                      {/* 直接创作按钮 - 碎片模式下显示 */}
-                      {kb?.sourceMode === 'fragments' && (
-                        <button
-                          onClick={handleCreateBlank}
-                          disabled={creatingBlank}
-                          className="text-xs font-semibold flex items-center gap-1 px-2.5 py-1.5 rounded-md border transition-colors text-white bg-zinc-900 border-zinc-900 hover:bg-zinc-800 hover:border-zinc-800 shadow-sm"
-                        >
-                          {creatingBlank ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          ) : (
-                            <PenLine className="w-3.5 h-3.5" />
-                          )}
-                          直接创作
-                        </button>
-                      )}
-                      {/* 粘贴文本按钮 */}
-                      <button
-                        onClick={() => setShowPasteModal(true)}
-                        className="text-xs font-semibold flex items-center gap-1 px-2 py-1 rounded border transition-colors text-zinc-700 hover:text-zinc-900 bg-zinc-100 border-zinc-200 hover:bg-zinc-200"
-                      >
-                        <ClipboardPaste className="w-3.5 h-3.5" />
-                        粘贴
-                      </button>
-                      {/* 上传文件按钮 */}
-                      <label className={cn(
-                        "text-xs font-semibold cursor-pointer flex items-center gap-1 px-2 py-1 rounded border transition-colors",
-                        kb?.sourceMode === 'book' && documents.length > 0
-                          ? "text-zinc-400 bg-zinc-50 border-zinc-100 cursor-not-allowed"
-                          : "text-zinc-700 hover:text-zinc-900 bg-zinc-100 border-zinc-200 hover:bg-zinc-200"
-                      )}>
-                        <Plus className="w-3.5 h-3.5" />
-                        {kb?.sourceMode === 'book' && documents.length > 0 ? '已上传' : '上传'}
-                        <input 
-                          type="file" 
-                          className="hidden" 
-                          accept=".pdf,.docx,.txt" 
-                          onChange={handleFileUpload} 
-                          disabled={uploading || (kb?.sourceMode === 'book' && documents.length > 0)}
-                          multiple={kb?.sourceMode !== 'book'}
-                        />
-                      </label>
-                    </div>
-                  </div>
+      {/* 主内容区域 - 画布 + 终端 */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+      {/* 画布 */}
+      <div
+        ref={containerRef}
+          className="flex-1 relative overflow-hidden cursor-grab active:cursor-grabbing"
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+      >
+        {/* 网格背景 */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            backgroundImage: `
+              linear-gradient(to right, #e4e4e7 1px, transparent 1px),
+              linear-gradient(to bottom, #e4e4e7 1px, transparent 1px)
+            `,
+            backgroundSize: '24px 24px',
+            opacity: 0.5,
+          }}
+        />
+
+        {/* 画布内容 */}
+        <motion.div
+          className="absolute"
+          style={{
+            width: '2100px',
+            height: '520px',
+            transform: `translate(${panX}px, ${panY}px) scale(${zoom})`,
+            transformOrigin: '0 0',
+            opacity: canvasReady ? 1 : 0,
+            transition: 'opacity 0.15s ease-out',
+          }}
+        >
+          {/* SVG 连接线 */}
+          <svg className="absolute inset-0 pointer-events-none" style={{ width: '2100px', height: '520px' }}>
+            <ConnectionLineDefs />
+            
+            {/* 主连接线 */}
+            {CONNECTIONS.map((conn) => (
+              <ConnectionLine
+                key={`${conn.from}-${conn.to}`}
+                from={NODE_POSITIONS[conn.from]}
+                to={NODE_POSITIONS[conn.to]}
+                fromDimensions={NODE_DIMENSIONS[conn.from]}
+                toDimensions={NODE_DIMENSIONS[conn.to]}
+                fromStatus={getNodeStatus(conn.from)}
+                toStatus={getNodeStatus(conn.to)}
+              />
+            ))}
+
+            {/* 碎片模式跳过连接 */}
+            {sourceMode === 'fragments' && (
+              <ConnectionLine
+                from={NODE_POSITIONS[SKIP_CONNECTION.from]}
+                to={NODE_POSITIONS[SKIP_CONNECTION.to]}
+                fromDimensions={NODE_DIMENSIONS[SKIP_CONNECTION.from]}
+                toDimensions={NODE_DIMENSIONS[SKIP_CONNECTION.to]}
+                fromStatus={getNodeStatus(SKIP_CONNECTION.from)}
+                toStatus={getNodeStatus(SKIP_CONNECTION.to)}
+                isDashed
+                label={SKIP_CONNECTION.label}
+              />
+            )}
+          </svg>
+
+          {/* 节点 */}
+          <div className="absolute" style={{ left: NODE_POSITIONS.mode.x, top: NODE_POSITIONS.mode.y }}>
+            <ModeNode sourceMode={sourceMode} dimensions={NODE_DIMENSIONS.mode} />
+            </div>
+
+          <div className="absolute" style={{ left: NODE_POSITIONS.input.x, top: NODE_POSITIONS.input.y }}>
+            <InputNode
+              status={getNodeStatus('input')}
+              documents={documents}
+              sourceMode={sourceMode}
+              onUpload={() => setShowDocumentsModal(true)}
+              onPaste={() => setShowPasteModal(true)}
+              onClick={() => setShowDocumentsModal(true)}
+              dimensions={NODE_DIMENSIONS.input}
+            />
+                </div>
+
+          <div className="absolute" style={{ left: NODE_POSITIONS.parse.x, top: NODE_POSITIONS.parse.y }}>
+            <ParseNode
+              status={getNodeStatus('parse')}
+              sourceMode={sourceMode}
+              chapterCount={chapters.length}
+              progress={extractProgress}
+              onParse={handleExtractChapters}
+              onSkip={handleCreateBlank}
+              onViewGraph={() => setShowKnowledgeGraph(true)}
+              onAdjust={() => setShowOutlineAdjust(true)}
+              onClick={() => chapterDAG && setShowKnowledgeGraph(true)}
+              dimensions={NODE_DIMENSIONS.parse}
+            />
+                            </div>
+
+          <div className="absolute" style={{ left: NODE_POSITIONS.select.x, top: NODE_POSITIONS.select.y }}>
+            <SelectNode
+              status={getNodeStatus('select')}
+              chapters={chapters}
+              selectedChapter={selectedChapter}
+              onClick={() => setShowChaptersModal(true)}
+              dimensions={NODE_DIMENSIONS.select}
+            />
+                            </div>
+
+          <div className="absolute" style={{ left: NODE_POSITIONS.script.x, top: NODE_POSITIONS.script.y }}>
+            <ScriptNode
+              status={getNodeStatus('script')}
+              manuscripts={manuscripts}
+              selectedManuscript={selectedManuscript}
+              selectedChapterTitle={selectedChapter?.title}
+              progress={generateProgress}
+              onSelect={(m) => setSelectedManuscript(m)}
+              onEdit={(m) => {
+                setEditingManuscriptId(m.id);
+                setShowManuscriptEditor(true);
+              }}
+              onGenerate={handleGenerate}
+              onClick={() => setShowManuscriptModal(true)}
+              dimensions={NODE_DIMENSIONS.script}
+            />
+                                  </div>
+
+          <div className="absolute" style={{ left: NODE_POSITIONS.ppt.x, top: NODE_POSITIONS.ppt.y }}>
+            <PPTNode
+              status={getNodeStatus('ppt')}
+              hasSlidev={selectedManuscript?.hasSlidev || false}
+              onGenerate={async () => {
+                if (!selectedManuscript) {
+                  alert('请先选择一份手稿');
+                  return;
+                }
+                setGeneratingPPT(true);
+                setLogPanelExpanded(true);
+                clearLogs();
+                
+                try {
+                  // 使用流式 API 获取真实的 AI 思考过程
+                  const response = await fetch(`/api/teaching/manuscript/${selectedManuscript.id}/render-stream`, {
+                    method: 'POST',
+                  });
                   
-                  <div className="space-y-2.5 max-h-[140px] overflow-y-auto custom-scrollbar pr-1">
-                    {documents.length === 0 ? (
-                      <div className="text-center py-6 border border-dashed border-zinc-200 rounded-lg bg-zinc-50">
-                        <span className="text-xs text-zinc-400">{typeConfig.emptyDocText}</span>
-                      </div>
-                    ) : (
-                      documents.map((doc: any) => (
-                        <div key={doc.id} className="flex items-center gap-3 text-sm text-zinc-900 bg-zinc-50/80 px-3 py-2.5 rounded-lg border border-zinc-200 hover:border-zinc-300 hover:bg-white transition-all">
-                          <FileText className="w-4 h-4 text-zinc-500 flex-shrink-0" />
-                          <span className="truncate flex-1 font-semibold">{doc.name}</span>
-                          <div className={cn(
-                            "w-2 h-2 rounded-full",
-                            doc.status === 'completed' ? "bg-green-500 shadow-[0_0_4px_rgba(34,197,94,0.4)]" : "bg-amber-500 animate-pulse"
-                          )} />
-                        </div>
-                      ))
-                    )}
-                  </div>
-                  {uploading && (
-                    <div className="text-xs text-zinc-700 font-bold mt-3 flex items-center gap-2 bg-zinc-100 py-2 px-3 rounded-lg border border-zinc-200">
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      正在同步云端...
-                    </div>
-                  )}
-                </div>
-
-                {/* 底部：目录索引 */}
-                <div className="flex-1 flex flex-col overflow-hidden">
-                  <div className="px-5 py-4 border-b border-zinc-100 flex justify-between items-center bg-zinc-50/50">
-                    <h3 className="text-sm font-bold text-zinc-900 flex items-center gap-2">
-                      <ListTree className="w-4 h-4 text-zinc-600" />
-                      {typeConfig.indexTitle}
-                    </h3>
-                    {/* 技术培训需要智能扫描按钮 + 知识图谱按钮 */}
-                    {documents.length > 0 && kb?.type !== 'policy' && (
-                      <div className="flex items-center gap-1">
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          onClick={handleExtractChapters} 
-                          disabled={extracting} 
-                          className="h-7 text-xs font-bold text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100"
-                        >
-                          {extracting ? (
-                            <><Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />{extractProgress || '处理中...'}</>
-                          ) : (
-                            kb?.sourceMode === 'docs' ? '处理文档' : 
-                            kb?.sourceMode === 'fragments' ? '主题聚类' : 
-                            kb?.sourceMode === 'paper' ? '论文分析' : '智能扫描'
-                          )}
-                        </Button>
-                        {/* 知识图谱按钮 - 扫描后可用 */}
-                        {chapterDAG && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setShowKnowledgeGraph(true)}
-                            className="h-7 w-7 p-0 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100"
-                            title="查看知识图谱"
-                          >
-                            <Network className="w-4 h-4" />
-                          </Button>
-                        )}
-                        {/* 大纲调整按钮 - 扫描后可用 */}
-                        {chapters.length > 0 && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setShowOutlineAdjust(true)}
-                            className="h-7 w-7 p-0 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100"
-                            title="调整大纲"
-                          >
-                            <Edit3 className="w-4 h-4" />
-                          </Button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex-1 overflow-y-auto p-2 bg-white custom-scrollbar">
-                    {loading ? (
-                      <div className="flex flex-col items-center justify-center py-20 gap-3">
-                        <Loader2 className="w-8 h-8 animate-spin text-zinc-400" />
-                        <span className="text-xs text-zinc-400 font-medium tracking-wider uppercase">Loading Index</span>
-                      </div>
-                    ) : chapters.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center py-20 text-zinc-400 text-center px-6">
-                        <BookOpen className="w-10 h-10 mb-3 opacity-20" />
-                        <p className="text-xs font-medium leading-relaxed">
-                          暂无目录数据<br/>
-                          {kb?.type === 'policy' 
-                            ? '请上传制度文档，系统将自动创建条目' 
-                            : kb?.sourceMode === 'docs'
-                            ? '请上传文档后点击"处理文档"'
-                            : kb?.sourceMode === 'fragments'
-                            ? '请上传资料后点击"智能扫描"进行主题聚类'
-                            : typeConfig.emptyIndexText}
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="space-y-0.5">
-                        {renderChapterTree(filterBlankChapters(chapters))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* 右侧：工作台 */}
-            <div className="lg:col-span-8 flex flex-col h-full overflow-hidden pb-4">
-              <div className="bg-white border border-zinc-200 rounded-xl shadow-sm flex-1 flex flex-col overflow-hidden">
-                {/* Tabs */}
-                <div className="flex border-b border-zinc-200 px-6 pt-4 bg-white flex-shrink-0">
-                  <button
-                    onClick={() => setActiveTab('workbench')}
-                    className={cn(
-                      "pb-3.5 px-6 text-sm font-bold transition-all relative flex items-center gap-2 group",
-                      activeTab === 'workbench' ? "text-zinc-900" : "text-zinc-500 hover:text-zinc-800"
-                    )}
-                  >
-                    <LayoutGrid className={cn("w-4 h-4", activeTab === 'workbench' ? "text-zinc-700" : "text-zinc-400 group-hover:text-zinc-600")} />
-                    {typeConfig.workbenchTitle}
-                    {activeTab === 'workbench' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-zinc-900" />}
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('records')}
-                    className={cn(
-                      "pb-3.5 px-6 text-sm font-bold transition-all relative ml-2 flex items-center gap-2 group",
-                      activeTab === 'records' ? "text-zinc-900" : "text-zinc-500 hover:text-zinc-800"
-                    )}
-                  >
-                    <Clock className={cn("w-4 h-4", activeTab === 'records' ? "text-zinc-700" : "text-zinc-400 group-hover:text-zinc-600")} />
-                    历史产出
-                    {manuscripts.length > 0 && (
-                      <span className={cn(
-                        "px-1.5 py-0.5 rounded-md text-[10px] ml-1 font-black",
-                        activeTab === 'records' ? "bg-zinc-200 text-zinc-800" : "bg-zinc-100 text-zinc-600"
-                      )}>
-                        {manuscripts.length}
-                      </span>
-                    )}
-                    {activeTab === 'records' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-zinc-900" />}
-                  </button>
-                </div>
-
-                {/* Content */}
-                <div className="flex-1 overflow-y-auto bg-zinc-50/50 custom-scrollbar">
-                  {activeTab === 'workbench' ? (
-                    selectedChapter ? (
-                      <div className="max-w-4xl mx-auto py-8 px-10 h-full overflow-auto">
-                        <div className="bg-white rounded-xl border border-zinc-200 shadow-[0_10px_40px_rgba(0,0,0,0.04)] transition-all duration-500 hover:shadow-[0_15px_50px_rgba(0,0,0,0.06)]">
+                  if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.error || 'PPT 生成失败');
+                  }
+                  
+                  const reader = response.body?.getReader();
+                  if (!reader) throw new Error('无法读取响应流');
+                  
+                  const decoder = new TextDecoder();
+                  let buffer = '';
+                  
+                  while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n\n');
+                    buffer = lines.pop() || '';
+                    
+                    for (const line of lines) {
+                      if (line.startsWith('data: ')) {
+                        try {
+                          const event = JSON.parse(line.slice(6));
                           
-                          <div className="p-10">
-                            {/* 顶部指示器 */}
-                            <div className="flex items-center gap-3 mb-10">
-                              <div className="px-2.5 py-0.5 bg-zinc-100 text-zinc-700 text-[11px] font-bold rounded border border-zinc-200 tracking-wider">
-                                第 {selectedChapter.orderIndex + 1} 章节
-                              </div>
-                              <div className="h-1 w-1 bg-zinc-300 rounded-full" />
-                              <div className="text-[11px] font-bold text-zinc-400 tracking-widest uppercase">准备就绪 · 待生成</div>
+                          // 根据事件类型添加日志（简洁中文风格）
+                          switch (event.type) {
+                            case 'start':
+                              addLog('executing', event.message || event.content, {
+                                details: event.manuscriptTitle,
+                              });
+                              break;
+                            case 'thinking':
+                              // 直接显示推理内容
+                              addLog('thinking', event.content || event.reasoning || event.message);
+                              break;
+                            case 'planning':
+                              // 直接显示决策内容
+                              addLog('planning', event.content || event.decision || event.message);
+                              break;
+                            case 'executing':
+                              addLog('executing', event.content || event.message, {
+                                progress: event.progress,
+                              });
+                              break;
+                            case 'step':
+                              addLog('step', event.content || event.message, {
+                                details: event.details,
+                              });
+                              break;
+                            case 'warning':
+                              addLog('warning', event.message, {
+                                details: event.error,
+                              });
+                              break;
+                            case 'complete':
+                              addLog('success', event.message, {
+                                details: `${event.total_count || event.slideCount} 页幻灯片，${event.decorated_count || event.decoratedCount || 0} 个信息图`,
+                              });
+                              break;
+                            case 'error':
+                              addLog('error', event.message, { details: event.error });
+                              break;
+                          }
+                        } catch (e) {
+                          // 解析失败忽略
+                        }
+                      }
+                    }
+                  }
+                  
+                    await fetchManuscripts();
+                    const updated = manuscripts.find(m => m.id === selectedManuscript.id);
+                    if (updated) setSelectedManuscript({ ...updated, hasSlidev: true });
+                  
+                } catch (error: any) {
+                  addLog('error', 'PPT 生成失败', { details: error.message });
+                } finally {
+                  setGeneratingPPT(false);
+                }
+              }}
+              onPreview={() => {
+                if (selectedManuscript) {
+                  setShowPPTPreview(true);
+                }
+              }}
+              onCreateCourse={async () => {
+                if (!selectedManuscript) {
+                  alert('请先选择手稿');
+                  return;
+                }
+                if (!selectedManuscript.hasSlidev) {
+                  alert('请先生成PPT');
+                  return;
+                }
+                
+                setPublishingCourse(true);
+                setLogPanelExpanded(true);
+                clearLogs();
+                
+                try {
+                  // 使用流式 API 获取真实进度
+                  const response = await fetch(`/api/teaching/manuscript/${selectedManuscript.id}/publish-stream`, {
+                    method: 'POST',
+                  });
+                  
+                  if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.error || '课程生成失败');
+                  }
+                  
+                  const reader = response.body?.getReader();
+                  if (!reader) throw new Error('无法读取响应流');
+                  
+                  const decoder = new TextDecoder();
+                  let buffer = '';
+                  
+                  while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n\n');
+                    buffer = lines.pop() || '';
+                    
+                    for (const line of lines) {
+                      if (line.startsWith('data: ')) {
+                        try {
+                          const event = JSON.parse(line.slice(6));
+                          
+                          switch (event.type) {
+                            case 'start':
+                              addLog('executing', event.message, {
+                                details: event.manuscriptTitle,
+                                phase: event.phase
+                              });
+                              break;
+                            case 'thinking':
+                              addLog('thinking', event.message, {
+                                reasoning: event.reasoning,
+                                phase: event.phase
+                              });
+                              break;
+                            case 'planning':
+                              addLog('planning', event.message, {
+                                reasoning: event.reasoning,
+                                phase: event.phase
+                              });
+                              break;
+                            case 'executing':
+                              addLog('executing', event.message, {
+                                reasoning: event.reasoning,
+                                progress: event.progress,
+                                phase: event.phase
+                              });
+                              break;
+                            case 'step':
+                              addLog('step', event.message, {
+                                details: event.details,
+                                phase: event.phase
+                              });
+                              break;
+                            case 'warning':
+                              addLog('warning', event.message, {
+                                details: event.details
+                              });
+                              break;
+                            case 'complete':
+                              if (event.isExisting) {
+                                addLog('success', event.message, { details: '可直接播放' });
+                              } else {
+                                addLog('success', event.message, {
+                                  details: `${event.audioCount} 段语音，总时长约 ${event.durationText}`,
+                                  phase: event.phase
+                                });
+                              }
+                              await fetchCourses();
+                              break;
+                            case 'error':
+                              addLog('error', event.message, { details: event.error });
+                              break;
+                          }
+                        } catch (e) {
+                          // 解析失败忽略
+                        }
+                      }
+                    }
+                  }
+                  
+                } catch (error: any) {
+                  addLog('error', '生成课程失败', { details: error.message });
+                } finally {
+                  setPublishingCourse(false);
+                }
+              }}
+              dimensions={NODE_DIMENSIONS.ppt}
+            />
                             </div>
 
-                            {/* 标题区 - 极简主义排版 */}
-                            <div className="mb-12">
-                              <h2 className="text-3xl font-bold text-zinc-900 tracking-tight leading-tight mb-6">
-                                {selectedChapter.title}
-                              </h2>
-                              {selectedChapter.contentPreview ? (
-                                <p className="text-base text-zinc-500 leading-relaxed font-medium max-w-2xl">
-                                  {selectedChapter.contentPreview}
-                                </p>
-                              ) : (
-                                <div className="h-px w-20 bg-zinc-100" />
-                              )}
-                            </div>
-
-                            {/* 章节大小提示 */}
-                            {chapterSizeInfo?.hasChildren && (
-                              <div className={cn(
-                                "mb-6 p-4 rounded-lg border",
-                                chapterSizeInfo.isTooLarge
-                                  ? "bg-amber-50 border-amber-200"
-                                  : "bg-blue-50 border-blue-200"
-                              )}>
-                                <div className="flex items-start gap-3">
-                                  <div className={cn(
-                                    "w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5",
-                                    chapterSizeInfo.isTooLarge
-                                      ? "bg-amber-100 text-amber-600"
-                                      : "bg-blue-100 text-blue-600"
-                                  )}>
-                                    <ListTree className="w-3.5 h-3.5" />
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className={cn(
-                                      "text-sm font-medium",
-                                      chapterSizeInfo.isTooLarge ? "text-amber-800" : "text-blue-800"
-                                    )}>
-                                      {chapterSizeInfo.isTooLarge 
-                                        ? `该章节包含 ${chapterSizeInfo.childCount} 个子章节，内容较多`
-                                        : `该章节包含 ${chapterSizeInfo.childCount} 个子章节，将自动合并`}
-                                    </div>
-                                    {chapterSizeInfo.isTooLarge && chapterSizeInfo.suggestion && (
-                                      <div className="mt-2 text-xs text-amber-700 whitespace-pre-line">
-                                        {chapterSizeInfo.suggestion}
-                                      </div>
-                                    )}
-                                    {!chapterSizeInfo.isTooLarge && (
-                                      <div className="mt-1 text-xs text-blue-600">
-                                        生成时将自动包含所有子章节的知识点
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-
-                            {/* 参数信息 - 模块化极简 */}
-                            <div className="grid grid-cols-3 gap-12 py-10 border-t border-zinc-100">
-                              <div>
-                                <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">项目类型</div>
-                                <div className="text-base font-bold text-zinc-800">{typeConfig.headerSubtitle}</div>
-                              </div>
-                              <div>
-                                <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">智能等级</div>
-                                <div className="text-base font-bold text-zinc-800">Agentic RAG v4</div>
-                              </div>
-                              <div>
-                                <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">预估耗时</div>
-                                <div className="text-base font-bold text-zinc-800 tracking-tight">
-                                  {chapterSizeInfo?.hasChildren 
-                                    ? `约 ${Math.max(45, 45 + (chapterSizeInfo.childCount || 0) * 5)} - ${Math.max(60, 60 + (chapterSizeInfo.childCount || 0) * 8)} 秒`
-                                    : '约 45 - 60 秒'}
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* 核心操作区 - 灵魂按钮 */}
-                            <div className="mt-12 flex flex-col items-center pt-10 border-t border-zinc-50/50">
-                              {/* 检查是否已有手稿 */}
-                              {(() => {
-                                const existingManuscript = getChapterManuscript(selectedChapter.id);
-                                if (existingManuscript) {
-                                  // 已有手稿，显示进入编辑按钮
-                                  return (
-                                    <>
-                                      <div className="mb-6 text-center">
-                                        <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-green-50 text-green-700 rounded-full text-sm font-medium border border-green-200">
-                                          <CheckCircle className="w-4 h-4" />
-                                          已创建手稿
+          <div className="absolute" style={{ left: NODE_POSITIONS.course.x, top: NODE_POSITIONS.course.y }}>
+            <CourseNode
+              status={getNodeStatus('course')}
+              courses={courses}
+              progress={publishingCourse ? 50 : undefined}
+              onGenerate={async () => {
+                if (!selectedManuscript) {
+                  alert('请先选择手稿');
+                  return;
+                }
+                if (!selectedManuscript.hasSlidev) {
+                  alert('请先生成PPT');
+                  return;
+                }
+                
+                setPublishingCourse(true);
+                setLogPanelExpanded(true);
+                clearLogs();
+                
+                try {
+                  // 使用流式 API 获取真实进度
+                  const response = await fetch(`/api/teaching/manuscript/${selectedManuscript.id}/publish-stream`, {
+                    method: 'POST',
+                  });
+                  
+                  if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.error || '课程生成失败');
+                  }
+                  
+                  const reader = response.body?.getReader();
+                  if (!reader) throw new Error('无法读取响应流');
+                  
+                  const decoder = new TextDecoder();
+                  let buffer = '';
+                  
+                  while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n\n');
+                    buffer = lines.pop() || '';
+                    
+                    for (const line of lines) {
+                      if (line.startsWith('data: ')) {
+                        try {
+                          const event = JSON.parse(line.slice(6));
+                          
+                          switch (event.type) {
+                            case 'start':
+                              addLog('executing', event.message, {
+                                details: event.manuscriptTitle,
+                                phase: event.phase
+                              });
+                              break;
+                            case 'thinking':
+                              addLog('thinking', event.message, {
+                                reasoning: event.reasoning,
+                                phase: event.phase
+                              });
+                              break;
+                            case 'planning':
+                              addLog('planning', event.message, {
+                                reasoning: event.reasoning,
+                                phase: event.phase
+                              });
+                              break;
+                            case 'executing':
+                              addLog('executing', event.message, {
+                                reasoning: event.reasoning,
+                                progress: event.progress,
+                                phase: event.phase
+                              });
+                              break;
+                            case 'step':
+                              addLog('step', event.message, {
+                                details: event.details,
+                                phase: event.phase
+                              });
+                              break;
+                            case 'warning':
+                              addLog('warning', event.message, {
+                                details: event.details
+                              });
+                              break;
+                            case 'complete':
+                              if (event.isExisting) {
+                                addLog('success', event.message, { details: '可直接播放' });
+                              } else {
+                                addLog('success', event.message, {
+                                  details: `${event.audioCount} 段语音，总时长约 ${event.durationText}`,
+                                  phase: event.phase
+                                });
+                              }
+                              await fetchCourses();
+                              break;
+                            case 'error':
+                              addLog('error', event.message, { details: event.error });
+                              break;
+                          }
+                        } catch (e) {
+                          // 解析失败忽略
+                        }
+                      }
+                    }
+                  }
+                  
+                } catch (error: any) {
+                  addLog('error', '生成课程失败', { details: error.message });
+                } finally {
+                  setPublishingCourse(false);
+                }
+              }}
+              onPlay={(id) => router.push(`/dashboard/teaching/${kbId}/course/${id}`)}
+              dimensions={NODE_DIMENSIONS.course}
+            />
                                         </div>
-                                      </div>
-                                      <div className="relative group">
-                                        <div className="absolute -inset-1 bg-zinc-900 rounded blur-md opacity-20 group-hover:opacity-30 transition duration-500" />
-                                        <Button
-                                          className="relative min-w-[320px] h-14 text-base font-bold rounded transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-3 shadow-lg shadow-zinc-200 bg-zinc-900 hover:bg-zinc-800 text-white"
-                                          onClick={() => router.push(`/dashboard/teaching/${kbId}/manuscript/${existingManuscript.id}`)}
-                                        >
-                                          <Edit3 className="w-5 h-5" />
-                                          <span className="tracking-wider">进入编辑</span>
-                                        </Button>
-                                      </div>
-                                      <div className="mt-8 flex items-center gap-2 text-zinc-400">
-                                        <Clock className="w-3.5 h-3.5" />
-                                        <span className="text-[10px] font-bold uppercase tracking-widest">
-                                          创建于 {new Date(existingManuscript.createdAt).toLocaleDateString('zh-CN')}
-                                        </span>
-                                      </div>
-                                    </>
-                                  );
-                                }
-                                
-                                // 没有手稿，显示生成按钮
-                                return (
-                                  <>
-                                    <div className="relative group">
-                                      {/* 按钮背后的柔光层 */}
-                                      <div className="absolute -inset-1 bg-zinc-900 rounded blur-md opacity-20 group-hover:opacity-30 transition duration-500" />
-                                      
-                                      <Button
-                                        className={cn(
-                                          "relative min-w-[320px] h-14 text-base font-bold rounded transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-3 shadow-lg shadow-zinc-200",
-                                          generating 
-                                            ? "bg-white text-zinc-400 border border-zinc-100 shadow-none" 
-                                            : "bg-zinc-900 hover:bg-zinc-800 text-white"
-                                        )}
-                                        onClick={handleGenerate}
-                                        disabled={generating}
-                                      >
-                                        {generating ? (
-                                          <Loader2 className="w-5 h-5 animate-spin" />
-                                        ) : (
-                                          <Sparkles className="w-5 h-5" />
-                                        )}
-                                        <span className="tracking-wider">
-                                          {generating ? typeConfig.generatingText : typeConfig.generateBtnText}
-                                        </span>
-                                      </Button>
-                                    </div>
-
-                                    {generating && (
-                                      <div className="w-full max-w-sm mt-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
-                                        <div className="flex justify-between items-center mb-4 px-1">
-                                          <div className="flex items-center gap-2">
-                                            <div className="w-1.5 h-1.5 bg-zinc-900 rounded-full animate-ping" />
-                                            <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">{progress.message}</span>
-                                          </div>
-                                          <span className="text-xl font-bold text-zinc-900 tabular-nums tracking-tighter">{progress.percent}%</span>
-                                        </div>
-                                        <div className="h-1 bg-zinc-100 rounded-full overflow-hidden">
-                                          <div 
-                                            className="h-full bg-zinc-900 transition-all duration-1000 ease-out" 
-                                            style={{ width: `${progress.percent}%` }}
-                                          />
-                                        </div>
-                                      </div>
-                                    )}
-                                    
-                                    {!generating && (
-                                      <div className="mt-8 flex items-center gap-2 text-zinc-400">
-                                        <CheckCircle className="w-3.5 h-3.5" />
-                                        <span className="text-[10px] font-bold uppercase tracking-widest">已通过安全与隐私加密校验</span>
-                                      </div>
-                                    )}
-                                  </>
-                                );
-                              })()}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-zinc-300">
-                        <div className="w-16 h-16 rounded bg-white shadow-sm border border-zinc-100 flex items-center justify-center mb-6">
-                          <LayoutGrid className="w-8 h-8 opacity-10" />
-                        </div>
-                        <p className="text-sm font-bold tracking-widest text-zinc-400 uppercase">{typeConfig.selectHint}</p>
-                      </div>
-                    )
-                  ) : (
-                    <div className="max-w-4xl mx-auto p-8">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                        {manuscripts.map(m => (
-                          <div 
-                            key={m.id} 
-                            className="bg-white p-5 rounded-2xl border border-zinc-200 hover:shadow-xl hover:border-zinc-300 transition-all cursor-pointer flex flex-col group relative overflow-hidden" 
-                            onClick={() => router.push(`/dashboard/teaching/${kbId}/manuscript/${m.id}`)}
-                          >
-                            <div className="absolute top-0 right-0 p-4 opacity-[0.03] group-hover:opacity-[0.08] transition-opacity">
-                              <FileText className="w-16 h-16" />
-                            </div>
+        </motion.div>
                             
-                            <div className="flex items-center gap-3 mb-4">
-                              <div className="w-10 h-10 bg-zinc-100 text-zinc-700 rounded-xl flex items-center justify-center border border-zinc-200 transition-colors group-hover:bg-zinc-900 group-hover:text-white">
-                                <FileText className="w-5 h-5" />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <h4 className="text-base font-bold text-zinc-900 truncate group-hover:text-zinc-700 transition-colors">{m.chapterTitle}</h4>
-                                <div className="flex items-center gap-2 mt-0.5">
-                                  <span className="text-[10px] font-bold text-zinc-500 uppercase">{new Date(m.createdAt).toLocaleDateString('zh-CN')}</span>
-                                  <span className={cn(
-                                    "px-2 py-0.5 rounded-full text-[10px] font-bold border",
-                                    m.status === 'completed' 
-                                      ? "bg-green-50 text-green-700 border-green-200" 
-                                      : "bg-zinc-50 text-zinc-600 border-zinc-300"
-                                  )}>
-                                    {m.status === 'completed' ? '已就绪' : '处理中'}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                            
-                            <div className="mt-auto pt-4 border-t border-zinc-50 flex items-center justify-between">
-                              <div className="flex gap-1.5">
-                                {m.hasSlidev && <div className="w-6 h-6 bg-zinc-50 rounded flex items-center justify-center"><Eye className="w-3.5 h-3.5 text-zinc-400" /></div>}
-                                {m.hasEnriched && <div className="w-6 h-6 bg-zinc-50 rounded flex items-center justify-center"><Sparkles className="w-3.5 h-3.5 text-zinc-400" /></div>}
-                              </div>
-                              <div className="text-[10px] font-black text-zinc-400 group-hover:text-zinc-900 flex items-center gap-1 uppercase tracking-widest transition-all">
-                                进入工作区 <ChevronRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                      {manuscripts.length === 0 && (
-                        <div className="flex flex-col items-center justify-center py-20 text-zinc-400">
-                          <Clock className="w-12 h-12 mb-4 opacity-10" />
-                          <p className="text-sm font-medium">暂无产出记录</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
+      {/* 画布控制 */}
+      <CanvasControls
+        zoom={zoom}
+        onZoomIn={() => setZoom(z => Math.min(z * 1.2, 1.5))}
+        onZoomOut={() => setZoom(z => Math.max(z * 0.8, 0.3))}
+        onReset={() => {
+          setZoom(0.85);
+          if (containerRef.current) {
+            const { width, height } = containerRef.current.getBoundingClientRect();
+            setPanX(Math.max(20, (width - 2000 * 0.85) / 2));
+            setPanY(Math.max(20, (height - 500 * 0.85) / 2));
+          }
+        }}
+      />
         </div>
-      </main>
+        
+        {/* 终端日志面板 */}
+        <LogPanel 
+          logs={logs}
+          isExpanded={logPanelExpanded}
+          onToggle={() => setLogPanelExpanded(!logPanelExpanded)}
+          onClear={clearLogs}
+        />
+      </div>
+
+      {/* 文档管理弹窗 */}
+      <DocumentsModal
+        open={showDocumentsModal}
+        onOpenChange={setShowDocumentsModal}
+        documents={documents}
+        sourceMode={sourceMode}
+        uploading={uploading}
+        onUpload={handleFileUpload}
+        onPaste={() => {
+          setShowDocumentsModal(false);
+          setShowPasteModal(true);
+        }}
+      />
+
+      {/* 章节选择弹窗 */}
+      <ChaptersModal
+        open={showChaptersModal}
+        onOpenChange={setShowChaptersModal}
+        chapters={chapters}
+        selectedChapter={selectedChapter}
+        onSelect={handleSelectChapter}
+      />
+
+      {/* 手稿管理弹窗 */}
+      <ManuscriptModal
+        open={showManuscriptModal}
+        onOpenChange={setShowManuscriptModal}
+        manuscripts={manuscripts}
+        selectedManuscript={selectedManuscript}
+        generating={generating}
+        progress={generateProgress}
+        onSelect={(m) => setSelectedManuscript(m)}
+        onEdit={(id) => {
+          setShowManuscriptModal(false);
+          setEditingManuscriptId(id);
+          setShowManuscriptEditor(true);
+        }}
+      />
+
+      {/* 手稿编辑器弹窗 */}
+      <ManuscriptEditorModal
+        open={showManuscriptEditor}
+        onOpenChange={setShowManuscriptEditor}
+        manuscriptId={editingManuscriptId}
+        kbId={kbId}
+        onSuccess={() => {
+          fetchManuscripts();
+        }}
+      />
+
+      {/* PPT预览弹窗 */}
+      <PPTPreviewModal
+        open={showPPTPreview}
+        onOpenChange={setShowPPTPreview}
+        manuscriptId={selectedManuscript?.id || null}
+        title={selectedManuscript?.chapterTitle}
+      />
       
       {/* 知识图谱弹窗 */}
       {showKnowledgeGraph && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl w-[90vw] max-w-4xl max-h-[85vh] flex flex-col overflow-hidden">
-            {/* 弹窗头部 */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-100 bg-zinc-50/50">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-gradient-to-br from-amber-400 to-orange-500 rounded-xl flex items-center justify-center shadow-sm">
                   <Network className="w-5 h-5 text-white" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold text-zinc-900">全书知识图谱</h2>
-                  {bookThesis && (
-                    <p className="text-xs text-zinc-500 mt-0.5">{bookThesis.title || bookThesis.topic}</p>
-                  )}
+                  <h2 className="text-lg font-bold text-zinc-900">知识图谱</h2>
+                  {bookThesis && <p className="text-xs text-zinc-500 mt-0.5">{bookThesis.title || bookThesis.topic}</p>}
                 </div>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowKnowledgeGraph(false)}
-                className="h-8 w-8 p-0 text-zinc-400 hover:text-zinc-900"
-              >
+              <Button variant="ghost" size="sm" onClick={() => setShowKnowledgeGraph(false)} className="h-8 w-8 p-0">
                 <X className="w-5 h-5" />
               </Button>
             </div>
-            
-            {/* 弹窗内容 */}
             <div className="flex-1 p-6 overflow-auto">
               {chapterDAG ? (
                 <BookKnowledgeGraph
@@ -1356,7 +1511,6 @@ export default function TeachingDetailPage() {
                   viewMode="chapters"
                   height={500}
                   onNodeClick={(node) => {
-                    // 点击章节节点，选中对应章节
                     if (node.type === 'chapter') {
                       const chapterId = node.id.replace('ch_', '');
                       const chapter = chapters.find(c => c.id === chapterId);
@@ -1370,23 +1524,10 @@ export default function TeachingDetailPage() {
               ) : (
                 <div className="flex flex-col items-center justify-center h-64 text-zinc-400">
                   <Network className="w-12 h-12 mb-4 opacity-20" />
-                  <p className="text-sm">请先进行智能扫描</p>
+                  <p className="text-sm">请先进行大纲解析</p>
                 </div>
               )}
             </div>
-            
-            {/* 弹窗底部信息 */}
-            {bookThesis && (
-              <div className="px-6 py-3 border-t border-zinc-100 bg-zinc-50/50">
-                <div className="flex items-center gap-4 text-xs text-zinc-500">
-                  <span>📚 {bookThesis.knowledgeType || '知识型'}</span>
-                  <span>🎯 {bookThesis.audience || '通用读者'}</span>
-                  {chapterDAG && (
-                    <span>📖 {chapterDAG.nodes.length} 个章节</span>
-                  )}
-                </div>
-              </div>
-            )}
           </div>
         </div>
       )}
@@ -1395,94 +1536,45 @@ export default function TeachingDetailPage() {
       <OutlineAdjustModal
         open={showOutlineAdjust}
         onOpenChange={setShowOutlineAdjust}
-        knowledgeBaseId={params.id as string}
-        onSuccess={() => {
-          // 重新获取章节列表（会自动重建 DAG）
-          fetchChapters();
-        }}
+        knowledgeBaseId={kbId}
+        onSuccess={fetchChapters}
       />
 
       {/* 粘贴手稿弹窗 */}
       {showPasteModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl w-[90vw] max-w-2xl max-h-[85vh] flex flex-col overflow-hidden">
-            {/* 弹窗头部 */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-100 bg-zinc-50/50">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-xl flex items-center justify-center shadow-sm">
-                  <ClipboardPaste className="w-5 h-5 text-white" />
-                </div>
-                <div>
                   <h2 className="text-lg font-bold text-zinc-900">粘贴手稿</h2>
-                  <p className="text-xs text-zinc-500 mt-0.5">直接粘贴文本内容</p>
-                </div>
-              </div>
-              <button
-                onClick={() => {
-                  setShowPasteModal(false);
-                  setPasteTitle('');
-                  setPasteContent('');
-                }}
-                className="h-8 w-8 flex items-center justify-center text-zinc-400 hover:text-zinc-900 rounded-lg hover:bg-zinc-100"
-              >
+              <button onClick={() => { setShowPasteModal(false); setPasteTitle(''); setPasteContent(''); }} className="text-zinc-400 hover:text-zinc-900">
                 <X className="w-5 h-5" />
               </button>
             </div>
-
-            {/* 弹窗内容 */}
             <div className="flex-1 p-6 overflow-auto space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-zinc-500 ml-1">标题（可选）</label>
+              <div>
+                <label className="text-xs font-bold text-zinc-500 mb-1.5 block">标题（可选）</label>
                 <input
                   type="text"
                   value={pasteTitle}
                   onChange={(e) => setPasteTitle(e.target.value)}
                   placeholder="给这份手稿起个名字..."
-                  className="w-full h-10 px-4 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-400"
+                  className="w-full h-10 px-4 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
                 />
               </div>
-              <div className="space-y-1.5 flex-1">
-                <label className="text-xs font-bold text-zinc-500 ml-1">内容</label>
+              <div>
+                <label className="text-xs font-bold text-zinc-500 mb-1.5 block">内容</label>
                 <textarea
                   value={pasteContent}
                   onChange={(e) => setPasteContent(e.target.value)}
-                  placeholder="在这里粘贴你的手稿内容...
-
-支持直接粘贴：
-• 课程讲稿
-• 技术文档
-• 学习笔记
-• 会议记录
-• 任何文本内容"
-                  className="w-full h-[320px] px-4 py-3 border border-zinc-200 rounded-lg text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-400"
+                  placeholder="在这里粘贴内容..."
+                  className="w-full h-[300px] px-4 py-3 border border-zinc-200 rounded-lg text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
                 />
               </div>
             </div>
-
-            {/* 弹窗底部 */}
-            <div className="px-6 py-4 border-t border-zinc-100 bg-zinc-50/50 flex justify-end gap-3">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setShowPasteModal(false);
-                  setPasteTitle('');
-                  setPasteContent('');
-                }}
-              >
-                取消
-              </Button>
-              <Button
-                onClick={handlePasteSubmit}
-                disabled={pasting || !pasteContent.trim()}
-              >
-                {pasting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    保存中...
-                  </>
-                ) : (
-                  '保存手稿'
-                )}
+            <div className="px-6 py-4 border-t border-zinc-100 flex justify-end gap-3">
+              <Button variant="outline" onClick={() => { setShowPasteModal(false); setPasteTitle(''); setPasteContent(''); }}>取消</Button>
+              <Button onClick={handlePasteSubmit} disabled={pasting || !pasteContent.trim()}>
+                {pasting ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />保存中...</> : '保存手稿'}
               </Button>
             </div>
           </div>
@@ -1491,3 +1583,4 @@ export default function TeachingDetailPage() {
     </div>
   );
 }
+
